@@ -1,0 +1,223 @@
+//! Keyboard handling for every screen.
+
+use std::time::Instant;
+
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use crate::app::{App, Confirm, Screen};
+use crate::constants::{HELP_PAGE_STEP, MACROS_INPUT_LEN, MAX_NAME_LEN};
+use crate::duel::{DuelKey, Minigame, Phase};
+use crate::game::{Game, Overlay};
+use crate::help::PAGES;
+use crate::items::consumable_for_key;
+use crate::protocol::ClientMsg;
+
+/// Applies a key press; returns false once the app should exit.
+pub fn handle_key(app: &mut App, key: KeyEvent, now: Instant) -> bool {
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+        app.request_quit();
+        return !app.quit;
+    }
+    if app.confirm.is_some() {
+        match key.code {
+            KeyCode::Char('s' | 'S' | 'y' | 'Y') | KeyCode::Enter => app.answer(true),
+            KeyCode::Char('n' | 'N') | KeyCode::Esc => app.answer(false),
+            _ => {}
+        }
+        return !app.quit;
+    }
+    if let Some(typed) = app.editing_name.as_mut() {
+        match key.code {
+            KeyCode::Enter => {
+                app.finish_name_edit();
+            }
+            KeyCode::Esc => app.editing_name = None,
+            KeyCode::Backspace => {
+                typed.pop();
+            }
+            KeyCode::Char(c) if !c.is_control() && typed.chars().count() < MAX_NAME_LEN => typed.push(c),
+            _ => {}
+        }
+        return true;
+    }
+
+    // Chat and clan windows read raw keys: they have text boxes where case matters.
+    if app.screen == Screen::Playing && app.game.duel.is_none() {
+        match app.game.overlay {
+            Overlay::Chat => {
+                crate::ui::chat::handle_key(app, key, now);
+                return !app.quit;
+            }
+            Overlay::Clan => {
+                crate::ui::clan::handle_key(app, key, now);
+                return !app.quit;
+            }
+            _ => {}
+        }
+    }
+
+    // A fast Esc + key arrives as Alt + key: treat it as closing the overlay first.
+    if key.modifiers.contains(KeyModifiers::ALT) && app.game.overlay != Overlay::None {
+        app.game.overlay = Overlay::None;
+    }
+    let code = match key.code {
+        KeyCode::Char(c) => KeyCode::Char(c.to_ascii_lowercase()),
+        other => other,
+    };
+    match app.screen {
+        Screen::Lobby => lobby_key(app, code),
+        Screen::Playing if app.game.duel.is_some() => duel_key(app, code),
+        Screen::Playing => playing_key(app, code, now),
+    }
+    !app.quit
+}
+
+fn lobby_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => app.lobby_move(-1),
+        KeyCode::Down | KeyCode::Char('j') => app.lobby_move(1),
+        KeyCode::Enter | KeyCode::Char(' ') => app.lobby_enter(),
+        KeyCode::Char('n') => app.start_name_edit(),
+        KeyCode::Char('u') => app.ask_update(),
+        KeyCode::Char('p') if app.host.is_some() => app.confirm = Some(Confirm::StopServer),
+        KeyCode::Char('q') | KeyCode::Esc => app.request_quit(),
+        _ => {}
+    }
+}
+
+fn duel_key(app: &mut App, code: KeyCode) {
+    let decided = app.game.duel.as_ref().is_none_or(|d| d.phase == Phase::Finished);
+    let typing = app.game.duel.as_ref().is_some_and(|d| {
+        d.game == Minigame::Typing && matches!(d.phase, Phase::Countdown | Phase::Show | Phase::Play)
+    });
+    let macros = app.game.duel.as_ref().is_some_and(|d| {
+        d.game == Minigame::Macros && matches!(d.phase, Phase::Countdown | Phase::Show | Phase::Play)
+    });
+    if macros {
+        let input = &mut app.game.macros_input;
+        match code {
+            KeyCode::Char(c @ ('0'..='9' | '-')) if input.len() < MACROS_INPUT_LEN => input.push(c),
+            KeyCode::Backspace => _ = input.pop(),
+            KeyCode::Enter | KeyCode::Char(' ') => app.game.submit_macros(Instant::now()),
+            KeyCode::Esc => app.confirm = Some(Confirm::Forfeit),
+            _ => {}
+        }
+        return;
+    }
+    if typing {
+        // Every letter types, so only Esc gives up.
+        match code {
+            KeyCode::Char(c) if !c.is_control() => app.game.duel_key(DuelKey::Char(c), Instant::now()),
+            KeyCode::Esc => app.confirm = Some(Confirm::Forfeit),
+            _ => {}
+        }
+        return;
+    }
+    let key = match code {
+        KeyCode::Up | KeyCode::Char('w') => DuelKey::Up,
+        KeyCode::Down | KeyCode::Char('s') => DuelKey::Down,
+        KeyCode::Left | KeyCode::Char('a') => DuelKey::Left,
+        KeyCode::Right | KeyCode::Char('d') => DuelKey::Right,
+        KeyCode::Char(' ') | KeyCode::Enter => DuelKey::Action,
+        KeyCode::Esc | KeyCode::Char('q') if !decided => {
+            app.confirm = Some(Confirm::Forfeit);
+            return;
+        }
+        _ => return,
+    };
+    app.game.duel_key(key, Instant::now());
+}
+
+fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
+    let game = &mut app.game;
+    if game.overlay == Overlay::None && !game.invites.is_empty() {
+        match code {
+            KeyCode::Char('a') => return game.answer_invite(true),
+            KeyCode::Char('r') | KeyCode::Esc => return game.answer_invite(false),
+            _ => {}
+        }
+    }
+    match game.overlay {
+        Overlay::Shop => shop_key(game, code),
+        Overlay::Help => help_key(game, code),
+        Overlay::Achievements => {
+            if matches!(code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('c' | '?' | 'h' | 'q')) {
+                game.overlay = Overlay::None;
+            }
+        }
+        Overlay::Chat | Overlay::Clan => {} // handled above with raw keys
+        Overlay::Stake => match code {
+            KeyCode::Left | KeyCode::Up | KeyCode::Char('h' | 'k') => game.stake_move(-1),
+            KeyCode::Right | KeyCode::Down | KeyCode::Char('l' | 'j') => game.stake_move(1),
+            KeyCode::Enter | KeyCode::Char(' ') => game.confirm_stake(),
+            KeyCode::Esc | KeyCode::Char('q') => game.overlay = Overlay::None,
+            _ => {}
+        },
+        Overlay::Server => match code {
+            KeyCode::Char('d') => app.confirm = Some(Confirm::Disconnect),
+            KeyCode::Char('p') if app.host.is_some() => app.confirm = Some(Confirm::StopServer),
+            KeyCode::Char('n') => {
+                game.overlay = Overlay::None;
+                app.start_name_edit();
+            }
+            KeyCode::Char('b') => app.toggle_notifications(),
+            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('s' | 'q') => game.overlay = Overlay::None,
+            _ => {}
+        },
+        Overlay::None => match code {
+            KeyCode::Char('q') => app.request_quit(),
+            KeyCode::Char(' ') | KeyCode::Enter => game.try_mog(now),
+            KeyCode::Up | KeyCode::Left | KeyCode::Char('k') => game.select_move(-1),
+            KeyCode::Down | KeyCode::Right | KeyCode::Char('j') => game.select_move(1),
+            KeyCode::Char('m') => game.mew(),
+            KeyCode::Char('l') => game.overlay = Overlay::Shop,
+            KeyCode::Char('c') => game.overlay = Overlay::Achievements,
+            KeyCode::Char('s') => game.overlay = Overlay::Server,
+            KeyCode::Char('d') => game.open_challenge(),
+            KeyCode::Char('f') => game.toggle_queue(),
+            KeyCode::Char('t') => game.overlay = Overlay::Chat,
+            KeyCode::Char('g') => {
+                game.overlay = Overlay::Clan;
+                game.outbox.push(ClientMsg::Clan(crate::clan::ClanCmd::Refresh));
+            }
+            KeyCode::Char('x') if game.outgoing.is_some() => game.outbox.push(ClientMsg::CancelChallenge),
+            KeyCode::Char('?' | 'h') => game.overlay = Overlay::Help,
+            KeyCode::Char(c) => {
+                if let Some(id) = consumable_for_key(c) {
+                    game.use_item(id);
+                }
+            }
+            _ => {}
+        },
+    }
+}
+
+fn shop_key(game: &mut Game, code: KeyCode) {
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => game.shop_move(-1),
+        KeyCode::Down | KeyCode::Char('j') => game.shop_move(1),
+        KeyCode::Enter | KeyCode::Char(' ') => game.buy(game.shop_cursor),
+        KeyCode::Esc | KeyCode::Char('l' | 'q') => game.overlay = Overlay::None,
+        _ => {}
+    }
+}
+
+fn help_key(game: &mut Game, code: KeyCode) {
+    match code {
+        KeyCode::Left | KeyCode::BackTab | KeyCode::Char('h') => game.help_turn(-1),
+        KeyCode::Right | KeyCode::Tab | KeyCode::Char('l') => game.help_turn(1),
+        KeyCode::Up | KeyCode::Char('k') => game.help_scroll_by(-1),
+        KeyCode::Down | KeyCode::Char('j') => game.help_scroll_by(1),
+        KeyCode::PageUp => game.help_scroll_by(-HELP_PAGE_STEP),
+        KeyCode::PageDown | KeyCode::Char(' ') => game.help_scroll_by(HELP_PAGE_STEP),
+        KeyCode::Char(c @ '1'..='9') => {
+            let page = c as usize - '1' as usize;
+            if page < PAGES.len() {
+                game.help_page = page;
+                game.help_scroll = 0;
+            }
+        }
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?' | 'q') => game.overlay = Overlay::None,
+        _ => {}
+    }
+}

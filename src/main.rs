@@ -1,0 +1,116 @@
+//! PMOG binary: TUI by default, headless client with `--bot`.
+
+use std::io;
+use std::net::SocketAddr;
+use std::time::Instant;
+
+use pmog::app::App;
+use pmog::constants::TICK;
+use pmog::discovery::Discovery;
+use pmog::input::handle_key;
+use pmog::server::{self, Ports};
+use pmog::notify::SystemSink;
+use pmog::{bot, machine_id, save, ui, update, utils};
+use ratatui::DefaultTerminal;
+use ratatui::crossterm::event::{self, DisableFocusChange, EnableFocusChange, Event, KeyEventKind};
+use ratatui::crossterm::execute;
+
+struct Args {
+    name: Option<String>,
+    bot: bool,
+    server: Option<SocketAddr>,
+}
+
+fn flag_value(args: &[String], names: &[&str]) -> Option<String> {
+    args.iter().position(|a| names.contains(&a.as_str())).and_then(|i| args.get(i + 1).cloned())
+}
+
+fn parse_args() -> Args {
+    let args: Vec<String> = std::env::args().collect();
+    Args {
+        name: flag_value(&args, &["--name", "-n"]).map(|n| utils::clean_name(&n)).filter(|n| !n.is_empty()),
+        bot: args.iter().any(|a| a == "--bot"),
+        server: flag_value(&args, &["--server"]).and_then(|s| s.parse().ok()),
+    }
+}
+
+fn default_name() -> String {
+    let name = utils::clean_name(&std::env::var("USER").unwrap_or_default());
+    if name.is_empty() { "anon".into() } else { name }
+}
+
+fn main() -> io::Result<()> {
+    if std::env::args().any(|a| a == "--version") {
+        let release = update::release();
+        println!("PMOG {}", if release > 0 { update::release_label(release) } else { "desenvolvimento".into() });
+        return Ok(());
+    }
+    let args = parse_args();
+    if let Ok(exe) = std::env::current_exe() {
+        update::cleanup(&exe);
+    }
+    let ports = Ports::default();
+    if args.bot {
+        let name = args.name.unwrap_or_else(|| format!("bot{}", rand::random::<u16>()));
+        bot::run(&name, ports.discovery, args.server);
+        return Ok(());
+    }
+
+    let machine_id = machine_id::resolve(true).map_err(|e| {
+        eprintln!("Não consegui identificar este computador: {e}");
+        io::Error::other(e.to_string())
+    })?;
+    let mut config = save::load();
+    let name = args.name.or_else(|| Some(config.name.clone()).filter(|n| !n.is_empty())).unwrap_or_else(default_name);
+    let discovery = Discovery::start(ports.discovery).ok();
+    let mut app = App::new(name, machine_id, discovery, server::default_db_path(), ports);
+
+    app.notifier.enabled = config.notifications;
+    app.notifier.set_sink(Box::new(SystemSink::new()));
+
+    let mut terminal = ratatui::init();
+    let _ = execute!(io::stdout(), EnableFocusChange);
+    let panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = execute!(io::stdout(), DisableFocusChange);
+        panic_hook(info);
+    }));
+    let result = run(&mut terminal, &mut app, &mut config);
+    let _ = execute!(io::stdout(), DisableFocusChange);
+    ratatui::restore();
+    app.shutdown();
+    if app.restart {
+        update::restart();
+    }
+    result
+}
+
+fn run(terminal: &mut DefaultTerminal, app: &mut App, config: &mut save::Config) -> io::Result<()> {
+    loop {
+        terminal.draw(|f| ui::draw(f, app))?;
+        let wait = app.game.next_wake(Instant::now()).map_or(TICK, |w| w.min(TICK));
+        if event::poll(wait)? {
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    app.notifier.focus.key_pressed(Instant::now());
+                    if !handle_key(app, key, Instant::now()) {
+                        return Ok(());
+                    }
+                }
+                Event::FocusGained => app.notifier.focus.gained(),
+                Event::FocusLost => app.notifier.focus.lost(),
+                _ => {}
+            }
+        }
+        app.step(Instant::now());
+        if app.restart {
+            return Ok(());
+        }
+        let name_changed = std::mem::take(&mut app.name_changed);
+        if std::mem::take(&mut app.notifications_changed) || name_changed {
+            config.name = app.name.clone();
+            config.notifications = app.notifier.enabled;
+            save::store(config);
+        }
+    }
+}

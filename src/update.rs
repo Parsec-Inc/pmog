@@ -1,0 +1,268 @@
+//! Self-update over the LAN: hosts hand out signed builds, players confirm, the executable swaps itself.
+//!
+//! The request line and the reply format below must never change, so any old build can update from any new host.
+
+use std::fs;
+use std::io::{self, BufReader, Read, Write};
+use std::net::{SocketAddr, TcpStream};
+use std::path::{Path, PathBuf};
+
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use crate::constants::{CONNECT_TIMEOUT, MAX_UPDATE_BYTES, UPDATE_TIMEOUT};
+use crate::protocol::{read_line, write_msg};
+
+/// Build number baked in by `scripts/build-dist.sh`; 0 for development builds, which never update.
+pub fn release() -> u64 {
+    env!("PMOG_RELEASE").parse().unwrap_or(0)
+}
+
+/// Public key that release builds must be signed with; empty when none was set up.
+pub fn release_pubkey() -> &'static str {
+    env!("PMOG_RELEASE_PUBKEY")
+}
+
+/// Whether this build takes part in updates at all.
+pub fn enabled() -> bool {
+    release() > 0 && !release_pubkey().is_empty()
+}
+
+pub fn platform() -> &'static str {
+    if cfg!(windows) { "windows" } else { "linux" }
+}
+
+/// "build 2026-11-16 18:30" for a release number like 202611161830.
+pub fn release_label(release: u64) -> String {
+    let s = release.to_string();
+    if s.len() != 12 {
+        return format!("build {s}");
+    }
+    format!("build {}-{}-{} {}:{}", &s[0..4], &s[4..6], &s[6..8], &s[8..10], &s[10..12])
+}
+
+/// What a signed build is: kept in a `.sig` file next to the executable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Manifest {
+    pub platform: String,
+    pub release: u64,
+    pub size: u64,
+    pub sha256: String,
+    pub signature: String,
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn hex_decode(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    if !text.len().is_multiple_of(2) || !text.is_ascii() {
+        return None;
+    }
+    (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).ok()).collect()
+}
+
+pub fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+impl Manifest {
+    fn message(platform: &str, release: u64, size: u64, sha256: &str) -> String {
+        format!("pmog-release:{platform}:{release}:{size}:{sha256}")
+    }
+
+    pub fn sign(key: &SigningKey, platform: &str, release: u64, bytes: &[u8]) -> Manifest {
+        let (size, sha256) = (bytes.len() as u64, sha256_hex(bytes));
+        let signature = key.sign(Self::message(platform, release, size, &sha256).as_bytes());
+        Manifest { platform: platform.into(), release, size, sha256, signature: hex_encode(&signature.to_bytes()) }
+    }
+
+    /// Checks that `bytes` are exactly the build this manifest describes and that `pubkey_hex` signed it.
+    pub fn verify(&self, pubkey_hex: &str, bytes: &[u8]) -> Result<(), String> {
+        let key: [u8; 32] = hex_decode(pubkey_hex).and_then(|k| k.try_into().ok()).ok_or("chave pública de atualização inválida")?;
+        let key = VerifyingKey::from_bytes(&key).map_err(|_| "chave pública de atualização inválida")?;
+        let signature: [u8; 64] = hex_decode(&self.signature).and_then(|s| s.try_into().ok()).ok_or("assinatura malformada")?;
+        if bytes.len() as u64 != self.size || sha256_hex(bytes) != self.sha256 {
+            return Err("o arquivo baixado não bate com o anunciado".into());
+        }
+        key.verify_strict(Self::message(&self.platform, self.release, self.size, &self.sha256).as_bytes(), &Signature::from_bytes(&signature))
+            .map_err(|_| "assinatura inválida: essa build não foi publicada pelo dono do jogo".into())
+    }
+}
+
+/// Where the manifest of `binary` lives.
+pub fn sidecar(binary: &Path) -> PathBuf {
+    let mut name = binary.as_os_str().to_owned();
+    name.push(".sig");
+    PathBuf::from(name)
+}
+
+/// First line a client sends to ask for a build instead of joining.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateRequest {
+    pub pmog_update: UpdateQuery,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateQuery {
+    pub platform: String,
+    pub have: u64,
+}
+
+/// Server reply; an offer is followed by exactly `size` raw bytes.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateReply {
+    Offer(Manifest),
+    None(String),
+}
+
+/// Signed builds a host can hand out.
+#[derive(Debug, Default)]
+pub struct Shelf {
+    builds: Vec<(Manifest, PathBuf)>,
+}
+
+impl Shelf {
+    /// Collects every build in `dir` whose `.sig` checks out against `pubkey_hex`, keeping the newest per platform.
+    pub fn scan(dir: &Path, pubkey_hex: &str) -> Shelf {
+        let mut shelf = Shelf::default();
+        if pubkey_hex.is_empty() {
+            return shelf;
+        }
+        let Ok(entries) = fs::read_dir(dir) else { return shelf };
+        for path in entries.flatten().map(|e| e.path()) {
+            let Some(binary) = path.to_str().and_then(|p| p.strip_suffix(".sig")).map(PathBuf::from) else { continue };
+            let Some(manifest) = fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Manifest>(&b).ok()) else { continue };
+            let Ok(bytes) = fs::read(&binary) else { continue };
+            if manifest.verify(pubkey_hex, &bytes).is_err() {
+                continue;
+            }
+            let newer = shelf.best(&manifest.platform).is_none_or(|(m, _)| manifest.release > m.release);
+            if newer {
+                shelf.builds.retain(|(m, _)| m.platform != manifest.platform);
+                shelf.builds.push((manifest, binary));
+            }
+        }
+        shelf
+    }
+
+    /// Builds found next to the running executable.
+    pub fn beside_exe() -> Shelf {
+        let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+        dir.map_or_else(Shelf::default, |d| Shelf::scan(&d, release_pubkey()))
+    }
+
+    pub fn best(&self, platform: &str) -> Option<&(Manifest, PathBuf)> {
+        self.builds.iter().find(|(m, _)| m.platform == platform)
+    }
+
+    /// (platform, release) pairs for the discovery beacon.
+    pub fn offers(&self) -> Vec<(String, u64)> {
+        self.builds.iter().map(|(m, _)| (m.platform.clone(), m.release)).collect()
+    }
+
+    /// Answers one update request on `out`.
+    pub fn serve(&self, query: &UpdateQuery, out: &mut impl Write) -> io::Result<()> {
+        let Some((manifest, path)) = self.best(&query.platform).filter(|(m, _)| m.release > query.have) else {
+            return write_msg(out, &UpdateReply::None("Este servidor não tem uma versão mais nova para você.".into()));
+        };
+        let bytes = fs::read(path)?;
+        if bytes.len() as u64 != manifest.size {
+            return write_msg(out, &UpdateReply::None("A build deste servidor mudou; reinicie o servidor.".into()));
+        }
+        write_msg(out, &UpdateReply::Offer(manifest.clone()))?;
+        out.write_all(&bytes)?;
+        out.flush()
+    }
+}
+
+/// Parses the first line of a connection as an update request, if it is one.
+pub fn as_request(line: &[u8]) -> Option<UpdateQuery> {
+    serde_json::from_slice::<UpdateRequest>(line).ok().map(|r| r.pmog_update)
+}
+
+/// Downloads and checks the newest build for `platform` from the server at `addr`.
+pub fn fetch(addr: SocketAddr, platform: &str, have: u64, pubkey_hex: &str) -> Result<(Manifest, Vec<u8>), String> {
+    let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(|e| format!("Não consegui conectar em {addr}: {e}"))?;
+    let _ = stream.set_read_timeout(Some(UPDATE_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(UPDATE_TIMEOUT));
+    let request = UpdateRequest { pmog_update: UpdateQuery { platform: platform.into(), have } };
+    write_msg(&mut stream, &request).map_err(|e| format!("Falha ao pedir a atualização: {e}"))?;
+    let mut reader = BufReader::new(stream);
+    let line = read_line(&mut reader).map_err(|e| format!("O servidor não respondeu: {e}"))?.ok_or("O servidor fechou a conexão.")?;
+    let manifest = match serde_json::from_slice::<UpdateReply>(&line) {
+        Ok(UpdateReply::Offer(m)) => m,
+        Ok(UpdateReply::None(reason)) => return Err(reason),
+        Err(_) => return Err("Este servidor é de uma versão sem atualização automática.".into()),
+    };
+    if manifest.platform != platform || manifest.release <= have || manifest.size > MAX_UPDATE_BYTES {
+        return Err("O servidor ofereceu uma build que não serve para este computador.".into());
+    }
+    let mut bytes = Vec::with_capacity(manifest.size as usize);
+    reader.by_ref().take(manifest.size).read_to_end(&mut bytes).map_err(|e| format!("Download interrompido: {e}"))?;
+    manifest.verify(pubkey_hex, &bytes)?;
+    Ok((manifest, bytes))
+}
+
+fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
+/// Puts a verified build in place of `exe`, keeping its manifest next to it so this computer can pass it on.
+pub fn install(exe: &Path, manifest: &Manifest, bytes: &[u8]) -> Result<(), String> {
+    let fail = |e: io::Error| format!("Não consegui trocar o executável em {}: {e}", exe.display());
+    let fresh = with_suffix(exe, ".new");
+    fs::write(&fresh, bytes).map_err(fail)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&fresh, fs::Permissions::from_mode(0o755)).map_err(fail)?;
+    }
+    // Windows can't overwrite a running program, but it can rename it out of the way.
+    #[cfg(windows)]
+    {
+        let old = with_suffix(exe, ".old");
+        let _ = fs::remove_file(&old);
+        fs::rename(exe, &old).map_err(fail)?;
+    }
+    fs::rename(&fresh, exe).map_err(fail)?;
+    let manifest = serde_json::to_vec_pretty(manifest).map_err(|e| e.to_string())?;
+    fs::write(sidecar(exe), manifest).map_err(fail)
+}
+
+/// Removes what a previous update left behind on Windows.
+pub fn cleanup(exe: &Path) {
+    let _ = fs::remove_file(with_suffix(exe, ".old"));
+    let _ = fs::remove_file(with_suffix(exe, ".new"));
+}
+
+/// Downloads from `addr` and installs over the running executable.
+pub fn update_from(addr: SocketAddr) -> Result<u64, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Não achei o executável: {e}"))?;
+    let (manifest, bytes) = fetch(addr, platform(), release(), release_pubkey())?;
+    install(&exe, &manifest, &bytes)?;
+    Ok(manifest.release)
+}
+
+/// Starts the freshly installed executable with the same arguments; never returns.
+pub fn restart() -> ! {
+    let exe = std::env::current_exe().expect("running executable");
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let err = std::process::Command::new(&exe).args(&args).exec();
+        eprintln!("Atualizado, mas não consegui reabrir o jogo ({err}). Abra o PMOG de novo.");
+        std::process::exit(1);
+    }
+    #[cfg(not(unix))]
+    {
+        let code = std::process::Command::new(&exe).args(&args).status().ok().and_then(|s| s.code()).unwrap_or(0);
+        std::process::exit(code);
+    }
+}
