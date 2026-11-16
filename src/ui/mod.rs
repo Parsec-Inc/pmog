@@ -698,6 +698,8 @@ fn draw_lobby(f: &mut Frame, app: &App) {
                 let mut title = vec![Span::styled(entry.name.clone(), Style::new().bold())];
                 if entry.update.is_some_and(|r| app.release > 0 && r > app.release) {
                     title.push(Span::styled("  versão nova! Enter atualiza", fg(Color::LightGreen).bold()));
+                } else if !entry.compatible && entry.release < app.release {
+                    title.push(Span::styled("  versão mais velha · quem hospeda precisa atualizar", fg(Color::DarkGray)));
                 } else if !entry.compatible {
                     title.push(Span::styled("  outra versão do jogo", fg(Color::DarkGray)));
                 }

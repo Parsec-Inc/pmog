@@ -10,7 +10,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::constants::{MULTICAST_GROUP, PROTOCOL_VERSION, RECV_BUFFER, RECV_ERROR_BACKOFF, SERVER_STALE};
 use crate::protocol::Beacon;
-use crate::update::platform;
+use crate::update::{platform, release};
 use crate::utils::clean_name;
 
 /// A server seen on the network; `addr` is where to open the TCP connection.
@@ -22,6 +22,8 @@ pub struct ServerEntry {
     pub last_seen: Instant,
     /// False when the server runs another game version; it can still hand out an update.
     pub compatible: bool,
+    /// Build the server runs.
+    pub release: u64,
     /// Newest signed build it offers for this computer's platform.
     pub update: Option<u64>,
 }
@@ -74,7 +76,8 @@ impl Discovery {
                 name: clean_name(&beacon.name),
                 players: beacon.players,
                 last_seen: now,
-                compatible: beacon.v == PROTOCOL_VERSION,
+                compatible: beacon.v == PROTOCOL_VERSION && beacon.release == release(),
+                release: beacon.release,
                 update,
             };
             match self.servers.iter_mut().find(|s| s.addr == addr) {

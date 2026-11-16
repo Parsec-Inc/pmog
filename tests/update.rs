@@ -189,7 +189,8 @@ fn install_never_touches_the_executable_when_writing_fails() {
 
 fn beacon(port: u16, v: u32, updates: Vec<(String, u64)>) {
     let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let b = Beacon { v, name: "Host Novo".into(), port: 47_790, players: 2, updates };
+    let release = updates.iter().map(|(_, r)| *r).max().unwrap_or(0);
+    let b = Beacon { v, name: "Host Novo".into(), port: 47_790, players: 2, release, updates };
     socket.send_to(&serde_json::to_vec(&b).unwrap(), ("127.0.0.1", port)).unwrap();
 }
 
@@ -233,6 +234,39 @@ fn lobby_asks_once_and_u_asks_again() {
     dev_app.step(Instant::now());
     assert_eq!(dev_app.confirm, None, "development builds never update");
     assert!(dev_app.update_offer().is_none());
+}
+
+#[test]
+fn only_the_exact_same_build_can_join() {
+    use pmog::update::version_refusal;
+    assert_eq!(version_refusal((8, 100), (8, 100)), None);
+    assert!(version_refusal((8, 100), (8, 101)).unwrap().contains("desatualizado"));
+    assert!(version_refusal((8, 101), (8, 100)).unwrap().contains("mais velha"));
+    assert!(version_refusal((7, 100), (8, 100)).is_some(), "protocol mismatch too");
+}
+
+#[test]
+fn same_protocol_other_build_is_not_joinable() {
+    let p = ports(34);
+    let mut discovery = Discovery::start(p.discovery).unwrap();
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let other = Beacon {
+        v: pmog::constants::PROTOCOL_VERSION,
+        name: "Outra build".into(),
+        port: 47_790,
+        players: 1,
+        release: pmog::update::release() + 1,
+        updates: Vec::new(),
+    };
+    let deadline = Instant::now() + DEADLINE;
+    while discovery.servers().is_empty() && Instant::now() < deadline {
+        socket.send_to(&serde_json::to_vec(&other).unwrap(), ("127.0.0.1", p.discovery)).unwrap();
+        thread::sleep(Duration::from_millis(50));
+        discovery.refresh(Instant::now());
+    }
+    let entry = discovery.servers().first().expect("server listed").clone();
+    assert!(!entry.compatible, "listed, but not joinable");
+    assert!(discovery.wait_for_server(Duration::from_millis(200)).is_none(), "bots skip it");
 }
 
 #[test]

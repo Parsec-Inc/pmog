@@ -20,6 +20,9 @@ pub struct Beacon {
     pub name: String,
     pub port: u16,
     pub players: u32,
+    /// Build the server runs; only players on the same build can join.
+    #[serde(default)]
+    pub release: u64,
     /// Signed builds this server hands out: (platform, release).
     #[serde(default)]
     pub updates: Vec<(String, u64)>,
@@ -28,7 +31,14 @@ pub struct Beacon {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "t")]
 pub enum ClientMsg {
-    Hello { v: u32, machine_id: String, name: String },
+    /// `release` is the build number; players on one server must all run the same build.
+    Hello {
+        v: u32,
+        machine_id: String,
+        name: String,
+        #[serde(default)]
+        release: u64,
+    },
     Mog { target: PlayerId, meter: f64 },
     Mew,
     Buy { item: ItemId },

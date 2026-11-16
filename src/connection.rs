@@ -30,7 +30,7 @@ impl Connection {
             .map_err(|e| format!("Não consegui conectar em {addr}: {e}"))?;
         let _ = stream.set_nodelay(true);
         let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
-        let hello = ClientMsg::Hello { v: PROTOCOL_VERSION, machine_id: machine_id.into(), name: name.into() };
+        let hello = ClientMsg::Hello { v: PROTOCOL_VERSION, machine_id: machine_id.into(), name: name.into(), release: crate::update::release() };
         write_msg(&mut stream, &hello).map_err(|e| format!("Falha ao falar com o servidor: {e}"))?;
 
         let _ = stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT));

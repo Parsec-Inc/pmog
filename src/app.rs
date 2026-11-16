@@ -12,6 +12,7 @@ use crate::game::{Game, Overlay, Player, Tone};
 use crate::notify::{Notice, Notifier};
 use crate::protocol::{ClientMsg, ServerMsg};
 use crate::server::{Ports, ServerHandle};
+use crate::constants::PROTOCOL_VERSION;
 use crate::update;
 use crate::utils::clean_name;
 
@@ -141,7 +142,9 @@ impl App {
                 self.confirm = Some(Confirm::Update);
             }
             Some(LobbyRow::Server(entry)) if !entry.compatible => {
-                self.notice = Some((Tone::Bad, "Esse servidor está com outra versão do PMOG e não tem atualização para você.".into()));
+                let reason = update::version_refusal((PROTOCOL_VERSION, self.release), (PROTOCOL_VERSION, entry.release));
+                let text = reason.unwrap_or("Esse servidor está com outra versão do PMOG e não tem atualização para você.");
+                self.notice = Some((Tone::Bad, text.into()));
             }
             Some(LobbyRow::Server(entry)) => self.connect(entry.addr),
             Some(LobbyRow::Host) => self.start_hosting(),

@@ -111,12 +111,17 @@ fn bad_handshakes_are_refused() {
 
     let wrong_version = |v: u32, id: &str| {
         let mut s = TcpStream::connect(addr).unwrap();
-        write_msg(&mut s, &ClientMsg::Hello { v, machine_id: id.into(), name: "x".into() }).unwrap();
+        write_msg(&mut s, &ClientMsg::Hello { v, machine_id: id.into(), name: "x".into(), release: pmog::update::release() }).unwrap();
         s.set_read_timeout(Some(DEADLINE)).unwrap();
         read_msg::<ServerMsg>(&mut BufReader::new(s)).unwrap()
     };
     let good = machine_id::for_bot("hs");
     assert!(matches!(wrong_version(PROTOCOL_VERSION + 1, &good), Some(ServerMsg::Rejected { reason }) if reason.contains("Versão")));
+    let mut s = TcpStream::connect(addr).unwrap();
+    write_msg(&mut s, &ClientMsg::Hello { v: PROTOCOL_VERSION, machine_id: good.clone(), name: "x".into(), release: 202611161821 }).unwrap();
+    s.set_read_timeout(Some(DEADLINE)).unwrap();
+    let other_build = read_msg::<ServerMsg>(&mut BufReader::new(s)).unwrap();
+    assert!(matches!(other_build, Some(ServerMsg::Rejected { reason }) if reason.contains("versão mais velha")), "another build can't join");
     assert!(matches!(wrong_version(PROTOCOL_VERSION, "not-an-id"), Some(ServerMsg::Rejected { reason }) if reason.contains("inválida")));
     assert!(matches!(wrong_version(PROTOCOL_VERSION, &good.to_uppercase()), Some(ServerMsg::Rejected { .. })));
 

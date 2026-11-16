@@ -219,7 +219,7 @@ fn spawn_beacon(
         while !stop.load(Ordering::SeqCst) {
             if last.elapsed() >= BEACON_INTERVAL {
                 let players = status.lock().map(|s| s.online.len() as u32).unwrap_or(0);
-                let beacon = Beacon { v: PROTOCOL_VERSION, name: name.clone(), port, players, updates: updates.clone() };
+                let beacon = Beacon { v: PROTOCOL_VERSION, name: name.clone(), port, players, release: update::release(), updates: updates.clone() };
                 if let Ok(bytes) = serde_json::to_vec(&beacon) {
                     for target in targets {
                         let _ = socket.send_to(&bytes, target);
@@ -293,7 +293,7 @@ impl ServerLoop {
                 self.conns.insert(id, Conn { stream, player: None, opened: now, ping: None, pings_sent: 0, rtt: RttStats::default() });
             }
             Inbound::Closed(id) => self.close(id),
-            Inbound::Msg(id, ClientMsg::Hello { v, machine_id, name }, _) => self.hello(id, v, machine_id, &name, now),
+            Inbound::Msg(id, ClientMsg::Hello { v, machine_id, name, release }, _) => self.hello(id, (v, release), machine_id, &name, now),
             Inbound::Msg(id, ClientMsg::Pong { n }, received) => self.pong(id, n, received),
             Inbound::Msg(id, msg, received) => {
                 let Some(player) = self.conns.get(&id).and_then(|c| c.player) else {
@@ -362,12 +362,13 @@ impl ServerLoop {
         self.close(id);
     }
 
-    fn hello(&mut self, id: ConnId, v: u32, machine_id: String, name: &str, now: Instant) {
+    /// `version` is the client's (protocol, release).
+    fn hello(&mut self, id: ConnId, version: (u32, u64), machine_id: String, name: &str, now: Instant) {
         if self.conns.get(&id).is_none_or(|c| c.player.is_some()) {
             return;
         }
-        if v != PROTOCOL_VERSION {
-            return self.reject(id, "Versão do jogo diferente da do servidor. Atualize o PMOG.");
+        if let Some(reason) = update::version_refusal(version, (PROTOCOL_VERSION, update::release())) {
+            return self.reject(id, reason);
         }
         if !machine_id::is_valid(&machine_id) {
             return self.reject(id, "Identificação do computador inválida.");

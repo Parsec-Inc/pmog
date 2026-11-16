@@ -33,6 +33,19 @@ pub fn platform() -> &'static str {
     if cfg!(windows) { "windows" } else { "linux" }
 }
 
+/// Why a client on `client` (protocol, release) can't join a server on `server`; `None` when they match.
+pub fn version_refusal(client: (u32, u64), server: (u32, u64)) -> Option<&'static str> {
+    if client == server {
+        None
+    } else if client.1 > server.1 {
+        Some("O servidor está numa versão mais velha que a sua. Peça para quem hospeda atualizar o PMOG.")
+    } else if client.1 < server.1 {
+        Some("Seu PMOG está desatualizado para este servidor. Atualize pela tela inicial (Enter no servidor ou U).")
+    } else {
+        Some("Versão do jogo diferente da do servidor. Atualize o PMOG.")
+    }
+}
+
 /// "build 2026-11-16 18:30" for a release number like 202611161830.
 pub fn release_label(release: u64) -> String {
     let s = release.to_string();
