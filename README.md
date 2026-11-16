@@ -20,7 +20,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 |  |  |
 |---|---|
 | **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro. | **18 minigames de duelo**: cada um escolhe 3 dos 6 da partida, de encarada e digitação a fit check, fotogenia e mog reverso. |
-| **34 itens na loja**, cada um com pixel art própria. | **Ranks de Sub-5 a Ascendido**, com nome que brilha, pega fogo e vira arco-íris. |
+| **52 itens na loja** em 6 categorias (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. | **Ranks de Sub-5 a Ascendido**, com nome que brilha, pega fogo e vira arco-íris. |
 | **Chat, grupos e clãs**, com tag ao lado do nome e sem fogo amigo. | **Atualização automática** pela rede, só com builds assinadas. |
 
 <table>
@@ -46,7 +46,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 | `ESPAÇO` | mogar | `D` / `F` | duelo direto / fila |
 | `↑ ↓` | trocar de alvo | `T` | chat |
 | `M` | mewar | `G` | clã |
-| `L` | loja | `1`–`8` | consumíveis |
+| `L` | loja | `1`–`9`, `0` | consumíveis |
 | `C` | conquistas | `S` | painel do servidor |
 | `?` | ajuda | `Q` | sair |
 

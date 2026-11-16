@@ -104,6 +104,8 @@ pub struct StateView {
     pub preworkout_ms: u64,
     #[serde(default)]
     pub cologne_ms: u64,
+    #[serde(default)]
+    pub aura_farm_ms: u64,
     /// Time since this player's timing meter started, on the server clock.
     pub meter_ms: u64,
     pub players: Vec<PeerView>,

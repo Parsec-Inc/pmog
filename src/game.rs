@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::constants::*;
-pub use crate::items::{CATALOG, Effect, ItemDef, ItemId};
+pub use crate::items::{CATALOG, Category, Effect, ItemDef, ItemId};
 use crate::duel::{Board, DuelKey, DuelView, MacrosProgress, Minigame, Phase, TypingProgress, rhythm_fresh, rhythm_len, typing_stats};
 use crate::notify::Notice;
 use crate::protocol::{ClientMsg, InviteView, NPC_TARGET, PlayerId, ServerMsg, StateView};
@@ -207,6 +207,8 @@ pub struct Player {
     pub angle_armed: bool,
     pub mirror_armed: bool,
     pub tape_armed: bool,
+    /// Combo 6-7 waiting for the next mog that lands.
+    pub combo_armed: bool,
     pub achievements: Vec<Achievement>,
 }
 
@@ -422,6 +424,7 @@ pub struct Game {
     pub hit_flash_until: Instant,
     pub preworkout_until: Instant,
     pub cologne_until: Instant,
+    pub aura_farm_until: Instant,
     pub feed: VecDeque<FeedLine>,
     pub banner: Option<Banner>,
     pub overlay: Overlay,
@@ -482,6 +485,8 @@ pub enum Buff {
     Tape,
     PreWorkout,
     Cologne,
+    Combo,
+    AuraFarm,
 }
 
 impl Buff {
@@ -493,6 +498,8 @@ impl Buff {
             Buff::Tape => "FITA",
             Buff::PreWorkout => "PRÉ-TREINO",
             Buff::Cologne => "COLÔNIA",
+            Buff::Combo => "COMBO 6-7",
+            Buff::AuraFarm => "FARMANDO AURA",
         }
     }
 
@@ -504,6 +511,8 @@ impl Buff {
             Buff::Tape => "mog errado não custa",
             Buff::PreWorkout => "cooldown ÷2",
             Buff::Cologne => "+50% MP",
+            Buff::Combo => "+67% MP no próximo mog",
+            Buff::AuraFarm => "passivo x2",
         }
     }
 
@@ -515,6 +524,8 @@ impl Buff {
             Buff::Tape => ItemId::JawTape,
             Buff::PreWorkout => ItemId::PreWorkout,
             Buff::Cologne => ItemId::Cologne,
+            Buff::Combo => ItemId::ComboSixSeven,
+            Buff::AuraFarm => ItemId::AuraFarm,
         };
         crate::items::def(id).name
     }
@@ -533,6 +544,7 @@ impl Game {
             hit_flash_until: now,
             preworkout_until: now,
             cologne_until: now,
+            aura_farm_until: now,
             feed: VecDeque::new(),
             banner: None,
             overlay: Overlay::None,
@@ -577,8 +589,8 @@ impl Game {
     pub fn buffs(&self, now: Instant) -> Vec<(Buff, Option<Duration>)> {
         let p = &self.player;
         let left = |until: Instant| (now < until).then(|| until - now);
-        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape)];
-        let timed = [(Buff::PreWorkout, left(self.preworkout_until)), (Buff::Cologne, left(self.cologne_until))];
+        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape), (p.combo_armed, Buff::Combo)];
+        let timed = [(Buff::PreWorkout, left(self.preworkout_until)), (Buff::Cologne, left(self.cologne_until)), (Buff::AuraFarm, left(self.aura_farm_until))];
         armed
             .into_iter()
             .filter_map(|(on, b)| on.then_some((b, None)))
@@ -642,9 +654,24 @@ impl Game {
         self.help_scroll = next.min(self.help_max_scroll.get());
     }
 
+    /// Moves to the previous or next item of the same shop tab.
     pub fn shop_move(&mut self, delta: isize) {
-        let len = CATALOG.len() as isize;
-        self.shop_cursor = (self.shop_cursor as isize + delta).rem_euclid(len) as usize;
+        let items: Vec<usize> = self.shop_category().items().collect();
+        let at = items.iter().position(|i| *i == self.shop_cursor).unwrap_or(0) as isize;
+        self.shop_cursor = items[(at + delta).rem_euclid(items.len() as isize) as usize];
+    }
+
+    /// Switches to the first item of the previous or next shop tab.
+    pub fn shop_tab(&mut self, delta: isize) {
+        let tabs = Category::ALL;
+        let at = tabs.iter().position(|c| *c == self.shop_category()).unwrap_or(0) as isize;
+        let next = tabs[(at + delta).rem_euclid(tabs.len() as isize) as usize];
+        self.shop_cursor = next.items().next().unwrap_or(0);
+    }
+
+    /// Tab of the item under the shop cursor.
+    pub fn shop_category(&self) -> Category {
+        CATALOG[self.shop_cursor.min(CATALOG.len() - 1)].category()
     }
 
     /// Presses MOGAR; the server decides the outcome.
@@ -933,6 +960,7 @@ impl Game {
         self.immune_until = now + ms(view.immune_ms);
         self.preworkout_until = now + ms(view.preworkout_ms);
         self.cologne_until = now + ms(view.cologne_ms);
+        self.aura_farm_until = now + ms(view.aura_farm_ms);
         self.rtt = Duration::from_secs_f64(view.rtt_ms.max(0.0) / 1000.0);
         // The state left the server half a round trip ago.
         let travel = if self.compensate { self.rtt / 2 } else { Duration::ZERO };

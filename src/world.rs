@@ -23,6 +23,7 @@ pub struct Slot {
     pub immune_until: Instant,
     pub preworkout_until: Instant,
     pub cologne_until: Instant,
+    pub aura_farm_until: Instant,
     pub meter_started: Instant,
     mew_window: (Instant, u32),
     /// Mogs suffered in a row and when the last one landed; each one lengthens the immunity.
@@ -44,6 +45,7 @@ impl Slot {
             immune_until: now,
             preworkout_until: now,
             cologne_until: now,
+            aura_farm_until: now,
             meter_started: now,
             mew_window: (now, 0),
             hits_in_row: 0,
@@ -193,7 +195,8 @@ impl World {
         let dt = sane(dt).min(MAX_TICK_SECS);
         let mut news = Vec::new();
         for (id, slot) in self.slots.iter_mut() {
-            let passive = slot.player.stats().passive;
+            let farming = if now < slot.aura_farm_until { AURA_FARM_MULT } else { 1.0 };
+            let passive = slot.player.stats().passive * farming;
             if passive > 0.0 && dt > 0.0 {
                 slot.player.gain(passive * dt);
                 slot.dirty = true;
@@ -303,6 +306,16 @@ impl World {
                 slot.cologne_until = now + COLOGNE_DURATION;
                 Ok("Mogs rendem +50% de MP por 60 s.")
             }
+            ItemId::ComboSixSeven if p.combo_armed => Err("O Combo 6-7 já está armado."),
+            ItemId::ComboSixSeven => {
+                p.combo_armed = true;
+                Ok("O próximo mog que acertar rende +67% de MP.")
+            }
+            ItemId::AuraFarm if now < slot.aura_farm_until => Err("Você ainda está farmando aura."),
+            ItemId::AuraFarm => {
+                slot.aura_farm_until = now + AURA_FARM_DURATION;
+                Ok("MP passivo em dobro por 45 s.")
+            }
             ItemId::IcePack if slot.immune_until >= now + ICE_PACK_IMMUNITY => Err("Você já está imune por mais tempo que isso."),
             ItemId::IcePack => {
                 slot.immune_until = now + ICE_PACK_IMMUNITY;
@@ -361,7 +374,8 @@ impl World {
         let stats = slot.player.stats();
         let tier = TimingTier::from_meter(meter, stats.perfect_threshold);
         let cologne = if now < slot.cologne_until { COLOGNE_MULT } else { 1.0 };
-        let take_mult = tier.reward() * (1.0 + stats.win_bonus) * cologne;
+        let combo = if slot.player.combo_armed { COMBO_MULT } else { 1.0 };
+        let take_mult = tier.reward() * (1.0 + stats.win_bonus) * cologne * combo;
         let timing = if tier == TimingTier::Perfect { PERFECT_MULT } else { TIMING_FLOOR + TIMING_SPAN * meter };
         let mut power = stats.attack * timing * streak_mult(slot.streak, &stats);
         if slot.player.angle_armed {
@@ -437,11 +451,18 @@ impl World {
         slot.player.best_streak = slot.player.best_streak.max(slot.streak);
         slot.player.mogs_won += 1;
         slot.player.gain(gain);
+        let combo = std::mem::take(&mut slot.player.combo_armed);
         let streak = slot.streak;
         self.event(
             id,
             Tone::Good,
-            format!("Você moggou {target}! +{} MP ({} x{}, streak {streak})", format_mp(gain), tier.label(), decimal(tier.reward())),
+            format!(
+                "Você moggou {target}! +{} MP ({} x{}, streak {streak}){}",
+                format_mp(gain),
+                tier.label(),
+                decimal(tier.reward()),
+                if combo { ", Combo 6-7 +67%" } else { "" }
+            ),
             None,
             false,
         );
@@ -563,6 +584,7 @@ impl World {
             immune_ms: remaining_ms(slot.immune_until, now),
             preworkout_ms: remaining_ms(slot.preworkout_until, now),
             cologne_ms: remaining_ms(slot.cologne_until, now),
+            aura_farm_ms: remaining_ms(slot.aura_farm_until, now),
             meter_ms: now.saturating_duration_since(slot.meter_started).as_millis() as u64,
             players,
             duel,

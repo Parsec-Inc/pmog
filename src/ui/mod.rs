@@ -15,7 +15,7 @@ use ratatui::widgets::{
 };
 
 use crate::constants::{PULSE_MS, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
-use crate::game::{Achievement, Buff, CATALOG, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
+use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
 use crate::sprites::{self, Sprite};
@@ -356,6 +356,8 @@ fn buff_style(buff: Buff) -> Style {
         Buff::Tape => Color::LightCyan,
         Buff::PreWorkout => Color::LightMagenta,
         Buff::Cologne => Color::LightGreen,
+        Buff::Combo => Color::LightRed,
+        Buff::AuraFarm => Color::Rgb(180, 140, 255),
     };
     Style::new().bg(color).fg(Color::Black).bold()
 }
@@ -502,7 +504,18 @@ fn draw_shop(f: &mut Frame, g: &Game) {
     };
     let p = &g.player;
     let rank = p.rank();
-    let rows = CATALOG.iter().map(|def| {
+    let category = g.shop_category();
+    let block = Block::bordered()
+        .border_type(BorderType::Double)
+        .border_style(fg(Color::Magenta))
+        .title(format!(" Loja · {} MP · ←→ categoria · Enter compra · Esc fecha ", format_mp(p.mp)))
+        .title_bottom(shop_status(g));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let [tabs, _, area] = Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+    f.render_widget(shop_tabs(g, category), tabs);
+    let shown: Vec<usize> = category.items().collect();
+    let rows = shown.iter().map(|i| &CATALOG[*i]).map(|def| {
         let level = p.level(def.id);
         let locked = rank < def.min_rank;
         let maxed = level >= def.max_level;
@@ -527,7 +540,7 @@ fn draw_shop(f: &mut Frame, g: &Game) {
     let table = Table::new(
         rows,
         [
-            Constraint::Length(21),
+            Constraint::Length(CATALOG.iter().map(|d| d.name.chars().count()).max().unwrap_or(21) as u16 + 1),
             Constraint::Length(7),
             Constraint::Length(10),
             Constraint::Length(10),
@@ -535,17 +548,29 @@ fn draw_shop(f: &mut Frame, g: &Game) {
         ],
     )
     .header(Row::new(["Item", "Nível", "Custo", "Requer", "Efeito"]).style(fg(Color::Yellow).bold()))
-    .block(
-        Block::bordered()
-            .border_type(BorderType::Double)
-            .border_style(fg(Color::Magenta))
-            .title(format!(" Loja · {} MP · Enter compra · Esc fecha ", format_mp(p.mp)))
-            .title_bottom(shop_status(g)),
-    )
     .row_highlight_style(Style::new().bg(Color::Rgb(45, 20, 55)))
     .highlight_symbol("▶ ");
-    let mut state = TableState::default().with_selected(Some(g.shop_cursor));
+    let mut state = TableState::default().with_selected(shown.iter().position(|i| *i == g.shop_cursor));
     f.render_stateful_widget(table, area, &mut state);
+}
+
+/// Category tabs of the shop; each shows how many of its items can be bought now.
+fn shop_tabs(g: &Game, current: Category) -> Line<'static> {
+    let mut spans = vec![Span::raw(" ")];
+    for category in Category::ALL {
+        let ready = category.items().filter(|i| CATALOG[*i].purchase_block(&g.player).is_none()).count();
+        let label = if ready > 0 { format!(" {} ·{ready} ", category.label()) } else { format!(" {} ", category.label()) };
+        let style = if category == current {
+            Style::new().bold().fg(Color::Black).bg(Color::Magenta)
+        } else if ready > 0 {
+            fg(Color::White)
+        } else {
+            fg(Color::DarkGray)
+        };
+        spans.push(Span::styled(label, style));
+        spans.push(Span::raw(" "));
+    }
+    Line::from(spans)
 }
 
 /// Bottom line of the shop: a purchase on its way.

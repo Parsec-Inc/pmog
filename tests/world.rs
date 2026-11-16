@@ -625,7 +625,7 @@ fn every_rank_has_new_things_to_buy() {
     }
     let mut keys: Vec<char> = CATALOG.iter().filter_map(|d| d.usage.map(|(k, _)| k)).collect();
     keys.sort();
-    assert_eq!(keys, ('1'..='8').collect::<Vec<_>>(), "consumable keys are 1 to 8, no repeats");
+    assert_eq!(keys, ('0'..='9').collect::<Vec<_>>(), "consumable keys are 0 to 9, no repeats");
 }
 
 #[test]
@@ -697,4 +697,63 @@ fn every_purchase_gets_a_result_message() {
     assert_eq!(results.len(), 2);
     assert!(results[0].0 && results[0].1.contains("Comprou Gua Sha"));
     assert!(!results[1].0 && results[1].1.contains("Faltam"), "{:?}", results[1]);
+}
+
+#[test]
+fn every_tab_has_items_and_every_item_one_tab() {
+    use pmog::items::Category;
+    let total: usize = Category::ALL.iter().map(|c| c.items().count()).sum();
+    assert_eq!(total, CATALOG.len());
+    for c in Category::ALL {
+        assert!(c.items().count() >= 5, "{c:?} is too thin");
+        assert!(c.items().all(|i| CATALOG[i].consumable() == (c == Category::Consumable)), "{c:?}");
+    }
+    let names: std::collections::HashSet<_> = CATALOG.iter().map(|d| d.name).collect();
+    assert_eq!(names.len(), CATALOG.len(), "item names are unique");
+}
+
+#[test]
+fn combo_six_seven_waits_for_a_mog_that_lands() {
+    let now = Instant::now();
+    let mut w = world(1, now);
+    let slot = w.slot_mut(1).unwrap();
+    slot.player.items.insert(ItemId::ComboSixSeven, 2);
+    w.use_item(1, ItemId::ComboSixSeven, now);
+    assert!(player(&w, 1).combo_armed);
+    w.use_item(1, ItemId::ComboSixSeven, now);
+    assert_eq!(player(&w, 1).level(ItemId::ComboSixSeven), 1, "can't arm twice");
+    // Lands on the NPC eventually; the combo goes with the first hit only.
+    let mut t = now;
+    for _ in 0..200 {
+        if !player(&w, 1).combo_armed {
+            break;
+        }
+        t += Duration::from_secs(30);
+        w.mog(1, NPC_TARGET, 1.0, t);
+    }
+    assert!(!player(&w, 1).combo_armed, "a hit eventually lands");
+    assert!(w.outbox.iter().any(|(_, m)| matches!(m, ServerMsg::Event { text, .. } if text.contains("Combo 6-7 +67%"))));
+}
+
+#[test]
+fn aura_farm_doubles_passive_for_a_while() {
+    let now = Instant::now();
+    let mut w = world(1, now);
+    let slot = w.slot_mut(1).unwrap();
+    slot.player.items.insert(ItemId::Mewing, 10);
+    slot.player.items.insert(ItemId::AuraFarm, 1);
+    let rate = player(&w, 1).stats().passive;
+    let mp = |w: &World| player(w, 1).mp;
+    let before = mp(&w);
+    w.tick(now, 1.0);
+    let normal = mp(&w) - before;
+    w.use_item(1, ItemId::AuraFarm, now);
+    let before = mp(&w);
+    w.tick(now, 1.0);
+    assert!(((mp(&w) - before) - 2.0 * normal).abs() < 1e-9 && normal > 0.0 && (normal - rate).abs() < 1e-9);
+    assert!(w.view(1, now).unwrap().aura_farm_ms > 40_000);
+    let later = now + AURA_FARM_DURATION;
+    let before = mp(&w);
+    w.tick(later, 1.0);
+    assert!(((mp(&w) - before) - normal).abs() < 1e-9, "back to normal after 45 s");
 }

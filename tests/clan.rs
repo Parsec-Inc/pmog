@@ -422,6 +422,7 @@ fn playing(own_tag: Option<&str>, rival_tag: Option<&str>) -> App {
         immune_ms: 0,
         preworkout_ms: 0,
         cologne_ms: 0,
+        aura_farm_ms: 0,
         meter_ms: 0,
         players: vec![peer(2, "Rival", rival_tag), peer(3, "Livre", None)],
         duel: None,

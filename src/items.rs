@@ -41,6 +41,55 @@ pub enum ItemId {
     JawTape,
     Cologne,
     IcePack,
+    Minoxidil,
+    Dermaroller,
+    FoxEyes,
+    ShoulderPads,
+    SleepKit,
+    Whey,
+    BoatDance,
+    DoorLean,
+    Jestermaxxing,
+    SixSeven,
+    SixSevenHeight,
+    Capoeira,
+    SharkSneakers,
+    SahurBat,
+    CrocBomber,
+    BananaMonkey,
+    ComboSixSeven,
+    AuraFarm,
+}
+
+/// Shop tab an item belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+    Face,
+    Body,
+    Drip,
+    Aura,
+    Brainrot,
+    Consumable,
+}
+
+impl Category {
+    pub const ALL: [Category; 6] = [Category::Face, Category::Body, Category::Drip, Category::Aura, Category::Brainrot, Category::Consumable];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Category::Face => "Rosto",
+            Category::Body => "Físico",
+            Category::Drip => "Drip e Status",
+            Category::Aura => "Aura",
+            Category::Brainrot => "Brainrot e 67",
+            Category::Consumable => "Consumíveis",
+        }
+    }
+
+    /// Catalog indexes of the items in this tab, in catalog order.
+    pub fn items(self) -> impl Iterator<Item = usize> {
+        CATALOG.iter().enumerate().filter(move |(_, d)| d.category() == self).map(|(i, _)| i)
+    }
 }
 
 /// What one level of a permanent item adds.
@@ -101,6 +150,23 @@ pub struct ItemDef {
 impl ItemDef {
     pub fn consumable(&self) -> bool {
         self.usage.is_some()
+    }
+
+    pub fn category(&self) -> Category {
+        use ItemId::*;
+        if self.consumable() {
+            return Category::Consumable;
+        }
+        match self.id {
+            Mewing | Sunscreen | GuaSha | Skincare | Veneers | CanthalTape | DiamondJaw | Minoxidil | Dermaroller | FoxEyes => Category::Face,
+            WaterBottle | Creatine | MasticGum | GymPlan | Insoles | ShoulderPads | SleepKit | Whey => Category::Body,
+            MidFade | RingLight | NichePerfume | Sunglasses | Photographer | LuxuryWatch | PrivateJet | Mansion | MogCrown => Category::Drip,
+            Therapy | PhonkTrack | Meditation | InfiniteAura | BlessedGenes | BoatDance | DoorLean | Jestermaxxing => Category::Aura,
+            SixSeven | SixSevenHeight | Capoeira | SharkSneakers | SahurBat | CrocBomber | BananaMonkey => Category::Brainrot,
+            EnergyDrink | SigmaShield | AngleShot | PreWorkout | PocketMirror | JawTape | Cologne | IcePack | ComboSixSeven | AuraFarm => {
+                Category::Consumable
+            }
+        }
     }
 
     /// Price of the next unit or level.
@@ -177,7 +243,7 @@ const fn consumable(
     ItemDef { id, name, flavor, min_rank, base_cost, max_level: 99, effects: &[], usage: Some((key, text)) }
 }
 
-pub const CATALOG: [ItemDef; 34] = [
+pub const CATALOG: [ItemDef; 52] = [
     permanent(ItemId::Mewing, "Tutorial de Mewing", "Língua no céu da boca, 24 horas por dia.", Rank::Sub5, 25.0, 50,
         &[Effect::Passive(0.5), Effect::MewGain(0.25)]),
     permanent(ItemId::Sunscreen, "Protetor Solar FPS 70", "Envelhecer é para quem foi moggado.", Rank::Sub5, 45.0, 20,
@@ -246,4 +312,40 @@ pub const CATALOG: [ItemDef; 34] = [
         "por 60 s, seus mogs rendem +50% de MP"),
     consumable(ItemId::IcePack, "Bolsa de Gelo", "Desincha o rosto depois de uma surra.", Rank::Chadlite, 3_500.0, '8',
         "imune por 20 s agora e zera a imunidade acumulada"),
+    permanent(ItemId::Minoxidil, "Minoxidil na Barba", "Barba cheia em 6 meses, ou 7.", Rank::Mtn, 700.0, 20,
+        &[Effect::Defense(6.0), Effect::Attack(4.0)]),
+    permanent(ItemId::Dermaroller, "Dermaroller", "Mil agulhinhas a favor do seu colágeno.", Rank::Htn, 2_800.0, 10,
+        &[Effect::Defense(15.0), Effect::LossShield(0.02)]),
+    permanent(ItemId::FoxEyes, "Gel Fox Eyes", "Sobrancelha puxada, olhar de quem já ganhou.", Rank::Chadlite, 7_000.0, 10,
+        &[Effect::Attack(10.0), Effect::StreakBonus(0.03)]),
+    permanent(ItemId::ShoulderPads, "Ombreira de Frame Mog", "Brutalmente frame-moggado: agora é você que mogga.", Rank::Mtn, 800.0, 20,
+        &[Effect::Attack(6.0), Effect::Defense(6.0)]),
+    permanent(ItemId::SleepKit, "Kit Sleepmaxxing", "Máscara, fita na boca e 9 horas de sono.", Rank::Ltn, 180.0, 20,
+        &[Effect::Passive(1.0), Effect::CooldownCut(0.05)]),
+    permanent(ItemId::Whey, "Whey Isolado", "Proteinmaxxing: 2 g por quilo, sem desculpa.", Rank::Ltn, 220.0, 30,
+        &[Effect::Attack(2.0), Effect::MewGain(0.5)]),
+    permanent(ItemId::BoatDance, "Dança na Proa", "Aura farming de óculos escuros, no bico do barco.", Rank::Htn, 2_200.0, 10,
+        &[Effect::WinBonus(0.05), Effect::CounterBonus(8.0)]),
+    permanent(ItemId::DoorLean, "Pose Encostado na Porta", "Braço cruzado, olhar no horizonte, nada a provar.", Rank::Mtn, 1_000.0, 10,
+        &[Effect::StreakBonus(0.02), Effect::Defense(5.0)]),
+    permanent(ItemId::Jestermaxxing, "Jestermaxxing", "Fazer o grupo rir também é mogar.", Rank::Ltn, 300.0, 10,
+        &[Effect::CounterBonus(3.0), Effect::Passive(0.5)]),
+    permanent(ItemId::SixSeven, "Gesto do 6-7", "Mãos na balança: seis, sete. Ninguém sabe o que significa.", Rank::Ltn, 67.0, 67,
+        &[Effect::Attack(0.6), Effect::Defense(0.7)]),
+    permanent(ItemId::SixSevenHeight, "Altura de 6'7\"", "Dois metros e um centímetro de height mog.", Rank::Chadlite, 6_767.0, 7,
+        &[Effect::Attack(20.0), Effect::Defense(7.0)]),
+    permanent(ItemId::Capoeira, "Golpe Proibido da Capoeira", "A meia-lua que nenhum mestre te ensinou.", Rank::Htn, 3_300.0, 10,
+        &[Effect::Attack(10.0), Effect::CounterBonus(6.0)]),
+    permanent(ItemId::SharkSneakers, "Tubarão de Tênis", "Tralalero tralalá: corre na areia de tênis de marca.", Rank::Mtn, 1_200.0, 10,
+        &[Effect::CooldownCut(0.1), Effect::Passive(2.0)]),
+    permanent(ItemId::BananaMonkey, "Macaco-Banana", "Metade macaco, metade banana, totalmente brainrot.", Rank::Ltn, 400.0, 10,
+        &[Effect::MewGain(1.0), Effect::MewCap(1)]),
+    permanent(ItemId::SahurBat, "Bastão do Sahur", "Tung tung tung tung... acorda pra mogar.", Rank::Chad, 18_000.0, 10,
+        &[Effect::Attack(25.0), Effect::StreakBonus(0.02)]),
+    permanent(ItemId::CrocBomber, "Crocodilo Bombardeiro", "Meio crocodilo, meio avião, todo destruição.", Rank::Gigachad, 70_000.0, 10,
+        &[Effect::Attack(60.0), Effect::WinBonus(0.05)]),
+    consumable(ItemId::ComboSixSeven, "Combo 6-7", "Seis, sete, e o MP vem junto.", Rank::Mtn, 670.0, '9',
+        "o próximo mog que acertar rende +67% de MP"),
+    consumable(ItemId::AuraFarm, "Farmar Aura", "Pose, phonk e câmera lenta por 45 s.", Rank::Htn, 2_000.0, '0',
+        "por 45 s, o MP passivo vem em dobro"),
 ];

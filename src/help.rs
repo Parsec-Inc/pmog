@@ -120,7 +120,7 @@ fn basics() -> Vec<Line<'static>> {
         key("↑ ↓", "trocar de alvo"),
         key("M", "mewar: ganhar MP na hora"),
         key("L", "abrir a loja (↑ ↓ escolhe, Enter compra)"),
-        key("1 a 8", "usar um consumível"),
+        key("1 a 9, 0", "usar um consumível"),
         key("C", "conquistas e estatísticas"),
         key("S", "painel do servidor"),
         key("D / F", "duelo direto ou fila de duelo (veja a página Duelos)"),
@@ -354,27 +354,27 @@ fn ranks(g: &Game) -> Vec<Line<'static>> {
 fn shop() -> Vec<Line<'static>> {
     let mut lines = vec![
         title("Como a loja funciona"),
-        bullet("Abra com L, escolha com ↑ ↓ e compre com Enter."),
+        bullet("Abra com L. ← → trocam de categoria (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), ↑ ↓ escolhem o item e Enter compra."),
+        bullet("O número ao lado da categoria diz quantos itens dela você já pode comprar."),
         bullet("O painel da direita mostra o que o item faz e quanto seus números mudam com a compra."),
         bullet(format!(
             "Itens permanentes têm níveis. Cada nível soma o efeito de novo e custa {}x o anterior.",
             n(COST_GROWTH)
         )),
-        bullet("Consumíveis têm preço fixo, ficam no inventário e são usados com as teclas 1 a 8."),
-        bullet("Escudo, Foto no Ângulo, Espelho e Fita de Mandíbula ficam preparados até serem gastos, mesmo se você fechar o jogo."),
-        gap(),
-        title("Itens permanentes"),
+        bullet("Consumíveis têm preço fixo, ficam no inventário e são usados com as teclas 1 a 9 e 0."),
+        bullet("Escudo, Foto no Ângulo, Espelho, Fita de Mandíbula e Combo 6-7 ficam preparados até serem gastos, mesmo se você fechar o jogo."),
     ];
-    for def in CATALOG.iter().filter(|d| !d.consumable()) {
-        lines.push(term(
-            def.name,
-            &format!("{} por nível. Rank {}, até nível {}.", def.summary(), def.min_rank.label(), def.max_level),
-        ));
-    }
-    lines.push(gap());
-    lines.push(title("Consumíveis"));
-    for def in CATALOG.iter().filter(|d| d.consumable()) {
-        lines.push(term(def.name, &format!("{}. Rank {}.", def.summary(), def.min_rank.label())));
+    for category in crate::items::Category::ALL {
+        lines.push(gap());
+        lines.push(title(category.label()));
+        for def in category.items().map(|i| &CATALOG[i]) {
+            let text = if def.consumable() {
+                format!("{}. Rank {}.", def.summary(), def.min_rank.label())
+            } else {
+                format!("{} por nível. Rank {}, até nível {}.", def.summary(), def.min_rank.label(), def.max_level)
+            };
+            lines.push(term(def.name, &text));
+        }
     }
     lines
 }
@@ -392,6 +392,15 @@ fn glossary() -> Vec<Line<'static>> {
         term("Sigma", "o meme do lobo solitário que não se abala. Daí o Escudo e a Meditação."),
         term("Phonk", "gênero musical das edições de vídeo de \"gigachad\"."),
         term("Gua sha", "pedra de jade usada em massagem facial."),
+        term("Softmaxxing / hardmaxxing", "melhorar a aparência com hábitos (pele, sono, treino) ou com métodos extremos. No jogo, só o soft."),
+        term("Frame mog / brutalmente frame-moggado", "ficar ao lado de alguém com o porte muito maior. Daí a Ombreira de Frame Mog."),
+        term("Jestermaxxing", "usar o humor como arma de mog. Também é um item."),
+        term("Sleepmaxxing / proteinmaxxing", "o sufixo -maxxing vale para tudo: dormir, comer proteína, tomar sol."),
+        term("Aura farming", "fazer algo de propósito para parecer descolado: a dança na proa do barco, encostar na porta, câmera lenta."),
+        term("+1000 / -1000 de aura", "placar imaginário de quanto uma atitude te deixou mais (ou menos) descolado."),
+        term("6-7", "o \"six seven\" sem significado nenhum, com as mãos subindo e descendo como uma balança. Daí o Gesto do 6-7, a altura de 6'7\" e o Combo 6-7."),
+        term("Brainrot", "humor absurdo da internet, como os bichos italianos feitos por IA: tubarão de tênis, crocodilo-avião, macaco-banana e o tung tung sahur."),
+        term("Capoeira proibida", "a capoeira já foi crime no Brasil (de 1890 até a década de 1930). No jogo, o Golpe Proibido é a meia-lua que ninguém ensina."),
         gap(),
         title("Ranks"),
         term("Sub-5", "abaixo da nota 5, o ponto de partida."),

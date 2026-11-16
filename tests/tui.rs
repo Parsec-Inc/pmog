@@ -35,6 +35,7 @@ fn playing() -> App {
         immune_ms: 0,
         preworkout_ms: 0,
         cologne_ms: 0,
+        aura_farm_ms: 0,
         meter_ms: 0,
         players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None }],
         duel: None,
@@ -459,6 +460,7 @@ fn state_with(app: &mut App, edit: impl FnOnce(&mut StateView)) {
         immune_ms: 0,
         preworkout_ms: 0,
         cologne_ms: 0,
+        aura_farm_ms: 0,
         meter_ms: 0,
         players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None }],
         duel: None,
@@ -949,4 +951,50 @@ fn digits_reach_the_duel() {
     a.game.outbox.clear();
     press(&mut a, KeyCode::Char('3'));
     assert!(matches!(a.game.outbox.last(), Some(ClientMsg::Duel { key: DuelKey::Char('3'), .. })));
+}
+
+#[test]
+fn shop_tabs_group_items_and_move_between_them() {
+    use pmog::items::Category;
+    let mut a = playing();
+    press(&mut a, KeyCode::Char('l'));
+    let screen = render(&a, 150, 42);
+    for c in Category::ALL {
+        assert!(screen.contains(c.label()), "tab {} missing:\n{screen}", c.label());
+    }
+    assert!(screen.contains("Tutorial de Mewing") && !screen.contains("Energético"), "only the current tab is listed");
+    let first_face: Vec<usize> = Category::Face.items().collect();
+    for _ in 0..first_face.len() {
+        press(&mut a, KeyCode::Down);
+    }
+    assert_eq!(a.game.shop_cursor, first_face[0], "↑↓ wrap inside the tab");
+    press(&mut a, KeyCode::Left);
+    assert_eq!(a.game.shop_category(), Category::Consumable, "← wraps to the last tab");
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("Combo 6-7") && screen.contains("Farmar Aura"), "{screen}");
+    press(&mut a, KeyCode::Right);
+    press(&mut a, KeyCode::Tab);
+    assert_eq!(a.game.shop_category(), Category::Body);
+    for _ in 0..3 {
+        press(&mut a, KeyCode::Right);
+    }
+    assert_eq!(a.game.shop_category(), Category::Brainrot);
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("Gesto do 6-7") && screen.contains("Golpe Proibido da Capoeira") && screen.contains("Bastão do Sahur"), "{screen}");
+    press(&mut a, KeyCode::Enter);
+    assert!(render(&a, 150, 42).contains("Confirmar compra"), "buying still asks first");
+    for (w, h) in [(40, 12), (80, 24)] {
+        render(&a, w, h);
+    }
+}
+
+#[test]
+fn new_buffs_show_up() {
+    let mut a = playing();
+    state_with(&mut a, |s| {
+        s.me.combo_armed = true;
+        s.aura_farm_ms = 30_000;
+    });
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("COMBO 6-7") && screen.contains("FARMANDO AURA"), "{screen}");
 }

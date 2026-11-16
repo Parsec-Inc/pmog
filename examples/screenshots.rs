@@ -205,6 +205,7 @@ fn state(duel: Option<DuelView>) -> StateView {
         immune_ms: 0,
         preworkout_ms: 0,
         cologne_ms: 42_000,
+        aura_farm_ms: 0,
         meter_ms: 610,
         players: vec![
             peer(2, "jawline_99", 34_000.0, 6_800.0, Some("SIGMA")),

@@ -224,6 +224,14 @@ fn shop_key(game: &mut Game, code: KeyCode) {
             game.shop_result = None;
             game.shop_move(1);
         }
+        KeyCode::Left | KeyCode::BackTab | KeyCode::Char('h') => {
+            game.shop_result = None;
+            game.shop_tab(-1);
+        }
+        KeyCode::Right | KeyCode::Tab => {
+            game.shop_result = None;
+            game.shop_tab(1);
+        }
         KeyCode::Enter | KeyCode::Char(' ') => game.shop_enter(),
         KeyCode::Esc | KeyCode::Char('l' | 'q') => game.shop_back(),
         _ => {}
