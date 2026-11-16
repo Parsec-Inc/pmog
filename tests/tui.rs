@@ -264,7 +264,9 @@ fn keys_send_actions_to_the_server() {
     press(&mut a, KeyCode::Char('l'));
     assert_eq!(a.game.overlay, Overlay::Shop);
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Buy { item: ItemId::Mewing }));
+    assert_eq!(a.game.shop_confirm, Some(0), "Enter asks first");
+    press(&mut a, KeyCode::Esc);
+    assert_eq!((a.game.shop_confirm, a.game.overlay), (None, Overlay::Shop), "Esc closes the card, not the shop");
     press(&mut a, KeyCode::Down);
     assert_eq!(a.game.shop_cursor, 1);
     assert!(press(&mut a, KeyCode::Char('q')), "q in shop closes it, does not quit");
@@ -794,4 +796,57 @@ fn recovery_time_format() {
     use pmog::utils::format_wait;
     assert_eq!(format_wait(Duration::from_millis(41_200)), "42 s");
     assert_eq!(format_wait(Duration::from_secs(125)), "2:05");
+}
+
+fn shop_with_mp(mp: f64) -> App {
+    let mut a = playing();
+    state_with(&mut a, |s| s.me.mp = mp);
+    a.game.overlay = Overlay::Shop;
+    a.game.shop_cursor = pmog::game::CATALOG.iter().position(|d| d.id == ItemId::GuaSha).unwrap();
+    a.game.outbox.clear();
+    a
+}
+
+#[test]
+fn buying_asks_then_shows_the_result() {
+    let mut a = shop_with_mp(500.0);
+    press(&mut a, KeyCode::Enter);
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("Comprar Gua Sha?") && screen.contains("Nível 0 → 1 de 50"), "{screen}");
+    assert!(screen.contains("seu MP 500 → 470") && screen.contains("Defesa"), "{screen}");
+    assert!(a.game.outbox.is_empty(), "nothing bought before confirming");
+
+    press(&mut a, KeyCode::Enter);
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Buy { item: ItemId::GuaSha }));
+    assert_eq!(a.game.shop_pending, Some(ItemId::GuaSha));
+    assert!(render(&a, 150, 42).contains("Comprando Gua Sha..."));
+
+    a.game.apply(ServerMsg::Purchase { item: ItemId::GuaSha, ok: true, text: "Comprou Gua Sha (-30 MP)".into() }, Instant::now());
+    assert_eq!(a.game.shop_pending, None);
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("✓ COMPRADO") && screen.contains("Comprou Gua Sha (-30 MP)"), "{screen}");
+    press(&mut a, KeyCode::Down);
+    assert!(!render(&a, 150, 42).contains("COMPRADO"), "moving on hides it");
+}
+
+#[test]
+fn blocked_purchase_is_explained_and_never_sent() {
+    let mut a = shop_with_mp(10.0);
+    press(&mut a, KeyCode::Enter);
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("Não dá para comprar: Faltam 20 MP para Gua Sha."), "{screen}");
+    press(&mut a, KeyCode::Enter);
+    assert!(a.game.outbox.is_empty(), "no request when it can't be bought");
+    assert_eq!(a.game.shop_confirm, None);
+
+    a.game.apply(ServerMsg::Purchase { item: ItemId::GuaSha, ok: false, text: "Faltam 20 MP para Gua Sha.".into() }, Instant::now());
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("✗ NÃO COMPROU") && screen.contains("Faltam 20 MP"), "{screen}");
+    press(&mut a, KeyCode::Esc);
+    assert_eq!(a.game.overlay, Overlay::Shop, "first Esc only dismisses the result");
+    press(&mut a, KeyCode::Esc);
+    assert_eq!(a.game.overlay, Overlay::None);
+    for (w, h) in [(30, 10), (80, 24)] {
+        render(&a, w, h);
+    }
 }

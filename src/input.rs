@@ -193,11 +193,25 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
 }
 
 fn shop_key(game: &mut Game, code: KeyCode) {
+    if game.shop_confirm.is_some() {
+        match code {
+            KeyCode::Enter | KeyCode::Char(' ' | 's' | 'y') => game.shop_enter(),
+            KeyCode::Esc | KeyCode::Char('n' | 'q') => game.shop_back(),
+            _ => {}
+        }
+        return;
+    }
     match code {
-        KeyCode::Up | KeyCode::Char('k') => game.shop_move(-1),
-        KeyCode::Down | KeyCode::Char('j') => game.shop_move(1),
-        KeyCode::Enter | KeyCode::Char(' ') => game.buy(game.shop_cursor),
-        KeyCode::Esc | KeyCode::Char('l' | 'q') => game.overlay = Overlay::None,
+        KeyCode::Up | KeyCode::Char('k') => {
+            game.shop_result = None;
+            game.shop_move(-1);
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            game.shop_result = None;
+            game.shop_move(1);
+        }
+        KeyCode::Enter | KeyCode::Char(' ') => game.shop_enter(),
+        KeyCode::Esc | KeyCode::Char('l' | 'q') => game.shop_back(),
         _ => {}
     }
 }

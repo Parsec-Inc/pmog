@@ -112,6 +112,20 @@ impl ItemDef {
         }
     }
 
+    /// Why `player` can't buy the next unit or level right now, if anything stops it.
+    pub fn purchase_block(&self, player: &crate::game::Player) -> Option<String> {
+        let level = player.level(self.id);
+        if player.rank() < self.min_rank {
+            Some(format!("{} exige rank {}.", self.name, self.min_rank.label()))
+        } else if level >= self.max_level {
+            Some(format!("{} já está no máximo.", self.name))
+        } else if player.mp < self.cost(level) {
+            Some(format!("Faltam {} MP para {}.", crate::utils::format_mp(self.cost(level) - player.mp), self.name))
+        } else {
+            None
+        }
+    }
+
     /// One-line summary of what the item does.
     pub fn summary(&self) -> String {
         match self.usage {

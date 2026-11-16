@@ -426,6 +426,12 @@ pub struct Game {
     pub banner: Option<Banner>,
     pub overlay: Overlay,
     pub shop_cursor: usize,
+    /// Shop item waiting for a yes/no before buying.
+    pub shop_confirm: Option<usize>,
+    /// Item bought and not yet answered by the server.
+    pub shop_pending: Option<ItemId>,
+    /// Last purchase outcome shown in the shop: (ok, text, when).
+    pub shop_result: Option<(bool, String, Instant)>,
     pub help_page: usize,
     pub help_scroll: u16,
     /// Last scroll limit computed by the renderer.
@@ -480,6 +486,9 @@ impl Game {
             banner: None,
             overlay: Overlay::None,
             shop_cursor: 0,
+            shop_confirm: None,
+            shop_pending: None,
+            shop_result: None,
             help_page: 0,
             help_scroll: 0,
             help_max_scroll: Cell::new(0),
@@ -585,6 +594,28 @@ impl Game {
 
     pub fn mew(&mut self) {
         self.outbox.push(ClientMsg::Mew);
+    }
+
+    /// Enter in the shop: opens the confirmation card, or buys if it is already open.
+    pub fn shop_enter(&mut self) {
+        self.shop_result = None;
+        match self.shop_confirm.take() {
+            Some(index) => {
+                let blocked = CATALOG.get(index).is_none_or(|def| def.purchase_block(&self.player).is_some());
+                if !blocked && self.shop_pending.is_none() {
+                    self.shop_pending = Some(CATALOG[index].id);
+                    self.buy(index);
+                }
+            }
+            None => self.shop_confirm = Some(self.shop_cursor),
+        }
+    }
+
+    /// Esc in the shop: closes the card first, then the shop.
+    pub fn shop_back(&mut self) {
+        if self.shop_confirm.take().is_none() && self.shop_result.take().is_none() {
+            self.overlay = Overlay::None;
+        }
     }
 
     pub fn buy(&mut self, index: usize) {
@@ -788,6 +819,12 @@ impl Game {
                 if hit {
                     self.hit_flash_until = now + HIT_FLASH;
                 }
+            }
+            ServerMsg::Purchase { item, ok, text } => {
+                if self.shop_pending == Some(item) {
+                    self.shop_pending = None;
+                }
+                self.shop_result = Some((ok, text, now));
             }
             ServerMsg::Chat(event) => {
                 self.chat.apply(event, now, &mut self.notices);

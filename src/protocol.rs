@@ -128,6 +128,8 @@ pub enum ServerMsg {
     Welcome { id: PlayerId, server: String },
     Rejected { reason: String },
     State(Box<StateView>),
+    /// Outcome of a shop purchase, for the shop screen.
+    Purchase { item: crate::items::ItemId, ok: bool, text: String },
     Event { tone: Tone, text: String, banner: Option<String>, hit: bool },
     Shutdown,
     /// Round-trip probe; the client answers with `ClientMsg::Pong` at once.

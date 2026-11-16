@@ -13,7 +13,7 @@ use ratatui::widgets::{
     Table, TableState, Tabs, Wrap,
 };
 
-use crate::constants::{PULSE_MS, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH};
+use crate::constants::{PULSE_MS, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
 use crate::game::{Achievement, CATALOG, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
@@ -95,7 +95,10 @@ fn draw_game(f: &mut Frame, app: &App) {
     draw_footer(f, footer, g);
 
     match g.overlay {
-        Overlay::Shop => draw_shop(f, g),
+        Overlay::Shop => {
+            draw_shop(f, g);
+            draw_shop_card(f, g, now);
+        }
         Overlay::Achievements => draw_achievements(f, g),
         Overlay::Help => draw_help(f, g),
         Overlay::Server => draw_server_panel(f, app),
@@ -512,12 +515,89 @@ fn draw_shop(f: &mut Frame, g: &Game) {
         Block::bordered()
             .border_type(BorderType::Double)
             .border_style(fg(Color::Magenta))
-            .title(format!(" Loja · {} MP · Enter compra · Esc fecha ", format_mp(p.mp))),
+            .title(format!(" Loja · {} MP · Enter compra · Esc fecha ", format_mp(p.mp)))
+            .title_bottom(shop_status(g)),
     )
     .row_highlight_style(Style::new().bg(Color::Rgb(45, 20, 55)))
     .highlight_symbol("▶ ");
     let mut state = TableState::default().with_selected(Some(g.shop_cursor));
     f.render_stateful_widget(table, area, &mut state);
+}
+
+/// Bottom line of the shop: a purchase on its way.
+fn shop_status(g: &Game) -> Line<'static> {
+    match g.shop_pending {
+        Some(item) => Line::styled(format!(" Comprando {}... ", crate::items::def(item).name), fg(Color::Yellow).bold()).centered(),
+        None => Line::raw(""),
+    }
+}
+
+/// Confirmation before buying, then the server's answer.
+fn draw_shop_card(f: &mut Frame, g: &Game, now: Instant) {
+    let fresh = g.shop_result.as_ref().filter(|(_, _, at)| now.saturating_duration_since(*at) < SHOP_RESULT_SHOW);
+    let (lines, color, title) = if let Some((ok, text, _)) = fresh {
+        let (mark, color) = if *ok { ("✓ COMPRADO", Color::Green) } else { ("✗ NÃO COMPROU", Color::Red) };
+        let lines = vec![
+            Line::raw(""),
+            Line::styled(mark, fg(color).bold()).centered(),
+            Line::raw(""),
+            Line::raw(text.clone()).centered(),
+            Line::styled(format!("Seu MP agora: {}", format_mp(g.player.mp)), fg(Color::Gray)).centered(),
+            Line::raw(""),
+            Line::styled("qualquer seta continua comprando · Esc fecha", fg(Color::DarkGray)).centered(),
+        ];
+        (lines, color, if *ok { " Compra feita " } else { " Compra recusada " })
+    } else if let Some(def) = g.shop_confirm.and_then(|i| CATALOG.get(i)) {
+        (confirm_lines(g, def), Color::Yellow, " Confirmar compra ")
+    } else {
+        return;
+    };
+    let area = small_popup(f.area(), 64, lines.len() as u16 + 2);
+    f.render_widget(Clear, area);
+    let block = Block::bordered().border_type(BorderType::Double).border_style(fg(color)).title(title);
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(block), area);
+}
+
+fn confirm_lines(g: &Game, def: &ItemDef) -> Vec<Line<'static>> {
+    let p = &g.player;
+    let level = p.level(def.id);
+    let cost = def.cost(level);
+    let mut lines = vec![Line::raw(""), Line::styled(format!("Comprar {}?", def.name), fg(Color::Yellow).bold()).centered()];
+    let have = if def.consumable() { format!("Você tem x{level} → x{}", level + 1) } else { format!("Nível {level} → {} de {}", level + 1, def.max_level) };
+    lines.push(Line::styled(have, fg(Color::Gray)).centered());
+    lines.push(Line::raw(def.summary()).centered());
+    lines.push(Line::raw(""));
+    if let Some(reason) = def.purchase_block(p) {
+        lines.push(Line::styled(format!("Não dá para comprar: {reason}"), fg(Color::Red).bold()).centered());
+        lines.push(Line::raw(""));
+        lines.push(Line::styled("Esc volta", fg(Color::DarkGray)).centered());
+        return lines;
+    }
+    lines.push(
+        Line::from(vec![
+            Span::raw("Preço "),
+            Span::styled(format!("{} MP", format_mp(cost)), fg(Color::Yellow).bold()),
+            Span::raw(format!("   ·   seu MP {} → {}", format_mp(p.mp), format_mp(p.mp - cost))),
+        ])
+        .centered(),
+    );
+    if !def.consumable() {
+        let diffs = stat_diffs(&p.stats(), &p.stats_after_buying(def.id));
+        if !diffs.is_empty() {
+            lines.push(Line::styled(diffs.join("   "), fg(Color::Cyan)).centered());
+        }
+    }
+    lines.push(Line::raw(""));
+    lines.push(
+        Line::from(vec![
+            Span::styled(" Enter ", Style::new().bold().fg(Color::Black).bg(Color::Green)),
+            Span::raw(" comprar     "),
+            Span::styled(" Esc ", Style::new().bold().fg(Color::Black).bg(Color::Red)),
+            Span::raw(" cancelar"),
+        ])
+        .centered(),
+    );
+    lines
 }
 
 /// Renders a sprite with half blocks: two pixels per terminal cell.

@@ -678,3 +678,23 @@ fn failed_mog_says_why_with_numbers() {
     assert!(line.starts_with("Seu mog em p2 falhou: a defesa deu "), "{line}");
     assert!(line.contains("contra seu poder de") && line.contains("streak zerado"), "{line}");
 }
+
+#[test]
+fn every_purchase_gets_a_result_message() {
+    let now = Instant::now();
+    let mut w = world(1, now);
+    w.slot_mut(1).unwrap().player.mp = 40.0;
+    w.buy(1, ItemId::GuaSha);
+    w.buy(1, ItemId::GuaSha);
+    let results: Vec<(bool, String)> = w
+        .outbox
+        .iter()
+        .filter_map(|(to, m)| match m {
+            ServerMsg::Purchase { item: ItemId::GuaSha, ok, text } if *to == 1 => Some((*ok, text.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(results.len(), 2);
+    assert!(results[0].0 && results[0].1.contains("Comprou Gua Sha"));
+    assert!(!results[1].0 && results[1].1.contains("Faltam"), "{:?}", results[1]);
+}

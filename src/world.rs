@@ -240,12 +240,8 @@ impl World {
         let def = items::def(item);
         let p = &mut slot.player;
         let level = p.level(item);
-        let result = if p.rank() < def.min_rank {
-            Err(format!("{} exige rank {}.", def.name, def.min_rank.label()))
-        } else if level >= def.max_level {
-            Err(format!("{} já está no máximo.", def.name))
-        } else if p.mp < def.cost(level) {
-            Err(format!("Faltam {} MP para {}.", format_mp(def.cost(level) - p.mp), def.name))
+        let result = if let Some(reason) = def.purchase_block(p) {
+            Err(reason)
         } else {
             let cost = def.cost(level);
             p.mp -= cost;
@@ -255,10 +251,12 @@ impl World {
             self.purchases.push(PurchaseRecord { player: id, item: format!("{item:?}"), cost });
             Ok(format!("Comprou {} (-{} MP)", def.name, format_mp(cost)))
         };
-        match result {
-            Ok(text) => self.event(id, Tone::Good, text, None, false),
-            Err(text) => self.event(id, Tone::Bad, text, None, false),
-        }
+        let (ok, text) = match result {
+            Ok(text) => (true, text),
+            Err(text) => (false, text),
+        };
+        self.event(id, if ok { Tone::Good } else { Tone::Bad }, text.clone(), None, false);
+        self.outbox.push((id, ServerMsg::Purchase { item, ok, text }));
     }
 
     pub fn use_item(&mut self, id: PlayerId, item: ItemId, now: Instant) {
