@@ -165,6 +165,16 @@ fn watch_duels(world: &World, watch: &mut DuelWatch, stats: &mut Stats, now: Ins
                             m.notes.push(wpm);
                         }
                     }
+                    Board::Jawline { mine, theirs, .. } => m.notes.push(mine.error.min(theirs.error) as f64),
+                    Board::Hydration { .. }
+                    | Board::Posture { .. }
+                    | Board::FitCheck { .. }
+                    | Board::Photo { .. }
+                    | Board::Status { .. }
+                    | Board::Brow { .. }
+                    | Board::ReverseMog { .. }
+                    | Board::Draft { .. } => {}
+                    Board::Hair { mine, theirs, .. } => m.notes.push(mine.score.max(theirs.score)),
                     Board::Staredown { .. } => {
                         if let Some(ms) = d.result.as_deref().and_then(|r| r.split("em ").nth(1)).and_then(|r| r.split(' ').next()).and_then(|n| n.parse::<f64>().ok()) {
                             m.notes.push(ms);
@@ -392,6 +402,10 @@ fn main() {
             Minigame::Rhythm => "pontos do vencedor",
             Minigame::Hunter => "pontos do vencedor",
             Minigame::Macros => "contas do vencedor",
+            Minigame::Memory => "nível final",
+            Minigame::Jawline => "menor erro",
+            Minigame::Hair => "pontos do vencedor",
+            _ => "-",
         };
         println!(
             "| {} | {} | {} ({:.0}%) | {:.1} | {:.1} | {metric}: {:.1} / {:.1} |",

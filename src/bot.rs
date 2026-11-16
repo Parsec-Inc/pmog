@@ -9,10 +9,13 @@ use rand::Rng;
 use crate::connection::{Connection, Incoming, Liveness};
 use crate::constants::{ANGLE_ATTEMPTS, BOT_ACTION_SECS, BOT_MEWS_PER_ACTION, BOT_RETRY, STAKE_FRACTIONS, TICK};
 use crate::discovery::Discovery;
-use crate::duel::{Board, DuelKey, Phase, angle_pos, rhythm_beat_ms};
+use crate::duel::{
+    Board, BrowTrial, DuelKey, DuelView, Minigame, Phase, Stance, angle_pos, fit_color, hydration_level, photo_flash, rhythm_beat_ms,
+    rps_throw,
+};
 use crate::constants::{
-    BOT_HUNTER_REACT_MS, BOT_HUNTER_SLIP, BOT_MACROS_SECS, BOT_MACROS_SLIP, BOT_RHYTHM_SPREAD_MS, BOT_TYPING_CPS, HUNTER_SHOW_MS,
-    RHYTHM_BEATS,
+    BOT_DRAFT_MS, BOT_HUNTER_REACT_MS, BOT_HUNTER_SLIP, BOT_MACROS_SECS, BOT_MACROS_SLIP, BOT_RHYTHM_SPREAD_MS, BOT_TYPING_CPS,
+    HUNTER_SHOW_MS, HYDRATION_SIP_BIG, JAW_POINTS, PHOTO_LATE_MS, POSTURE_BAND, RHYTHM_BEATS,
 };
 use crate::game::{Game, Player};
 use crate::items::CATALOG;
@@ -194,7 +197,11 @@ impl Duelist {
                     return;
                 }
                 let right = self.routine.get(mine.steps).copied().unwrap_or(DuelKey::Up);
-                let key = if rng.gen_bool(0.05) { *DuelKey::ARROWS.iter().find(|k| **k != right).expect("4 arrows") } else { right };
+                let wrong = match right {
+                    DuelKey::Char(c) => DuelKey::Char(if c == '1' { '2' } else { '1' }),
+                    _ => *DuelKey::ARROWS.iter().find(|k| **k != right).expect("4 arrows"),
+                };
+                let key = if rng.gen_bool(0.05) { wrong } else { right };
                 game.duel_key(key, now);
                 self.sent_step = Some((*level, mine.steps));
                 self.next_press = Some(now + Duration::from_millis(rng.gen_range(180..380)));
@@ -270,7 +277,142 @@ impl Duelist {
                     self.next_press = Some(now + Duration::from_millis(400));
                 }
             }
+            (_, Phase::Draft | Phase::Play) if due => self.act_more(game, &d, ms, now, rng),
             _ => {}
+        }
+    }
+
+    /// The draft and the newer minigames; called when no press is pending.
+    fn act_more(&mut self, game: &mut Game, d: &DuelView, ms: f64, now: Instant, rng: &mut impl Rng) {
+        let wait = |rng: &mut dyn rand::RngCore, range: std::ops::Range<u64>| Some(now + Duration::from_millis(rng.gen_range(range)));
+        let key = match &d.board {
+            Board::Draft { picks, my_turn: true } => {
+                if self.next_press.is_none() {
+                    self.next_press = wait(rng, BOT_DRAFT_MS);
+                    return;
+                }
+                let free: Vec<Minigame> = Minigame::ALL.into_iter().filter(|g| !picks.iter().any(|p| p.game == *g)).collect();
+                let choice = if rng.gen_bool(0.2) { None } else { free.get(rng.gen_range(0..free.len())).copied() };
+                game.outbox.push(crate::protocol::ClientMsg::Duel { key: DuelKey::Pick(choice), at_ms: None });
+                self.next_press = wait(rng, 1_000..1_500);
+                return;
+            }
+            Board::Jawline { target, mine, .. } if !mine.done => {
+                let c = mine.cursor;
+                let off = |i: usize| mine.heights[i] != target[i];
+                if off(c) {
+                    if mine.heights[c] < target[c] { DuelKey::Up } else { DuelKey::Down }
+                } else if (c + 1..JAW_POINTS).any(off) {
+                    DuelKey::Right
+                } else {
+                    DuelKey::Left
+                }
+            }
+            Board::Posture { drift, mine, .. } => {
+                let pos = drift.position(&mine.presses, ms);
+                if pos > POSTURE_BAND * 0.5 {
+                    DuelKey::Left
+                } else if pos < -POSTURE_BAND * 0.5 {
+                    DuelKey::Right
+                } else {
+                    return;
+                }
+            }
+            Board::FitCheck { target, offsets, mine, .. } if !mine.done => {
+                let piece = mine.locked.len();
+                if fit_color(offsets, piece, ms - 120.0) != target[piece] && !rng.gen_bool(0.003) {
+                    return;
+                }
+                DuelKey::Action
+            }
+            Board::Hydration { target, mine, .. } if !mine.locked => {
+                let level = hydration_level(mine.level, mine.at, ms);
+                if level <= target - HYDRATION_SIP_BIG {
+                    DuelKey::Up
+                } else if level < *target {
+                    DuelKey::Right
+                } else {
+                    DuelKey::Action
+                }
+            }
+            Board::Photo { shots, mine, .. } => {
+                let Some(i) = (0..shots.len()).find(|i| mine[*i].is_none() && ms <= photo_flash(shots[*i]) + PHOTO_LATE_MS) else { return };
+                let at = *self.next_press.get_or_insert_with(|| {
+                    let ahead = photo_flash(shots[i]) - ms + rng.gen_range(-90.0..90.0);
+                    now + Duration::from_secs_f64(ahead.max(0.0) / 1000.0)
+                });
+                if now < at || self.handled == Some(i) {
+                    return;
+                }
+                self.handled = Some(i);
+                game.duel_key(DuelKey::Action, now);
+                self.next_press = None;
+                return;
+            }
+            Board::Status { items, mine, .. } if mine.len() < items.len() => {
+                let cost = |name: &String| CATALOG.iter().find(|d| d.name == name).map_or(0.0, |d| d.base_cost);
+                let mut order: Vec<usize> = (0..items.len()).filter(|i| !mine.contains(i)).collect();
+                order.sort_by(|a, b| cost(&items[*b]).total_cmp(&cost(&items[*a])));
+                let i = if rng.gen_bool(0.15) && order.len() > 1 { order[1] } else { order[0] };
+                self.next_press = wait(rng, 600..1_400);
+                DuelKey::Char(char::from(b'1' + i as u8))
+            }
+            Board::Hair { strands, mine, .. } => {
+                let Some(i) = strands.iter().position(|s| s.showing(ms)) else { return };
+                if mine.answered.get(i).copied().unwrap_or(true) || self.handled == Some(i) {
+                    return;
+                }
+                let at = *self.next_press.get_or_insert_with(|| {
+                    now + Duration::from_secs_f64((strands[i].at + rng.gen_range(BOT_HUNTER_REACT_MS) - ms).max(0.0) / 1000.0)
+                });
+                if now < at {
+                    return;
+                }
+                self.handled = Some(i);
+                self.next_press = None;
+                let right = strands[i].dir;
+                let key = if rng.gen_bool(BOT_HUNTER_SLIP) { *DuelKey::ARROWS.iter().find(|k| **k != right).expect("arrows") } else { right };
+                game.duel_key(key, now);
+                return;
+            }
+            Board::Brow { trials, mine, .. } => {
+                let Some(i) = trials.iter().position(|tr: &BrowTrial| ms <= tr.end()) else { return };
+                if mine[i].is_some() || ms < trials[i].raise || self.handled == Some(i) {
+                    return;
+                }
+                let at = *self.next_press.get_or_insert_with(|| {
+                    now + Duration::from_secs_f64((trials[i].raise + rng.gen_range(BOT_HUNTER_REACT_MS) - ms).max(0.0) / 1000.0)
+                });
+                if now < at {
+                    return;
+                }
+                self.handled = Some(i);
+                self.next_press = None;
+                game.duel_key(DuelKey::Action, now);
+                return;
+            }
+            Board::ReverseMog { mine, .. } => {
+                let (i, open) = rps_throw(ms);
+                if !open || mine.get(i).is_none_or(Option::is_some) {
+                    return;
+                }
+                if self.handled != Some(i) {
+                    self.handled = Some(i);
+                    self.next_press = wait(rng, 300..2_000);
+                    return;
+                }
+                [Stance::Mog, Stance::Defend, Stance::Ignore]
+                    .map(|s| match s {
+                        Stance::Mog => DuelKey::Left,
+                        Stance::Defend => DuelKey::Down,
+                        Stance::Ignore => DuelKey::Right,
+                    })[rng.gen_range(0..3)]
+            }
+            _ => return,
+        };
+        game.duel_key(key, now);
+        if self.next_press.is_none_or(|t| t <= now) {
+            self.next_press = wait(rng, 130..280);
         }
     }
 }

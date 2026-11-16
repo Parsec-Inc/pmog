@@ -260,6 +260,8 @@ fn duel_view(game: Minigame, phase_ms: u64, board: Board) -> DuelView {
         i_won_round: None,
         i_won: None,
         board,
+        seq: 0,
+        lineup: Vec::new(),
     }
 }
 

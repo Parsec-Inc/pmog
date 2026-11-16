@@ -489,6 +489,8 @@ fn duel_view(game: Minigame, phase: Phase, board: Board) -> DuelView {
         i_won_round: Some(true),
         i_won: None,
         board,
+        seq: 0,
+        lineup: Vec::new(),
     }
 }
 
@@ -869,4 +871,82 @@ fn active_buffs_stand_out_and_their_end_is_announced() {
     for (w, h) in [(40, 12), (80, 24)] {
         render(&a, w, h);
     }
+}
+
+/// What side 0 sees of `game`, `ms` into play.
+fn live_view(game: Minigame, ms: u64) -> DuelView {
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(5);
+    let now = Instant::now();
+    let mut d = pmog::duel::Duel::with_games([1, 2], ["Igor".into(), "Rival".into()], 10.0, &[game], now, &mut rng);
+    let mut t = now;
+    while d.phase != Phase::Play {
+        t += Duration::from_millis(10);
+        d.tick(t, &mut rng);
+    }
+    d.view(0, 0.0, t + Duration::from_millis(ms))
+}
+
+#[test]
+fn every_new_minigame_screen_renders() {
+    let cases = [
+        (Minigame::Jawline, "ESCULPA O MAXILAR"),
+        (Minigame::Posture, "faixa reta"),
+        (Minigame::FitCheck, "FIT DO DIA"),
+        (Minigame::Memory, "Nível 4"),
+        (Minigame::Hydration, "FECHE COM ESPAÇO"),
+        (Minigame::Photo, "FOTO 1/4"),
+        (Minigame::Status, "MAIS CARO"),
+        (Minigame::Hair, "SEGURA O CABELO"),
+        (Minigame::Brow, "SOBRANCELHA"),
+        (Minigame::ReverseMog, "JOGADA 1/5"),
+    ];
+    for (game, text) in cases {
+        let a = dueling(live_view(game, 1_500));
+        let screen = render(&a, 150, 42);
+        assert!(screen.contains(text), "{game:?}:\n{screen}");
+        assert!(screen.contains("Rodada 1 de 6"), "{game:?}");
+        for (w, h) in [(30, 10), (80, 24), (200, 60)] {
+            render(&a, w, h);
+        }
+    }
+}
+
+#[test]
+fn draft_screen_moves_and_picks() {
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+    let now = Instant::now();
+    let d = pmog::duel::Duel::new([1, 2], ["Igor".into(), "Rival".into()], 0.0, now, &mut rng);
+    let side = (0..2).find(|s| matches!(d.view(*s, 0.0, now).board, Board::Draft { my_turn: true, .. })).unwrap();
+    let mut a = dueling(d.view(side, 0.0, now));
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("SUA VEZ DE ESCOLHER") && screen.contains("Escolha dos minigames"), "{screen}");
+    assert!(screen.contains("Encarada: Encare sem piscar"), "rules of the highlighted one: {screen}");
+    press(&mut a, KeyCode::Right);
+    press(&mut a, KeyCode::Down);
+    assert_eq!(a.game.draft_cursor, 1 + pmog::constants::DRAFT_COLUMNS);
+    a.game.outbox.clear();
+    press(&mut a, KeyCode::Enter);
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Duel { key: DuelKey::Pick(Some(Minigame::ALL[a.game.draft_cursor])), at_ms: None }));
+    for _ in 0..20 {
+        press(&mut a, KeyCode::Down);
+    }
+    assert_eq!(a.game.draft_cursor, Minigame::ALL.len(), "the last option is the random pick");
+    press(&mut a, KeyCode::Enter);
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Duel { key: DuelKey::Pick(None), at_ms: None }));
+    assert!(render(&a, 150, 42).contains("Aleatório: o servidor sorteia"));
+    press(&mut a, KeyCode::Esc);
+    assert_eq!(a.confirm, Some(Confirm::Forfeit), "Esc still offers to give up");
+    for (w, h) in [(30, 10), (80, 24)] {
+        render(&a, w, h);
+    }
+}
+
+#[test]
+fn digits_reach_the_duel() {
+    let mut a = dueling(live_view(Minigame::Status, 100));
+    a.game.outbox.clear();
+    press(&mut a, KeyCode::Char('3'));
+    assert!(matches!(a.game.outbox.last(), Some(ClientMsg::Duel { key: DuelKey::Char('3'), .. })));
 }

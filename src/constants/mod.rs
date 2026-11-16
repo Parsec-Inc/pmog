@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 9;
+pub const PROTOCOL_VERSION: u32 = 10;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -103,9 +103,10 @@ pub const BOT_RETRY: Duration = Duration::from_secs(2);
 /// Share of the poorer player's MP each side can bet.
 pub const STAKE_FRACTIONS: [f64; 5] = [0.0, 0.1, 0.25, 0.5, 1.0];
 pub const INVITE_TTL: Duration = Duration::from_secs(15);
-pub const DUEL_WINS_NEEDED: u32 = 2;
-/// Rounds before a tied duel ends as a draw.
-pub const DUEL_MAX_ROUNDS: u32 = 5;
+/// Regulation rounds; each side drafts half of them.
+pub const DUEL_ROUNDS: u32 = 6;
+/// Sudden death stops here and a still tied duel is a draw.
+pub const DUEL_MAX_ROUNDS: u32 = 9;
 pub const DUEL_COUNTDOWN: Duration = Duration::from_secs(5);
 pub const DUEL_ROUND_PAUSE: Duration = Duration::from_millis(3500);
 pub const DUEL_RESULT_SHOW: Duration = Duration::from_secs(4);

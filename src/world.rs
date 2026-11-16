@@ -774,7 +774,11 @@ impl World {
         self.queue.retain(|(q, ..)| *q != a && *q != b);
         let names = [self.name_of(a), self.name_of(b)];
         for (me, other) in [(a, &names[1]), (b, &names[0])] {
-            let text = format!("Duelo contra {other} valendo {} MP! Melhor de 3.", format_mp(stake));
+            let text = format!(
+                "Duelo contra {other} valendo {} MP! {DUEL_ROUNDS} rodadas, e cada um escolhe {} minigames.",
+                format_mp(stake),
+                DUEL_ROUNDS / 2
+            );
             self.event(me, Tone::Epic, text, Some("DUELO!".into()), false);
         }
         self.active.push(Duel::new([a, b], names, stake, now, &mut rand::thread_rng()));
@@ -834,9 +838,9 @@ impl World {
         let mut i = 0;
         while i < self.active.len() {
             let duel = &mut self.active[i];
-            let before = (duel.phase, duel.rounds);
+            let before = duel.revision(now);
             let done = duel.tick(now, &mut rng);
-            if (duel.phase, duel.rounds) != before || done {
+            if duel.revision(now) != before || done {
                 self.push.extend(duel.players);
             }
             self.settle(i);

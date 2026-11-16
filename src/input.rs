@@ -87,6 +87,19 @@ fn lobby_key(app: &mut App, code: KeyCode) {
 
 fn duel_key(app: &mut App, code: KeyCode) {
     let decided = app.game.duel.as_ref().is_none_or(|d| d.phase == Phase::Finished);
+    if app.game.duel.as_ref().is_some_and(|d| d.phase == Phase::Draft) {
+        let game = &mut app.game;
+        match code {
+            KeyCode::Left | KeyCode::Char('a') => game.move_draft_cursor(-1, 0),
+            KeyCode::Right | KeyCode::Char('d') => game.move_draft_cursor(1, 0),
+            KeyCode::Up | KeyCode::Char('w') => game.move_draft_cursor(0, -1),
+            KeyCode::Down | KeyCode::Char('s') => game.move_draft_cursor(0, 1),
+            KeyCode::Enter | KeyCode::Char(' ') => game.pick_minigame(),
+            KeyCode::Esc | KeyCode::Char('q') => app.confirm = Some(Confirm::Forfeit),
+            _ => {}
+        }
+        return;
+    }
     let typing = app.game.duel.as_ref().is_some_and(|d| {
         d.game == Minigame::Typing && matches!(d.phase, Phase::Countdown | Phase::Show | Phase::Play)
     });
@@ -119,6 +132,7 @@ fn duel_key(app: &mut App, code: KeyCode) {
         KeyCode::Left | KeyCode::Char('a') => DuelKey::Left,
         KeyCode::Right | KeyCode::Char('d') => DuelKey::Right,
         KeyCode::Char(' ') | KeyCode::Enter => DuelKey::Action,
+        KeyCode::Char(c @ '1'..='9') => DuelKey::Char(c),
         KeyCode::Esc | KeyCode::Char('q') if !decided => {
             app.confirm = Some(Confirm::Forfeit);
             return;

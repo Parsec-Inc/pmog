@@ -1,4 +1,4 @@
-//! PvP duel rules: every minigame, the best-of-3 flow and the World around it (escrow, invites, queue).
+//! PvP duel rules: the classic minigames, the draft, six rounds with sudden death and the World around it (escrow, invites, queue).
 
 use std::time::{Duration, Instant};
 
@@ -258,28 +258,34 @@ fn win_round(d: &mut Duel, side: usize, now: Instant) -> Instant {
             d.input(side, DuelKey::Answer(problems[0].answer()), None, 0.0, t + Duration::from_millis(500), &mut r);
             run_until(d, t, |d, _| d.phase == Phase::RoundOver);
         }
+        other => panic!("no script to win {other:?}"),
     }
     assert_eq!(last_winner(d), Some(side), "{:?}", d.game);
     run_until(d, t, |d, _| d.phase != Phase::RoundOver)
 }
 
 #[test]
-fn best_of_three_then_result_screen() {
+fn four_straight_wins_close_the_six_rounds_early() {
     let now = Instant::now();
-    let mut d = duel(&[Minigame::Mewing, Minigame::Angle, Minigame::Staredown], now);
+    let games = [Minigame::Mewing, Minigame::Angle, Minigame::Staredown, Minigame::Mewing, Minigame::Angle, Minigame::Mewing];
+    let mut d = duel(&games, now);
     let t = win_round(&mut d, 1, now);
-    assert_eq!(d.game, Minigame::Angle, "rounds follow the drawn order");
-    let t = win_round(&mut d, 0, t);
-    assert_eq!(d.outcome, None);
+    assert_eq!(d.game, Minigame::Angle, "rounds follow the given order");
+    let mut t = t;
+    for _ in 0..3 {
+        assert_eq!(d.outcome, None);
+        t = win_round(&mut d, 0, t);
+    }
+    assert_eq!(d.outcome, None, "3 x 1 with 2 rounds left is still open");
     let t = win_round(&mut d, 0, t);
     assert_eq!(d.phase, Phase::Finished);
-    assert_eq!(d.outcome, Some(Some(0)));
-    assert_eq!(d.rounds, 3);
+    assert_eq!(d.outcome, Some(Some(0)), "4 x 1 with one round left can't be caught");
+    assert_eq!(d.rounds, 5);
     assert_eq!(d.take_settlement(), Some(Some(0)));
     assert_eq!(d.take_settlement(), None, "stakes move only once");
 
     let view: DuelView = d.view(1, 500.0, t);
-    assert_eq!((view.my_wins, view.their_wins), (1, 2));
+    assert_eq!((view.my_wins, view.their_wins), (1, 4));
     assert_eq!(view.i_won, Some(Some(false)));
     assert_eq!(view.opponent, "Alfa");
     assert!(!d.tick(t, &mut rng()));
@@ -412,10 +418,16 @@ fn a_full_duel_played_through_the_world() {
     // Player 1 plays well, player 2 does nothing.
     while w.view(1, t).unwrap().duel.is_some_and(|d| d.i_won.is_none()) {
         guard += 1;
-        assert!(guard < 20_000, "duel never ended");
+        assert!(guard < 100_000, "duel never ended");
         t += STEP;
         w.tick(t, 0.0);
         let d = w.view(1, t).unwrap().duel.unwrap();
+        // Player 1 drafts the games it knows; player 2 lets the clock pick.
+        if let Board::Draft { ref picks, my_turn: true } = d.board {
+            let mine = [Minigame::Staredown, Minigame::Mewing, Minigame::Angle];
+            let free = mine.into_iter().find(|g| !picks.iter().any(|p| p.game == *g));
+            w.duel_input(1, DuelKey::Pick(free), None, 0.0, t);
+        }
         if d.phase != Phase::Play {
             continue;
         }
@@ -843,4 +855,92 @@ fn typing_stats_are_standard() {
     assert_eq!((wpm, acc), (60.0, 1.0), "300 chars in a minute = 60 words per minute");
     assert_eq!(pmog::duel::typing_stats(0, 0, 0.0), (0.0, 1.0));
     assert_eq!(pmog::duel::typing_stats(3, 1, 1000.0).1, 0.75);
+}
+
+#[test]
+fn three_all_goes_to_sudden_death_with_a_new_minigame() {
+    let now = Instant::now();
+    let games = [Minigame::Mewing, Minigame::Mewing, Minigame::Mewing, Minigame::Angle, Minigame::Angle, Minigame::Angle];
+    let mut d = duel(&games, now);
+    let mut t = now;
+    for side in [0, 0, 0, 1, 1, 1] {
+        t = win_round(&mut d, side, t);
+    }
+    assert_eq!(d.outcome, None, "3 x 3 is not over");
+    assert_eq!(d.rounds, 7);
+    assert!(!games.contains(&d.game), "sudden death draws a minigame not played yet: {:?}", d.game);
+    // Nobody plays the tiebreak: draws keep it going until the cap.
+    while d.outcome.is_none() {
+        t = run_until(&mut d, t, |d, _| d.phase == Phase::RoundOver);
+        t = run_until(&mut d, t, |d, _| d.phase != Phase::RoundOver);
+    }
+    assert_eq!(d.rounds, DUEL_MAX_ROUNDS);
+    assert_eq!(d.outcome, Some(None));
+}
+
+#[test]
+fn sudden_death_winner_takes_it() {
+    let now = Instant::now();
+    let games = [Minigame::Mewing, Minigame::Mewing, Minigame::Mewing, Minigame::Angle, Minigame::Angle, Minigame::Angle, Minigame::Mewing];
+    let mut d = duel(&games, now);
+    let mut t = now;
+    for side in [1, 0, 1, 0, 1, 0, 1] {
+        t = win_round(&mut d, side, t);
+    }
+    assert_eq!(d.outcome, Some(Some(1)));
+    assert_eq!(d.rounds, 7);
+}
+
+/// Picks for whoever's turn it is until the draft is over.
+fn draft_all(d: &mut Duel, picks: &[Option<Minigame>], now: Instant) {
+    let mut r = rng();
+    for pick in picks {
+        let side = (0..2).find(|s| matches!(board(d, *s, now), Board::Draft { my_turn: true, .. })).expect("someone's turn");
+        d.input(side, DuelKey::Pick(*pick), None, 0.0, now, &mut r);
+    }
+}
+
+#[test]
+fn draft_alternates_and_sets_the_round_order() {
+    let now = Instant::now();
+    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 50.0, now, &mut rng());
+    assert_eq!(d.phase, Phase::Draft);
+    let first = (0..2).find(|s| matches!(board(&d, *s, now), Board::Draft { my_turn: true, .. })).unwrap();
+    d.input(1 - first, DuelKey::Pick(Some(Minigame::Brow)), None, 0.0, now, &mut rng());
+    assert!(matches!(board(&d, first, now), Board::Draft { ref picks, my_turn: true } if picks.is_empty()), "out of turn is ignored");
+
+    draft_all(&mut d, &[Some(Minigame::Brow), Some(Minigame::Brow)], now);
+    let Board::Draft { picks, .. } = board(&d, first, now) else { panic!() };
+    assert_eq!(picks.len(), 1, "a taken minigame can't be picked again");
+    assert!(picks[0].mine && picks[0].game == Minigame::Brow && !picks[0].random);
+
+    draft_all(&mut d, &[Some(Minigame::Hair), None, Some(Minigame::Status), Some(Minigame::Photo), Some(Minigame::Jawline)], now);
+    assert_eq!(d.phase, Phase::Countdown, "six picks start the first round");
+    assert_eq!(d.game, Minigame::Brow);
+    let view = d.view(first, 0.0, now);
+    assert_eq!(view.lineup.len(), 6);
+    assert_eq!(view.lineup.iter().filter(|p| p.mine).count(), 3, "each side picks half");
+    assert!(view.lineup[2].random, "the third pick asked for a random one");
+    let games: std::collections::HashSet<_> = view.lineup.iter().map(|p| p.game).collect();
+    assert_eq!(games.len(), 6, "no repeats, the random pick included");
+    assert_eq!(view.lineup[1].game, Minigame::Hair);
+}
+
+#[test]
+fn draft_time_out_picks_for_you() {
+    let now = Instant::now();
+    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 0.0, now, &mut rng());
+    let t = run_until(&mut d, now, |d, _| d.phase == Phase::Countdown);
+    assert!(t >= now + DRAFT_PICK_TIME * DUEL_ROUNDS);
+    let view = d.view(0, 0.0, t);
+    assert!(view.lineup.iter().all(|p| p.random) && view.lineup.len() == DUEL_ROUNDS as usize);
+}
+
+#[test]
+fn every_draft_step_is_a_new_phase_for_clients() {
+    let now = Instant::now();
+    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 0.0, now, &mut rng());
+    let before = d.revision(now);
+    draft_all(&mut d, &[None], now);
+    assert_ne!(d.revision(now), before);
 }

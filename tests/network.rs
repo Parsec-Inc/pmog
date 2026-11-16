@@ -257,8 +257,8 @@ fn a_whole_duel_over_tcp_with_escrow_and_history() {
     let mut rng = rand::thread_rng();
     let start = Instant::now();
     let mut seen_games = std::collections::HashSet::new();
-    // Up to DUEL_MAX_ROUNDS rounds of intro, play and pause.
-    while start.elapsed() < Duration::from_secs(180) {
+    // The draft, then up to DUEL_MAX_ROUNDS rounds of intro, play and pause.
+    while start.elapsed() < Duration::from_secs(420) {
         let now = Instant::now();
         for (c, d) in clients.iter_mut().zip(duelists.iter_mut()) {
             c.pump();

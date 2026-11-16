@@ -1,8 +1,13 @@
-//! PvP duels: best of three minigames, refereed by the server.
+//! PvP duels: six drafted minigames plus sudden death, refereed by the server.
+
+mod contests;
+
+pub use contests::*;
 
 use std::time::{Duration, Instant};
 
 use rand::Rng;
+use rand::seq::IteratorRandom;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -19,10 +24,20 @@ pub enum Minigame {
     Rhythm,
     Hunter,
     Macros,
+    Jawline,
+    Posture,
+    FitCheck,
+    Memory,
+    Hydration,
+    Photo,
+    Status,
+    Hair,
+    Brow,
+    ReverseMog,
 }
 
 impl Minigame {
-    pub const ALL: [Minigame; 8] = [
+    pub const ALL: [Minigame; 18] = [
         Minigame::Staredown,
         Minigame::Skincare,
         Minigame::Mewing,
@@ -31,6 +46,16 @@ impl Minigame {
         Minigame::Rhythm,
         Minigame::Hunter,
         Minigame::Macros,
+        Minigame::Jawline,
+        Minigame::Posture,
+        Minigame::FitCheck,
+        Minigame::Memory,
+        Minigame::Hydration,
+        Minigame::Photo,
+        Minigame::Status,
+        Minigame::Hair,
+        Minigame::Brow,
+        Minigame::ReverseMog,
     ];
 
     pub fn name(self) -> &'static str {
@@ -43,6 +68,16 @@ impl Minigame {
             Minigame::Rhythm => "Treino no Ritmo",
             Minigame::Hunter => "Olhar de Caçador",
             Minigame::Macros => "Conta dos Macros",
+            Minigame::Jawline => "Esculpir o Maxilar",
+            Minigame::Posture => "Postura Reta",
+            Minigame::FitCheck => "Fit Check",
+            Minigame::Memory => "Memória de Rotina",
+            Minigame::Hydration => "Hidratação",
+            Minigame::Photo => "Fotogenia",
+            Minigame::Status => "Batalha de Status",
+            Minigame::Hair => "Cabelo ao Vento",
+            Minigame::Brow => "Sobrancelha Levantada",
+            Minigame::ReverseMog => "Mog Reverso",
         }
     }
 
@@ -68,6 +103,36 @@ impl Minigame {
             Minigame::Macros => {
                 "Resolva as contas de macros (gramas) digitando o resultado e Enter. Quem resolver mais vence; empate vai para quem terminou antes."
             }
+            Minigame::Jawline => {
+                "Deixe o seu maxilar igual ao molde. ← → escolhem o ponto, ↑ ↓ sobem e descem. Vence quem ficar com menos erro; empate vai para quem acertou primeiro."
+            }
+            Minigame::Posture => {
+                "O pescoço vai entortando cada vez mais rápido. Corrija com ← → para mantê-lo dentro da faixa do meio. Vence quem passar mais tempo reto."
+            }
+            Minigame::FitCheck => {
+                "Cada peça troca de cor sem parar, e cada uma mais rápido que a anterior. Aperte ESPAÇO para travar a peça na cor do fit do dia. Mais peças certas vence; empate vai para quem fechou o look antes."
+            }
+            Minigame::Memory => {
+                "Os passos da rotina piscam um de cada vez. Depois, repita digitando os números (1 a 8). A cada nível a rotina ganha um passo; errou, saiu do nível."
+            }
+            Minigame::Hydration => {
+                "Encha a garrafa até a linha da meta: ↑ dá um gole grande (+5), → um golinho (+1), e a garrafa esvazia sozinha com o tempo. ESPAÇO fecha a garrafa. Vence quem fechar mais perto da meta."
+            }
+            Minigame::Photo => {
+                "A contagem 3, 2, 1 vem num ritmo diferente a cada foto e some antes do flash. Aperte ESPAÇO exatamente no clique. Vence quem ficar mais perto do flash, em média."
+            }
+            Minigame::Status => {
+                "Ordene os itens da loja do mais caro para o mais barato (preço inicial), apertando os números deles nessa ordem. Mais posições certas vence; empate vai para quem terminou antes."
+            }
+            Minigame::Hair => {
+                "Fios soltos aparecem de um lado do cabelo. Aperte a seta do lado certo antes de o fio voar. Seta errada ou no vazio tira pontos."
+            }
+            Minigame::Brow => {
+                "Encare o rival. Quando a sobrancelha dele levantar de verdade, aperte ESPAÇO. Tremidinhas são falsas: apertar nelas, antes da hora ou não apertar custa caro. Menor tempo total vence."
+            }
+            Minigame::ReverseMog => {
+                "Pedra, papel e tesoura do mog: Mogar (←) vence Ignorar, Ignorar (→) vence Defender, Defender (↓) vence Mogar. São 5 jogadas, escolha antes do tempo acabar. A escolha do rival só aparece na revelação."
+            }
         }
     }
 }
@@ -84,6 +149,8 @@ pub enum DuelKey {
     Char(char),
     /// A submitted number (macros only).
     Answer(i64),
+    /// A draft pick; `None` lets the server draw one.
+    Pick(Option<Minigame>),
 }
 
 impl DuelKey {
@@ -96,7 +163,7 @@ impl DuelKey {
             DuelKey::Left => "←",
             DuelKey::Right => "→",
             DuelKey::Action => "␣",
-            DuelKey::Char(_) | DuelKey::Answer(_) => "·",
+            DuelKey::Char(_) | DuelKey::Answer(_) | DuelKey::Pick(_) => "·",
         }
     }
 
@@ -107,13 +174,15 @@ impl DuelKey {
             DuelKey::Down => "Sérum",
             DuelKey::Left => "Hidratante",
             DuelKey::Right => "Protetor",
-            DuelKey::Action | DuelKey::Char(_) | DuelKey::Answer(_) => "",
+            DuelKey::Action | DuelKey::Char(_) | DuelKey::Answer(_) | DuelKey::Pick(_) => "",
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Phase {
+    /// Players take turns picking the minigames.
+    Draft,
     Countdown,
     /// Skincare and typing: the routine or the phrase is on screen before play.
     Show,
@@ -234,14 +303,14 @@ fn percent(distance: f64) -> String {
 enum Round {
     /// `reaction` in ms after the GO; `first` is when the first valid one arrived.
     Staredown { go_at: Instant, reaction: [Option<f64>; 2], first: Option<Instant> },
-    Skincare { sequence: Vec<DuelKey>, progress: [usize; 2], failed: [bool; 2], done_at: [Option<Instant>; 2] },
+    /// `digits` is the memory variant: steps are digit keys flashed one at a time.
+    Skincare { sequence: Vec<DuelKey>, progress: [usize; 2], failed: [bool; 2], done_at: [Option<Instant>; 2], digits: bool },
     /// `last` is the latest counted press; its time breaks ties (who got there first).
     Mewing { count: [u32; 2], last: [Option<(DuelKey, Instant)>; 2] },
     Angle { target: f64, attempts: [Vec<f64>; 2] },
     /// `judged[side][beat]` is the timing error of the press that hit that beat.
     Rhythm { judged: [Vec<Option<f64>>; 2], misses: [u32; 2] },
-    /// `answered[side][i]` says whether that stimulus got a press; `reactions` are the hits.
-    Hunter { schedule: Vec<(f64, bool)>, answered: [Vec<bool>; 2], reactions: [Vec<f64>; 2], score: [f64; 2], mistakes: [u32; 2] },
+    Hunter { schedule: Vec<(f64, bool)>, reflexes: Reflexes },
     /// `last_ms` is when each side solved its latest problem.
     Macros {
         problems: Vec<MacroProblem>,
@@ -259,6 +328,22 @@ enum Round {
         last_ms: [Option<f64>; 2],
         first_done: Option<Instant>,
     },
+    Contest(Box<dyn Contest>),
+}
+
+/// A draft pick as one side sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftPick {
+    pub mine: bool,
+    pub game: Minigame,
+    /// Drawn by the server: asked for or out of time.
+    pub random: bool,
+}
+
+/// Picks so far, as (side, game, random), and whose turn it is.
+struct Draft {
+    picks: Vec<(usize, Minigame, bool)>,
+    turn: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -285,16 +370,23 @@ pub struct Duel {
     settled: bool,
     upcoming: Vec<Minigame>,
     round: Round,
+    draft: Option<Draft>,
+    /// Every minigame played so far, so sudden death draws a new one.
+    played_games: Vec<Minigame>,
+    /// Counts phase changes; clients use it to tell a new phase from a repeat.
+    pub seq: u32,
 }
 
 impl Duel {
+    /// Duel that starts with the draft; who picks first is drawn.
     pub fn new(players: [PlayerId; 2], names: [String; 2], stake: f64, now: Instant, rng: &mut impl Rng) -> Duel {
-        let mut order = Minigame::ALL.to_vec();
-        order.shuffle(rng);
-        Duel::with_games(players, names, stake, &order, now, rng)
+        let mut duel = Duel::blank(players, names, stake, now);
+        duel.draft = Some(Draft { picks: Vec::new(), turn: rng.gen_range(0..2) });
+        duel.set_phase(Phase::Draft, DRAFT_PICK_TIME, now);
+        duel
     }
 
-    /// Duel playing `games` in this order first (then random ones).
+    /// Duel playing `games` in this order first (then random ones), with no draft.
     pub fn with_games(
         players: [PlayerId; 2],
         names: [String; 2],
@@ -303,7 +395,14 @@ impl Duel {
         now: Instant,
         rng: &mut impl Rng,
     ) -> Duel {
-        let mut duel = Duel {
+        let mut duel = Duel::blank(players, names, stake, now);
+        duel.upcoming = games.iter().rev().copied().collect();
+        duel.next_round(now, rng);
+        duel
+    }
+
+    fn blank(players: [PlayerId; 2], names: [String; 2], stake: f64, now: Instant) -> Duel {
+        Duel {
             players,
             names,
             stake,
@@ -317,11 +416,47 @@ impl Duel {
             played: 0,
             outcome: None,
             settled: false,
-            upcoming: games.iter().rev().copied().collect(),
+            upcoming: Vec::new(),
             round: Round::Mewing { count: [0, 0], last: [None, None] },
+            draft: None,
+            played_games: Vec::new(),
+            seq: 0,
+        }
+    }
+
+    /// Changes whenever clients need a fresh state.
+    pub fn revision(&self, now: Instant) -> (u32, u32) {
+        let stamp = match &self.round {
+            Round::Contest(c) if self.phase == Phase::Play => c.stamp(self.elapsed_ms(now)),
+            _ => 0,
         };
-        duel.next_round(now, rng);
-        duel
+        (self.seq, stamp)
+    }
+
+    fn elapsed_ms(&self, now: Instant) -> f64 {
+        now.saturating_duration_since(self.phase_started).as_secs_f64() * 1000.0
+    }
+
+    /// A draft pick by `side`; `None` draws one of the minigames still free.
+    fn pick(&mut self, side: usize, choice: Option<Minigame>, now: Instant, rng: &mut impl Rng) {
+        let Some(draft) = &mut self.draft else { return };
+        if side != draft.turn || draft.picks.len() >= DUEL_ROUNDS as usize {
+            return;
+        }
+        let taken = |g: Minigame| draft.picks.iter().any(|p| p.1 == g);
+        let (game, random) = match choice {
+            Some(g) if taken(g) => return,
+            Some(g) => (g, false),
+            None => (Minigame::ALL.into_iter().filter(|g| !taken(*g)).choose(rng).expect("more games than picks"), true),
+        };
+        draft.picks.push((side, game, random));
+        draft.turn = 1 - side;
+        if draft.picks.len() >= DUEL_ROUNDS as usize {
+            self.upcoming = draft.picks.iter().rev().map(|p| p.1).collect();
+            self.next_round(now, rng);
+        } else {
+            self.set_phase(Phase::Draft, DRAFT_PICK_TIME, now);
+        }
     }
 
     pub fn side(&self, id: PlayerId) -> Option<usize> {
@@ -332,14 +467,15 @@ impl Duel {
         self.phase = phase;
         self.phase_started = now;
         self.phase_len = len;
+        self.seq += 1;
     }
 
     fn next_round(&mut self, now: Instant, rng: &mut impl Rng) {
-        if self.upcoming.is_empty() {
-            self.upcoming = Minigame::ALL.to_vec();
-            self.upcoming.shuffle(rng);
-        }
-        self.game = self.upcoming.pop().expect("refilled above");
+        let fresh = |played: &[Minigame], rng: &mut _| {
+            Minigame::ALL.into_iter().filter(|g| !played.contains(g)).choose(rng).unwrap_or(Minigame::Staredown)
+        };
+        self.game = self.upcoming.pop().unwrap_or_else(|| fresh(&self.played_games, rng));
+        self.played_games.push(self.game);
         self.rounds += 1;
         self.round = Round::Mewing { count: [0, 0], last: [None, None] };
         self.set_phase(Phase::Countdown, DUEL_COUNTDOWN, now);
@@ -353,8 +489,13 @@ impl Duel {
                 self.set_phase(Phase::Play, wait + STAREDOWN_LIMIT, now);
             }
             Minigame::Skincare => {
-                let sequence = (0..SKINCARE_START_LEN).map(|_| *DuelKey::ARROWS.choose(rng).expect("non-empty")).collect();
-                self.round = Round::Skincare { sequence, progress: [0, 0], failed: [false, false], done_at: [None, None] };
+                let sequence = (0..SKINCARE_START_LEN).map(|_| routine_step(false, rng)).collect();
+                self.round = Round::Skincare { sequence, progress: [0, 0], failed: [false, false], done_at: [None, None], digits: false };
+                self.show_routine(now);
+            }
+            Minigame::Memory => {
+                let sequence = (0..MEMORY_START_LEN).map(|_| routine_step(true, rng)).collect();
+                self.round = Round::Skincare { sequence, progress: [0, 0], failed: [false, false], done_at: [None, None], digits: true };
                 self.show_routine(now);
             }
             Minigame::Mewing => {
@@ -383,14 +524,7 @@ impl Duel {
             Minigame::Hunter => {
                 let schedule = hunter_schedule(rng);
                 let len = schedule.last().map_or(0.0, |(at, _)| at + HUNTER_SHOW_MS) + RHYTHM_INTERVAL_MS;
-                let n = schedule.len();
-                self.round = Round::Hunter {
-                    schedule,
-                    answered: [vec![false; n], vec![false; n]],
-                    reactions: [Vec::new(), Vec::new()],
-                    score: [0.0, 0.0],
-                    mistakes: [0, 0],
-                };
+                self.round = Round::Hunter { reflexes: Reflexes::new(schedule.len()), schedule };
                 self.set_phase(Phase::Play, Duration::from_secs_f64(len / 1000.0), now);
             }
             Minigame::Macros => {
@@ -399,13 +533,19 @@ impl Duel {
                     Round::Macros { problems, solved: [0, 0], errors: [0, 0], last_ms: [None, None], first_done: None };
                 self.set_phase(Phase::Show, MACROS_SHOW, now);
             }
+            game => {
+                let contest = contests::create(game, rng).expect("every other minigame is a contest");
+                let len = contest.play_len();
+                self.round = Round::Contest(contest);
+                self.set_phase(Phase::Play, len, now);
+            }
         }
     }
 
     /// How long play lasts once the Show phase is over.
     fn play_len_after_show(&self) -> Duration {
         match &self.round {
-            Round::Skincare { sequence, .. } => SKINCARE_INPUT_BASE + SKINCARE_INPUT_STEP * sequence.len() as u32,
+            Round::Skincare { sequence, digits, .. } => routine_input_len(*digits, sequence.len()),
             Round::Typing { .. } => TYPING_LIMIT,
             Round::Macros { .. } => MACROS_LIMIT,
             _ => Duration::ZERO,
@@ -413,11 +553,10 @@ impl Duel {
     }
 
     fn show_routine(&mut self, now: Instant) {
-        let len = match &self.round {
-            Round::Skincare { sequence, .. } => sequence.len() as u32,
-            _ => return,
-        };
-        self.set_phase(Phase::Show, SKINCARE_SHOW_BASE + SKINCARE_SHOW_STEP * len, now);
+        let Round::Skincare { sequence, digits, .. } = &self.round else { return };
+        let len = sequence.len() as u32;
+        let show = if *digits { MEMORY_LEAD + MEMORY_FLASH * len } else { SKINCARE_SHOW_BASE + SKINCARE_SHOW_STEP * len };
+        self.set_phase(Phase::Show, show, now);
     }
 
     fn end_round(&mut self, winner: Option<usize>, text: String, now: Instant) {
@@ -454,6 +593,11 @@ impl Duel {
     pub fn tick(&mut self, now: Instant, rng: &mut impl Rng) -> bool {
         let over = now.saturating_duration_since(self.phase_started) >= self.phase_len;
         match self.phase {
+            Phase::Draft if over => {
+                if let Some(turn) = self.draft.as_ref().map(|d| d.turn) {
+                    self.pick(turn, None, now, rng);
+                }
+            }
             Phase::Countdown if over => self.start_play(now, rng),
             Phase::Show if over => self.set_phase(Phase::Play, self.play_len_after_show(), now),
             Phase::Play if now.saturating_duration_since(self.phase_started) >= self.phase_len + INPUT_GRACE => {
@@ -465,16 +609,18 @@ impl Duel {
                 self.decide_macros(now);
             }
             Phase::RoundOver if over => {
-                let decided = self.wins.iter().position(|w| *w >= DUEL_WINS_NEEDED);
-                if let Some(w) = decided {
-                    self.finish(Some(w), now);
+                let [a, b] = self.wins;
+                let leader = match a.cmp(&b) {
+                    std::cmp::Ordering::Greater => Some(0),
+                    std::cmp::Ordering::Less => Some(1),
+                    std::cmp::Ordering::Equal => None,
+                };
+                // Decided once the trailing side can't catch up in the regulation rounds left.
+                let left = DUEL_ROUNDS.saturating_sub(self.rounds);
+                if leader.is_some() && a.abs_diff(b) > left {
+                    self.finish(leader, now);
                 } else if self.rounds >= DUEL_MAX_ROUNDS {
-                    let winner = match self.wins[0].cmp(&self.wins[1]) {
-                        std::cmp::Ordering::Greater => Some(0),
-                        std::cmp::Ordering::Less => Some(1),
-                        std::cmp::Ordering::Equal => None,
-                    };
-                    self.finish(winner, now);
+                    self.finish(None, now);
                 } else {
                     self.next_round(now, rng);
                 }
@@ -521,7 +667,15 @@ impl Duel {
             Round::Rhythm { .. } => self.rhythm_end(now),
             Round::Hunter { .. } => self.hunter_end(now),
             Round::Macros { .. } => self.macros_end(now),
+            Round::Contest(_) => self.contest_end(now),
         }
+    }
+
+    fn contest_end(&mut self, now: Instant) {
+        let Round::Contest(c) = &self.round else { return };
+        let end = self.elapsed_ms(now).min(self.phase_len.as_secs_f64() * 1000.0);
+        let (winner, text) = c.result(&self.names, end);
+        self.end_round(winner, text, now);
     }
 
     fn rhythm_end(&mut self, now: Instant) {
@@ -544,24 +698,8 @@ impl Duel {
     }
 
     fn hunter_end(&mut self, now: Instant) {
-        let Round::Hunter { score, reactions, .. } = &self.round else { return };
-        let avg = [mean(&reactions[0]), mean(&reactions[1])];
-        let line = |s: usize| match avg[s] {
-            Some(ms) => format!("{:.0} pontos, {ms:.0} ms em média", score[s]),
-            None => format!("{:.0} pontos", score[s]),
-        };
-        let winner = if (score[0] - score[1]).abs() >= 1e-9 {
-            Some(if score[0] > score[1] { 0 } else { 1 })
-        } else {
-            match (avg[0], avg[1]) {
-                (Some(a), Some(b)) if (a - b).abs() >= 0.5 => Some(if a < b { 0 } else { 1 }),
-                _ => None,
-            }
-        };
-        let text = match winner {
-            Some(w) => format!("{} tem o olhar de caçador: {} x {}.", self.names[w], line(w), line(1 - w)),
-            None => format!("Olhares iguais: {}. Empate.", line(0)),
-        };
+        let Round::Hunter { reflexes, .. } = &self.round else { return };
+        let (winner, text) = reflexes.result(&self.names, "tem o olhar de caçador", "Olhares iguais");
         self.end_round(winner, text, now);
     }
 
@@ -659,12 +797,13 @@ impl Duel {
     }
 
     fn skincare_level_end(&mut self, now: Instant, rng: &mut impl Rng) {
-        let Round::Skincare { sequence, progress, failed, done_at } = &mut self.round else { return };
+        let Round::Skincare { sequence, progress, failed, done_at, digits } = &mut self.round else { return };
         let len = sequence.len();
+        let max = if *digits { MEMORY_MAX_LEN } else { SKINCARE_MAX_LEN };
         let passed = [done_at[0].is_some(), done_at[1].is_some()];
         let (winner, text) = match passed {
-            [true, true] if len < SKINCARE_MAX_LEN => {
-                sequence.push(*DuelKey::ARROWS.choose(rng).expect("non-empty"));
+            [true, true] if len < max => {
+                sequence.push(routine_step(*digits, rng));
                 *progress = [0, 0];
                 *done_at = [None, None];
                 *failed = [false, false];
@@ -732,6 +871,9 @@ impl Duel {
 
     /// Applies one key press from `side`; `at_ms` is the client's own timing (see `press_time`).
     pub fn input(&mut self, side: usize, key: DuelKey, at_ms: Option<f64>, rtt_max_ms: f64, now: Instant, rng: &mut impl Rng) {
+        if let (Phase::Draft, DuelKey::Pick(choice), 0..=1) = (self.phase, key, side) {
+            return self.pick(side, choice, now, rng);
+        }
         if self.phase != Phase::Play || side > 1 {
             return;
         }
@@ -764,8 +906,9 @@ impl Duel {
                 first.get_or_insert(now);
                 self.decide_staredown(now);
             }
-            Round::Skincare { sequence, progress, failed, done_at } => {
-                if key == DuelKey::Action || failed[side] || done_at[side].is_some() {
+            Round::Skincare { sequence, progress, failed, done_at, digits } => {
+                let step = if *digits { matches!(key, DuelKey::Char('1'..='8')) } else { DuelKey::ARROWS.contains(&key) };
+                if !step || failed[side] || done_at[side].is_some() {
                     return;
                 }
                 if sequence[progress[side]] == key {
@@ -824,29 +967,17 @@ impl Duel {
                     _ => misses[side] += 1,
                 }
             }
-            Round::Hunter { schedule, answered, reactions, score, mistakes } => {
+            Round::Hunter { schedule, reflexes } => {
                 if key != DuelKey::Action {
                     return;
                 }
-                let showing = schedule.iter().position(|(at, _)| (*at..at + HUNTER_SHOW_MS).contains(&t));
-                match showing {
-                    Some(i) if answered[side][i] => {}
+                match schedule.iter().position(|(at, _)| (*at..at + HUNTER_SHOW_MS).contains(&t)) {
                     Some(i) => {
-                        answered[side][i] = true;
                         let (at, target) = schedule[i];
-                        let reaction = t - at;
-                        if target && reaction >= HUMAN_REACTION_MIN_MS {
-                            reactions[side].push(reaction);
-                            score[side] += 1.0;
-                        } else {
-                            score[side] -= if target { HUNTER_EMPTY_PENALTY } else { HUNTER_DECOY_PENALTY };
-                            mistakes[side] += 1;
-                        }
+                        let penalty = if target { HUNTER_EMPTY_PENALTY } else { HUNTER_DECOY_PENALTY };
+                        reflexes.press(side, i, t - at, target, penalty);
                     }
-                    None => {
-                        score[side] -= HUNTER_EMPTY_PENALTY;
-                        mistakes[side] += 1;
-                    }
+                    None => reflexes.miss(side, HUNTER_EMPTY_PENALTY),
                 }
             }
             Round::Macros { problems, solved, errors, last_ms, first_done } => {
@@ -873,19 +1004,35 @@ impl Duel {
                     self.angle_end(now);
                 }
             }
+            Round::Contest(c) => {
+                c.input(side, key, t);
+                if c.settled() {
+                    self.contest_end(now);
+                }
+            }
         }
     }
 
     /// What `side` sees.
     pub fn view(&self, side: usize, opponent_lifetime: f64, now: Instant) -> DuelView {
         let other = 1 - side;
+        let lineup: Vec<DraftPick> = self
+            .draft
+            .iter()
+            .flat_map(|d| &d.picks)
+            .map(|(s, game, random)| DraftPick { mine: *s == side, game: *game, random: *random })
+            .collect();
         let board = match &self.round {
+            _ if self.phase == Phase::Draft => {
+                Board::Draft { picks: lineup.clone(), my_turn: self.draft.as_ref().is_some_and(|d| d.turn == side) }
+            }
+            Round::Contest(c) => c.board(side, if self.phase == Phase::Play { self.elapsed_ms(now) } else { 0.0 }),
             Round::Staredown { go_at, reaction, .. } => Board::Staredown {
                 go: self.phase == Phase::Play && now >= *go_at,
                 i_pressed: reaction[side].is_some(),
                 go_ms: go_at.saturating_duration_since(self.phase_started).as_millis() as u64,
             },
-            Round::Skincare { sequence, progress, failed, done_at } => {
+            Round::Skincare { sequence, progress, failed, done_at, .. } => {
                 let progress_of = |s: usize| Progress { steps: progress[s], failed: failed[s], done: done_at[s].is_some() };
                 Board::Skincare {
                     level: sequence.len(),
@@ -920,15 +1067,8 @@ impl Duel {
                 };
                 Board::Rhythm { mine: progress_of(side), theirs: progress_of(other) }
             }
-            Round::Hunter { schedule, answered, reactions, score, mistakes } => {
-                let progress_of = |s: usize| HunterProgress {
-                    hits: reactions[s].len() as u32,
-                    mistakes: mistakes[s],
-                    score: score[s],
-                    avg_ms: mean(&reactions[s]),
-                    answered: answered[s].clone(),
-                };
-                Board::Hunter { schedule: schedule.clone(), mine: progress_of(side), theirs: progress_of(other) }
+            Round::Hunter { schedule, reflexes } => {
+                Board::Hunter { schedule: schedule.clone(), mine: reflexes.progress(side), theirs: reflexes.progress(other) }
             }
             Round::Macros { problems, solved, errors, .. } => {
                 let progress_of = |s: usize| MacrosProgress { solved: solved[s], errors: errors[s], done: solved[s] == problems.len() };
@@ -952,6 +1092,8 @@ impl Duel {
             i_won_round: self.last.as_ref().and_then(|r| relative(r.winner)),
             i_won: self.outcome.map(relative),
             board,
+            seq: self.seq,
+            lineup,
         }
     }
 }
@@ -1014,6 +1156,19 @@ pub enum Board {
     /// The whole schedule is sent up front so each client shows the faces on its own clock.
     Hunter { schedule: Vec<(f64, bool)>, mine: HunterProgress, theirs: HunterProgress },
     Macros { problems: Vec<MacroProblem>, mine: MacrosProgress, theirs: MacrosProgress },
+    Draft { picks: Vec<DraftPick>, my_turn: bool },
+    Jawline { target: Vec<u8>, mine: JawSide, theirs: JawSide },
+    /// Each client draws the neck from the drift and the presses on its own clock.
+    Posture { drift: PostureWaves, mine: PostureSide, theirs: PostureSide },
+    FitCheck { target: Vec<u8>, offsets: Vec<u8>, mine: FitSide, theirs: FitSide },
+    Hydration { target: i32, mine: HydrationSide, theirs: HydrationSide },
+    Photo { shots: Vec<(f64, f64)>, mine: Vec<Option<f64>>, theirs: Vec<Option<f64>> },
+    /// `theirs` is only how many items the rival placed, so the order can't be copied.
+    Status { items: Vec<String>, mine: Vec<usize>, theirs: usize },
+    Hair { strands: Vec<Strand>, mine: HunterProgress, theirs: HunterProgress },
+    Brow { trials: Vec<BrowTrial>, mine: Vec<Option<BrowMark>>, theirs: Vec<Option<BrowMark>> },
+    /// `theirs` holds only revealed throws.
+    ReverseMog { mine: Vec<Option<Stance>>, theirs: Vec<Option<Stance>>, their_ready: bool },
 }
 
 /// A duel from one player's point of view.
@@ -1038,4 +1193,24 @@ pub struct DuelView {
     /// Whole duel, once decided: `Some(None)` is a draw.
     pub i_won: Option<Option<bool>>,
     pub board: Board,
+    /// Phase counter; a new value means a new phase even if it looks the same.
+    #[serde(default)]
+    pub seq: u32,
+    /// Draft picks in play order.
+    #[serde(default)]
+    pub lineup: Vec<DraftPick>,
+}
+
+/// A random step for a routine: an arrow, or a digit for the memory variant.
+fn routine_step(digits: bool, rng: &mut impl Rng) -> DuelKey {
+    if digits {
+        DuelKey::Char(char::from(b'1' + rng.gen_range(0..MEMORY_STEPS.len() as u8)))
+    } else {
+        *DuelKey::ARROWS.choose(rng).expect("non-empty")
+    }
+}
+
+/// Time to type back a routine of `len` steps.
+pub fn routine_input_len(digits: bool, len: usize) -> Duration {
+    if digits { MEMORY_INPUT_BASE + MEMORY_INPUT_STEP * len as u32 } else { SKINCARE_INPUT_BASE + SKINCARE_INPUT_STEP * len as u32 }
 }

@@ -464,6 +464,8 @@ pub struct Game {
     macros_local: Option<(u32, usize, u32)>,
     /// Number being typed for the current macros problem.
     pub macros_input: String,
+    /// Highlighted option on the draft screen: an index of `Minigame::ALL`, or its length for a random pick.
+    pub draft_cursor: usize,
     /// Corrects duel timing for network lag; off only to compare against the old behaviour.
     pub compensate: bool,
     /// Timed buffs active at the last check, to announce when they wear off.
@@ -558,6 +560,7 @@ impl Game {
             typing_local: None,
             macros_local: None,
             macros_input: String::new(),
+            draft_cursor: 0,
             compensate: true,
             timed_buffs: Vec::new(),
             logged: 0,
@@ -794,6 +797,19 @@ impl Game {
         Some(MacrosProgress { solved, errors, done: solved >= problems.len() })
     }
 
+    /// Moves the draft cursor by `dx` columns and `dy` rows of the grid.
+    pub fn move_draft_cursor(&mut self, dx: i32, dy: i32) {
+        let options = Minigame::ALL.len() as i32 + 1;
+        let next = self.draft_cursor as i32 + dx + dy * DRAFT_COLUMNS as i32;
+        self.draft_cursor = next.clamp(0, options - 1) as usize;
+    }
+
+    /// Picks the minigame under the draft cursor, or asks for a random one.
+    pub fn pick_minigame(&mut self) {
+        let choice = Minigame::ALL.get(self.draft_cursor).copied();
+        self.outbox.push(ClientMsg::Duel { key: DuelKey::Pick(choice), at_ms: None });
+    }
+
     /// Sends the typed macros answer, if it is a number.
     pub fn submit_macros(&mut self, now: Instant) {
         let input = std::mem::take(&mut self.macros_input);
@@ -830,10 +846,10 @@ impl Game {
                 *board = Board::Mewing { mine: 0, theirs: 0 };
                 MEWING_DURATION
             }
-            (Phase::Show, Minigame::Skincare, Board::Skincare { sequence, .. }) => {
-                let steps = sequence.len() as u32;
+            (Phase::Show, game @ (Minigame::Skincare | Minigame::Memory), Board::Skincare { sequence, .. }) => {
+                let steps = sequence.len();
                 sequence.clear();
-                SKINCARE_INPUT_BASE + SKINCARE_INPUT_STEP * steps
+                crate::duel::routine_input_len(game == Minigame::Memory, steps)
             }
             (Phase::Show, Minigame::Typing, Board::Typing { .. }) => TYPING_LIMIT,
             (Phase::Show, Minigame::Macros, Board::Macros { .. }) => MACROS_LIMIT,
@@ -844,6 +860,7 @@ impl Game {
             _ => return,
         };
         d.phase = Phase::Play;
+        d.seq += 1;
         d.phase_ms = 0;
         d.phase_len_ms = play_len.as_millis() as u64;
         self.duel_phase_started += len;
@@ -922,12 +939,12 @@ impl Game {
         self.started = now.checked_sub(ms(view.meter_ms) + travel).unwrap_or(now);
         if let Some(duel) = &view.duel {
             let start = now.checked_sub(ms(duel.phase_ms) + travel).unwrap_or(now);
-            let phase = (duel.round, duel.phase);
             // Within a phase, the earliest estimate came from the least delayed packet.
-            let same = self.duel.as_ref().is_some_and(|d| (d.round, d.phase) == phase);
+            let same = self.duel.as_ref().is_some_and(|d| d.seq == duel.seq);
             self.duel_phase_started = if same && self.compensate { start.min(self.duel_phase_started) } else { start };
             if self.duel.is_none() {
                 self.overlay = Overlay::None;
+                self.draft_cursor = 0;
             }
         }
         self.duel = view.duel;

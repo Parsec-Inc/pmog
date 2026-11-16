@@ -7,7 +7,11 @@ use ratatui::widgets::{Block, BorderType, Clear, Gauge, Paragraph, Wrap};
 
 use super::flair::{clock, tagged_spans};
 use super::{fg, small_popup};
-use crate::constants::{ANGLE_ATTEMPTS, HUNTER_SHOW_MS, RHYTHM_BEATS, RHYTHM_INTERVAL_MS, RHYTHM_PERFECT_MS, STAKE_FRACTIONS};
+use super::minigames;
+use crate::constants::{
+    ANGLE_ATTEMPTS, DUEL_ROUNDS, HUNTER_SHOW_MS, MEMORY_FLASH, MEMORY_LEAD, MEMORY_STEPS, RHYTHM_BEATS, RHYTHM_INTERVAL_MS, RHYTHM_PERFECT_MS,
+    STAKE_FRACTIONS,
+};
 use crate::duel::{
     Board, DuelKey, DuelView, HunterProgress, MacroProblem, MacrosProgress, Minigame, Phase, Progress, RhythmProgress, TypingProgress,
     angle_pos, rhythm_beat_ms,
@@ -15,8 +19,8 @@ use crate::duel::{
 use crate::game::{Game, Rank};
 use crate::utils::format_mp;
 
-const WIN_COLOR: Color = Color::Rgb(90, 230, 120);
-const LOSS_COLOR: Color = Color::Rgb(255, 90, 90);
+pub(super) const WIN_COLOR: Color = Color::Rgb(90, 230, 120);
+pub(super) const LOSS_COLOR: Color = Color::Rgb(255, 90, 90);
 const DRAW_COLOR: Color = Color::Rgb(250, 210, 80);
 
 fn outcome_color(won: Option<bool>) -> Color {
@@ -27,12 +31,22 @@ fn outcome_color(won: Option<bool>) -> Color {
     }
 }
 
+/// Wins as dots out of a majority of the regulation rounds.
 fn pips(wins: u32) -> String {
-    (0..2).map(|i| if i < wins { '●' } else { '○' }).collect()
+    (0..(DUEL_ROUNDS / 2 + 1).max(wins)).map(|i| if i < wins { '●' } else { '○' }).collect()
+}
+
+/// "Rodada 3 de 6", "Desempate" or the draft, for the duel header.
+fn round_label(d: &DuelView) -> String {
+    match (d.phase, d.round) {
+        (Phase::Draft, _) => "Escolha dos minigames".to_string(),
+        (_, r) if r > DUEL_ROUNDS => format!("Desempate (morte súbita) · {}", d.game.name()),
+        (_, r) => format!("Rodada {r} de {DUEL_ROUNDS} · {}", d.game.name()),
+    }
 }
 
 /// Seconds left in the current phase, rounded up.
-fn seconds_left(d: &DuelView, elapsed: f64) -> u64 {
+pub(super) fn seconds_left(d: &DuelView, elapsed: f64) -> u64 {
     (d.phase_len_ms as f64 / 1000.0 - elapsed).max(0.0).ceil() as u64
 }
 
@@ -51,19 +65,23 @@ pub fn draw_duel(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     line.extend(them);
     let info = Line::styled(
         match d.stake {
-            0.0 => format!("Rodada {} · {} · Amistoso", d.round, d.game.name()),
-            stake => format!("Rodada {} · {} · Aposta {} MP cada", d.round, d.game.name(), format_mp(stake)),
+            0.0 => format!("{} · Amistoso", round_label(d)),
+            stake => format!("{} · Aposta {} MP cada", round_label(d), format_mp(stake)),
         },
         fg(Color::Gray),
     );
     let block = Block::bordered().border_type(BorderType::Double).border_style(fg(Color::Magenta)).title(" ⚔ DUELO ");
     f.render_widget(Paragraph::new(vec![Line::from(line).centered(), info.centered()]).block(block), score);
 
-    let title = format!(" {} ", d.game.name());
+    let title = if d.phase == Phase::Draft { " Escolha alternada ".to_string() } else { format!(" {} ", d.game.name()) };
     let block = Block::bordered().border_type(BorderType::Rounded).title(Line::from(title).centered());
     let inner = block.inner(board);
     f.render_widget(block, board);
     let lines = match d.phase {
+        Phase::Draft => match &d.board {
+            Board::Draft { picks, my_turn } => minigames::draft(d, picks, *my_turn, g, elapsed, inner.width as usize),
+            _ => Vec::new(),
+        },
         Phase::Countdown => countdown(d, elapsed),
         Phase::RoundOver => round_over(d),
         Phase::Finished => finished(d),
@@ -85,13 +103,18 @@ pub fn draw_duel(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
 }
 
 fn countdown(d: &DuelView, elapsed: f64) -> Vec<Line<'static>> {
-    vec![
+    let mut lines = vec![
         Line::styled(format!("PRÓXIMO: {}", d.game.name().to_uppercase()), fg(Color::Yellow).bold()),
         Line::raw(""),
         Line::styled(format!("{}", seconds_left(d, elapsed).max(1)), fg(Color::Magenta).bold()),
         Line::raw(""),
         Line::styled(d.game.how_to(), fg(Color::Gray)),
-    ]
+    ];
+    if !d.lineup.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(minigames::lineup_line(&d.lineup, Some(d.round)));
+    }
+    lines
 }
 
 fn round_over(d: &DuelView) -> Vec<Line<'static>> {
@@ -131,7 +154,7 @@ fn finished(d: &DuelView) -> Vec<Line<'static>> {
 fn playing(d: &DuelView, g: &Game, elapsed: f64, width: usize, now: Instant) -> Vec<Line<'static>> {
     match &d.board {
         Board::Staredown { i_pressed, .. } => staredown(g.staredown_go(now), *i_pressed, now),
-        Board::Skincare { level, sequence, mine, theirs } => skincare(d, *level, sequence, mine, theirs),
+        Board::Skincare { level, sequence, mine, theirs } => skincare(d, *level, sequence, mine, theirs, elapsed),
         Board::Mewing { mine, theirs } => mewing(*mine, *theirs, &d.opponent, width),
         Board::Angle { target, mine, theirs } => angle(*target, mine, theirs, elapsed, width, &d.opponent, g),
         Board::Typing { text, mine, theirs } => {
@@ -144,6 +167,16 @@ fn playing(d: &DuelView, g: &Game, elapsed: f64, width: usize, now: Instant) -> 
             let mine = g.macros_mine().unwrap_or(*mine);
             macros(d, problems, &mine, theirs, &g.macros_input, elapsed, width)
         }
+        Board::Draft { .. } => Vec::new(),
+        Board::Jawline { target, mine, theirs } => minigames::jawline(target, mine, theirs, &d.opponent),
+        Board::Posture { drift, mine, theirs } => minigames::posture(drift, mine, theirs, elapsed, width, &d.opponent),
+        Board::FitCheck { target, offsets, mine, theirs } => minigames::fit_check(target, offsets, mine, theirs, elapsed, &d.opponent),
+        Board::Hydration { target, mine, theirs } => minigames::hydration(*target, mine, theirs, elapsed, width, &d.opponent),
+        Board::Photo { shots, mine, theirs } => minigames::photo(shots, mine, theirs, elapsed, &d.opponent),
+        Board::Status { items, mine, theirs } => minigames::status(items, mine, *theirs, &d.opponent),
+        Board::Hair { strands, mine, theirs } => minigames::hair(strands, mine, theirs, elapsed, &d.opponent),
+        Board::Brow { trials, mine, theirs } => minigames::brow(trials, mine, theirs, elapsed, &d.opponent),
+        Board::ReverseMog { mine, theirs, their_ready } => minigames::reverse_mog(mine, theirs, *their_ready, elapsed, &d.opponent),
     }
 }
 
@@ -200,7 +233,7 @@ fn rhythm(mine: &RhythmProgress, theirs: &RhythmProgress, elapsed: f64, width: u
     ]
 }
 
-fn hunter_row(name: &str, p: &HunterProgress, color: Color) -> Line<'static> {
+pub(super) fn hunter_row(name: &str, p: &HunterProgress, color: Color) -> Line<'static> {
     let avg = p.avg_ms.map_or(String::new(), |ms| format!(" · {ms:.0} ms"));
     Line::from(vec![
         format!("{:<12.12}", name).into(),
@@ -373,8 +406,35 @@ fn progress_text(p: &Progress, level: usize) -> (String, Color) {
     }
 }
 
-fn skincare(d: &DuelView, level: usize, sequence: &[DuelKey], mine: &Progress, theirs: &Progress) -> Vec<Line<'static>> {
+/// Memory step a digit key stands for.
+fn memory_step(key: &DuelKey) -> String {
+    match key {
+        DuelKey::Char(c) => {
+            let i = c.to_digit(10).unwrap_or(1).saturating_sub(1) as usize;
+            format!("{c} {}", MEMORY_STEPS.get(i).copied().unwrap_or("?"))
+        }
+        _ => String::new(),
+    }
+}
+
+fn skincare(d: &DuelView, level: usize, sequence: &[DuelKey], mine: &Progress, theirs: &Progress, elapsed: f64) -> Vec<Line<'static>> {
+    let memory = d.game == Minigame::Memory;
     let mut lines = vec![Line::styled(format!("Nível {level}"), fg(Color::Yellow).bold()), Line::raw("")];
+    if memory && d.phase == Phase::Show {
+        let shown = elapsed - MEMORY_LEAD.as_secs_f64();
+        let step = (shown / MEMORY_FLASH.as_secs_f64()).floor();
+        let within = shown - step * MEMORY_FLASH.as_secs_f64() < MEMORY_FLASH.as_secs_f64() * 0.8;
+        lines.push(Line::styled("DECORE OS PASSOS", fg(Color::Magenta).bold()));
+        lines.push(Line::raw(""));
+        lines.push(match sequence.get(step.max(0.0) as usize) {
+            Some(key) if shown >= 0.0 && within => {
+                Line::styled(format!("  {}  ", memory_step(key)), Style::new().bold().fg(Color::Black).bg(Color::LightMagenta))
+            }
+            _ => Line::raw(""),
+        });
+        lines.push(Line::styled(format!("passo {}/{}", (step.max(-1.0) + 1.0) as usize, sequence.len()), fg(Color::DarkGray)));
+        return lines;
+    }
     if d.phase == Phase::Show {
         lines.push(Line::styled("MEMORIZE A ROTINA", fg(Color::Magenta).bold()));
         lines.push(Line::raw(""));
@@ -407,7 +467,12 @@ fn skincare(d: &DuelView, level: usize, sequence: &[DuelKey], mine: &Progress, t
     lines.push(Line::from(vec!["Você: ".into(), Span::styled(mine_text, fg(mine_color).bold())]));
     lines.push(Line::from(vec![format!("{}: ", d.opponent).into(), Span::styled(their_text, fg(their_color))]));
     lines.push(Line::raw(""));
-    lines.push(Line::styled("↑ Tônico   ↓ Sérum   ← Hidratante   → Protetor", fg(Color::DarkGray)));
+    let legend = if memory {
+        MEMORY_STEPS.iter().enumerate().map(|(i, s)| format!("{} {s}", i + 1)).collect::<Vec<_>>().join("  ")
+    } else {
+        "↑ Tônico   ↓ Sérum   ← Hidratante   → Protetor".to_string()
+    };
+    lines.push(Line::styled(legend, fg(Color::DarkGray)));
     lines
 }
 
@@ -474,11 +539,21 @@ pub fn duel_footer(d: &DuelView) -> Line<'static> {
     let key = |k: &'static str| Span::styled(format!(" {k} "), Style::new().bg(Color::DarkGray).fg(Color::White).bold());
     let mut spans = match (d.phase, d.game) {
         (Phase::Finished, _) => vec![Span::raw(" O resultado some sozinho em instantes.")],
-        (_, Minigame::Staredown | Minigame::Angle | Minigame::Rhythm | Minigame::Hunter) => vec![key("ESPAÇO"), " apertar ".into()],
+        (Phase::Draft, _) => vec![key("↑↓←→"), " escolher ".into(), key("Enter"), " confirmar ".into()],
+        (_, Minigame::Staredown | Minigame::Angle | Minigame::Rhythm | Minigame::Hunter | Minigame::FitCheck | Minigame::Photo | Minigame::Brow) => {
+            vec![key("ESPAÇO"), " apertar ".into()]
+        }
         (_, Minigame::Macros) => vec![key("0-9"), " resposta ".into(), key("Enter"), " enviar ".into()],
         (_, Minigame::Skincare) => vec![key("↑↓←→"), " passos da rotina ".into()],
+        (_, Minigame::Memory) => vec![key("1-8"), " passos da rotina ".into()],
+        (_, Minigame::Status) => vec![key("1-5"), " do mais caro ao mais barato ".into()],
         (_, Minigame::Mewing) => vec![key("← →"), " ou ".into(), key("A D"), " mewar alternando ".into()],
         (_, Minigame::Typing) => vec![key("letras"), " digitar a frase ".into()],
+        (_, Minigame::Jawline) => vec![key("← →"), " ponto ".into(), key("↑ ↓"), " altura ".into()],
+        (_, Minigame::Posture) => vec![key("← →"), " endireitar ".into()],
+        (_, Minigame::Hydration) => vec![key("↑"), " +5 ".into(), key("→"), " +1 ".into(), key("ESPAÇO"), " fechar ".into()],
+        (_, Minigame::Hair) => vec![key("↑↓←→"), " lado do fio ".into()],
+        (_, Minigame::ReverseMog) => vec![key("←"), " mogar ".into(), key("↓"), " defender ".into(), key("→"), " ignorar ".into()],
     };
     if d.phase != Phase::Finished {
         spans.extend([key("Esc"), " desistir".into()]);
@@ -548,7 +623,7 @@ pub fn draw_invite(f: &mut Frame, g: &Game, now: Instant) {
     let lines = vec![
         Line::from(who).centered(),
         Line::styled(
-            format!("Aposta: {} MP cada · melhor de 3 · expira em {} s", format_mp(invite.stake), invite.expires_ms.div_ceil(1000)),
+            format!("Aposta: {} MP cada · {DUEL_ROUNDS} rodadas · expira em {} s", format_mp(invite.stake), invite.expires_ms.div_ceil(1000)),
             fg(Color::Yellow),
         )
         .centered(),

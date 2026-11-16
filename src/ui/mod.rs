@@ -3,6 +3,7 @@
 pub mod chat;
 pub mod clan;
 mod duel;
+mod minigames;
 pub mod flair;
 
 use std::time::{Duration, Instant};

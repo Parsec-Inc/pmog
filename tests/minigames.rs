@@ -49,7 +49,7 @@ fn result(d: &Duel) -> String {
 
 #[test]
 fn every_minigame_has_a_name_and_explanation() {
-    assert_eq!(Minigame::ALL.len(), 8);
+    assert_eq!(Minigame::ALL.len(), 18);
     for g in Minigame::ALL {
         assert!(!g.name().is_empty() && g.how_to().len() > 40, "{g:?}");
     }
