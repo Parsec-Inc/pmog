@@ -368,6 +368,14 @@ pub fn meter_value(elapsed: f64, stats: &Stats, streak: u32) -> f64 {
     (1.0 - (elapsed * meter_speed(stats, streak)).cos()) / 2.0
 }
 
+/// Odds that `power` beats a defense of `defense` times a uniform pick from `roll`.
+pub fn beat_chance(power: f64, defense: f64, roll: std::ops::Range<f64>) -> f64 {
+    if defense <= 0.0 {
+        return 1.0;
+    }
+    ((power / defense - roll.start) / (roll.end - roll.start)).clamp(0.0, 1.0)
+}
+
 pub fn streak_mult(streak: u32, stats: &Stats) -> f64 {
     1.0 + streak.min(STREAK_CAP) as f64 * stats.streak_bonus
 }
@@ -510,6 +518,16 @@ impl Game {
 
     pub fn flash(&mut self, now: Instant, tone: Tone, text: impl Into<String>) {
         self.banner = Some(Banner { text: text.into(), tone, until: now + BANNER_DURATION });
+    }
+
+    /// Chance of mogging `peer` with a mid GOOD hit and with a PERFECT one; shields and mirrors are not visible.
+    pub fn mog_odds(&self, peer: &Peer) -> (f64, f64) {
+        let stats = self.player.stats();
+        let angle = if self.player.angle_armed { 2.0 } else { 1.0 };
+        let base = stats.attack * streak_mult(self.streak, &stats) * angle;
+        let good = TIMING_FLOOR + TIMING_SPAN * (TIMING_GOOD_FROM + stats.perfect_threshold) / 2.0;
+        let (defense, roll) = if peer.is_npc() { (stats.attack, NPC_DEFENSE_ROLL) } else { (peer.defense, DEFENSE_ROLL) };
+        (beat_chance(base * good, defense, roll.clone()), beat_chance(base * PERFECT_MULT, defense, roll))
     }
 
     pub fn meter(&self, now: Instant) -> f64 {

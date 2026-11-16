@@ -150,7 +150,8 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
             n(DEFENSE_ROLL.start),
             n(DEFENSE_ROLL.end)
         )),
-        bullet("4. Se o seu poder for maior, você mogga. Se não, toma reverse mog."),
+        bullet("4. Se o seu poder for maior, você mogga. Se não, o mog falha: você perde um pouco de MP e o streak."),
+        bullet("Ao lado do alvo aparece sua chance de vencer com timing BOM e com PERFECT. Escudo e Espelho do alvo não entram na conta, porque ficam escondidos."),
         gap(),
         title("Timing"),
         text("Um cursor vai e volta no medidor abaixo do botão. O momento em que você aperta faz duas coisas: define seu poder (a chance de vencer) e multiplica o MP que você ganha se vencer."),
@@ -375,7 +376,7 @@ fn glossary() -> Vec<Line<'static>> {
         term("Mog / moggar", "ofuscar alguém, ser claramente superior. Vem de AMOG, \"alpha male of the group\"."),
         term("Looksmaxxing", "a busca por maximizar a própria aparência. É o tema dos itens da loja."),
         term("Mewing", "técnica de manter a língua no céu da boca para definir o maxilar. No jogo, é o clicker."),
-        term("Frame mog", "moggar pelo porte físico. No jogo, o reverse mog aparece como \"te frame-moggou de volta\"."),
+        term("Frame mog", "moggar pelo porte físico."),
         term("Height mog", "moggar pela altura. Daí a Palmilha de 7 cm."),
         term("Wealth mog", "moggar pela riqueza. Daí o Jatinho Particular."),
         term("Aura", "presença, carisma. A Aura Infinita multiplica tudo."),

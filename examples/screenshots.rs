@@ -231,7 +231,7 @@ fn playing(duel: Option<DuelView>) -> App {
     for (tone, text) in [
         (Tone::Info, "Conectado em Servidor da Galera. Aperte ? para ver as regras."),
         (Tone::Good, "Você moggou Neto! +38 MP (BOM x1, streak 4)"),
-        (Tone::Bad, "MogLord te frame-moggou de volta. -120 MP, streak zerado"),
+        (Tone::Bad, "Seu mog em MogLord falhou: a defesa deu 210 contra seu poder de 168. -120 MP, streak zerado"),
         (Tone::Good, "Usou Colônia de Feromônio. Mogs rendem +50% de MP por 60 s."),
         (Tone::Epic, "Você moggou jawline_99! +412 MP (PERFECT x2, streak 6)"),
         (Tone::Info, "MogLord ainda está se recuperando: imune por mais 23 s."),

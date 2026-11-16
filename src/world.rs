@@ -61,7 +61,8 @@ impl Slot {
 
 enum Defense {
     Won { loss: f64 },
-    Held,
+    /// `roll` is the defense that beat the attack.
+    Held { roll: f64 },
     Blocked,
 }
 
@@ -387,7 +388,8 @@ impl World {
                 let won = self.on_win(id, NPC_NAME, gain, tier, true);
                 ("won", won, 0.0)
             } else {
-                ("lost", 0.0, self.on_loss(id, NPC_NAME))
+                let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
+                ("lost", 0.0, self.on_loss(id, NPC_NAME, &why))
             };
             self.duels.push(DuelRecord { attacker: id, defender: None, outcome, tier: tier.label(), power, mp_won: won, mp_lost: lost });
             return;
@@ -404,7 +406,10 @@ impl World {
                 // Between players MP only changes hands: the attacker gets exactly what the defender lost.
                 ("won", self.on_win(id, &defender_name, loss, tier, punch >= 1.0), loss)
             }
-            Defense::Held => ("lost", 0.0, self.on_loss(id, &defender_name)),
+            Defense::Held { roll } => {
+                let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
+                ("lost", 0.0, self.on_loss(id, &defender_name, &why))
+            }
             Defense::Blocked => {
                 self.event(id, Tone::Info, format!("{defender_name} bloqueou com o Escudo Sigma."), None, false);
                 ("blocked", 0.0, 0.0)
@@ -445,12 +450,13 @@ impl World {
         gain
     }
 
-    fn on_loss(&mut self, id: PlayerId, target: &str) -> f64 {
+    /// Charges a failed mog; `why` says what beat it.
+    fn on_loss(&mut self, id: PlayerId, target: &str, why: &str) -> f64 {
         let slot = self.slots.get_mut(&id).expect("attacker online");
         slot.player.mogs_lost += 1;
         if slot.player.tape_armed {
             slot.player.tape_armed = false;
-            self.event(id, Tone::Good, format!("{target} segurou, mas a Fita de Mandíbula salvou seu MP e seu streak."), None, false);
+            self.event(id, Tone::Good, format!("Seu mog em {target} falhou ({why}), mas a Fita de Mandíbula salvou seu MP e seu streak."), None, false);
             return 0.0;
         }
         let mp = slot.player.mp.max(0.0);
@@ -461,8 +467,8 @@ impl World {
         self.event(
             id,
             Tone::Bad,
-            format!("{target} te frame-moggou de volta. -{} MP, streak zerado", format_mp(penalty)),
-            Some("REVERSE MOG".into()),
+            format!("Seu mog em {target} falhou: {why}. -{} MP, streak zerado", format_mp(penalty)),
+            Some("MOG FALHOU".into()),
             true,
         );
         penalty
@@ -506,7 +512,7 @@ impl World {
             slot.player.gain(stats.counter_bonus);
             slot.player.defends_won += 1;
             self.event(id, Tone::Good, format!("Você segurou o mog de {attacker}. +{} MP", format_mp(stats.counter_bonus)), None, false);
-            Defense::Held
+            Defense::Held { roll }
         }
     }
 

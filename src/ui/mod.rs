@@ -225,6 +225,27 @@ fn draw_peers(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     f.render_stateful_widget(list, area, &mut state);
 }
 
+fn odds_color(chance: f64) -> Color {
+    if chance < 0.25 {
+        Color::Red
+    } else if chance < 0.6 {
+        Color::Yellow
+    } else {
+        Color::Green
+    }
+}
+
+/// "· chance BOM 40% · PERFECT 85%"
+fn odds_spans((good, perfect): (f64, f64)) -> Vec<Span<'static>> {
+    let pct = |c: f64| format!("{:.0}%", c * 100.0);
+    vec![
+        Span::styled("  · chance BOM ", fg(Color::Gray)),
+        Span::styled(pct(good), fg(odds_color(good)).bold()),
+        Span::styled(" · PERFECT ", fg(Color::Gray)),
+        Span::styled(pct(perfect), fg(odds_color(perfect)).bold()),
+    ]
+}
+
 fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     let [target, button, meter, cooldown, banner] = Layout::vertical([
         Constraint::Length(3),
@@ -238,12 +259,16 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     let ready = g.is_ready(now);
 
     let target_line = match g.peers.get(g.selected) {
-        Some(peer) if peer.is_npc() => Line::from(vec!["Alvo: ".into(), Span::styled(peer.name.clone(), fg(Color::DarkGray).bold())]),
         Some(peer) => {
             let mut spans = vec![Span::raw("Alvo: ")];
-            spans.extend(flair::tagged_spans(peer.clan_tag.as_deref(), &peer.name, Rank::from_lifetime(peer.lifetime), now));
-            if let Some(left) = peer.immune_left(now) {
-                spans.push(Span::styled(format!("  · se recuperando, volta em {}", format_wait(left)), fg(Color::Red).bold()));
+            if peer.is_npc() {
+                spans.push(Span::styled(peer.name.clone(), fg(Color::DarkGray).bold()));
+            } else {
+                spans.extend(flair::tagged_spans(peer.clan_tag.as_deref(), &peer.name, Rank::from_lifetime(peer.lifetime), now));
+            }
+            match peer.immune_left(now) {
+                Some(left) => spans.push(Span::styled(format!("  · se recuperando, volta em {}", format_wait(left)), fg(Color::Red).bold())),
+                None => spans.extend(odds_spans(g.mog_odds(peer))),
             }
             Line::from(spans)
         }

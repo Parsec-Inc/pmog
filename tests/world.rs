@@ -627,3 +627,54 @@ fn every_rank_has_new_things_to_buy() {
     keys.sort();
     assert_eq!(keys, ('1'..='8').collect::<Vec<_>>(), "consumable keys are 1 to 8, no repeats");
 }
+
+#[test]
+fn shown_odds_match_what_the_server_rolls() {
+    use pmog::game::{Peer, beat_chance};
+    let now = Instant::now();
+    let mut w = world(2, now);
+    give(&mut w, 1, ItemId::MidFade, 6);
+    give(&mut w, 2, ItemId::GuaSha, 12);
+    let (attack, defense) = (player(&w, 1).stats().attack, player(&w, 2).stats().defense);
+    let threshold = player(&w, 1).stats().perfect_threshold;
+    let power = attack * PERFECT_MULT;
+    let expected = beat_chance(power, defense, DEFENSE_ROLL);
+    assert!(expected > 0.1 && expected < 0.9, "pick stats with a real fight: {expected}");
+    let trials = 3_000;
+    let mut wins = 0;
+    for _ in 0..trials {
+        let t = perfect(&w, 1);
+        w.slot_mut(1).unwrap().cooldown_until = t;
+        w.slot_mut(1).unwrap().streak = 0;
+        w.slot_mut(2).unwrap().immune_until = t;
+        w.slot_mut(2).unwrap().player.mp = 1_000.0;
+        w.slot_mut(1).unwrap().player.mp = 1_000.0;
+        let before = w.duels.len();
+        w.mog(1, 2, threshold.max(0.999), t);
+        assert_eq!(w.duels.len(), before + 1);
+        wins += (w.duels.last().unwrap().outcome == "won") as u32;
+    }
+    let rate = wins as f64 / trials as f64;
+    assert!((rate - expected).abs() < 0.04, "server {rate:.3} vs shown {expected:.3}");
+
+    let mut game = pmog::game::Game::new(player(&w, 1).clone(), now);
+    let peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None };
+    game.streak = 0;
+    let (good, perfect_odds) = game.mog_odds(&peer);
+    assert!((perfect_odds - expected).abs() < 1e-9);
+    assert!(good < perfect_odds);
+    assert_eq!(beat_chance(10.0, 100.0, DEFENSE_ROLL), 0.0);
+    assert_eq!(beat_chance(1_000.0, 100.0, DEFENSE_ROLL), 1.0);
+}
+
+#[test]
+fn failed_mog_says_why_with_numbers() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    give(&mut w, 2, ItemId::DiamondJaw, 50);
+    w.slot_mut(1).unwrap().player.mp = 100.0;
+    w.mog(1, 2, 0.0, now);
+    let line = texts(&w, 1).into_iter().find(|t| t.contains("falhou")).expect("failure explained");
+    assert!(line.starts_with("Seu mog em p2 falhou: a defesa deu "), "{line}");
+    assert!(line.contains("contra seu poder de") && line.contains("streak zerado"), "{line}");
+}

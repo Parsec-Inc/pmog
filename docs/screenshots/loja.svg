@@ -207,8 +207,7 @@
 <text x="503.2" y="275.5" fill="#e4e2ec" textLength="277.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +8 de defesa, +1 MP/s passivo   </text>
 <text x="780.4" y="275.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="275.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="1158.4" y="275.5" fill="#de4c56" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">a.</text>
-<text x="1175.2" y="275.5" fill="#e4e2ec" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> │</text>
+<text x="1158.4" y="275.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
 <text x="16.0" y="293.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="49.6" y="293.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="58.0" y="293.5" fill="#e4e2ec" textLength="268.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Palmilha de 7 cm      5/50    </text>
@@ -217,7 +216,8 @@
 <text x="503.2" y="293.5" fill="#e4e2ec" textLength="277.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +12 de poder                    </text>
 <text x="780.4" y="293.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="293.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="1158.4" y="293.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
+<text x="1158.4" y="293.5" fill="#de4c56" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> de</text>
+<text x="1183.6" y="293.5" fill="#e4e2ec" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│</text>
 <text x="16.0" y="311.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="41.2" y="311.5" fill="#6ee678" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">B</text>
 <text x="49.6" y="311.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
@@ -227,8 +227,7 @@
 <text x="503.2" y="311.5" fill="#e4e2ec" textLength="277.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +10% de MP nas vitórias         </text>
 <text x="780.4" y="311.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="311.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="1158.4" y="311.5" fill="#5cc878" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1,</text>
-<text x="1175.2" y="311.5" fill="#e4e2ec" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> │</text>
+<text x="1158.4" y="311.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
 <text x="16.0" y="329.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="49.6" y="329.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="58.0" y="329.5" fill="#e4e2ec" textLength="268.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Perfume Nicho         0/10    </text>
@@ -238,7 +237,8 @@
 <text x="780.4" y="329.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="898.0" y="329.5" fill="#eec448" font-weight="bold" textLength="159.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Maxilar de Diamante</text>
 <text x="1150.0" y="329.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="1158.4" y="329.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
+<text x="1158.4" y="329.5" fill="#5cc878" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1,</text>
+<text x="1175.2" y="329.5" fill="#e4e2ec" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> │</text>
 <text x="16.0" y="347.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="41.2" y="347.5" fill="#f5f5fa" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">N</text>
 <text x="49.6" y="347.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
@@ -249,8 +249,7 @@
 <text x="780.4" y="347.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="872.8" y="347.5" fill="#b0aebc" textLength="201.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Corta vidro. Corta egos.</text>
 <text x="1150.0" y="347.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="1158.4" y="347.5" fill="#b0aebc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">.</text>
-<text x="1166.8" y="347.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  │</text>
+<text x="1158.4" y="347.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
 <text x="16.0" y="365.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="49.6" y="365.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="58.0" y="365.5" fill="#e4e2ec" textLength="268.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Sessão de Terapia     0/5     </text>
@@ -259,7 +258,8 @@
 <text x="503.2" y="365.5" fill="#e4e2ec" textLength="277.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> -10% de MP perdido              </text>
 <text x="780.4" y="365.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="365.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="1158.4" y="365.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
+<text x="1158.4" y="365.5" fill="#b0aebc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">.</text>
+<text x="1166.8" y="365.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  │</text>
 <text x="16.0" y="383.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="41.2" y="383.5" fill="#eec448" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">[</text>
 <text x="49.6" y="383.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
