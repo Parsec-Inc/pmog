@@ -5,7 +5,7 @@ pub mod clan;
 mod duel;
 pub mod flair;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ratatui::prelude::*;
 use ratatui::widgets::{
@@ -14,7 +14,7 @@ use ratatui::widgets::{
 };
 
 use crate::constants::{PULSE_MS, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
-use crate::game::{Achievement, CATALOG, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
+use crate::game::{Achievement, Buff, CATALOG, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
 use crate::sprites::{self, Sprite};
@@ -152,20 +152,12 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App, now: Instant) {
         ),
         fg(Color::Gray),
     )];
-    let flags = [
-        (p.shield_armed, " ESCUDO ", Color::Cyan),
-        (p.angle_armed, " ÂNGULO x2 ", Color::Yellow),
-        (p.mirror_armed, " ESPELHO x3 ", Color::LightBlue),
-        (now < g.preworkout_until, " PRÉ-TREINO ", Color::LightMagenta),
-        (now < g.cologne_until, " COLÔNIA +50% ", Color::LightGreen),
-        (p.tape_armed, " FITA ", Color::LightCyan),
-        (now < g.immune_until, " IMUNE ", Color::Red),
-    ];
-    for (on, label, color) in flags {
-        if on {
-            line2.push(Span::styled(label, Style::new().bg(color).fg(Color::Black).bold()));
-            line2.push(" ".into());
-        }
+    for (buff, left) in g.buffs(now) {
+        line2.push(Span::styled(format!(" {} {}{} ", buff.label(), buff.effect(), buff_left(left)), buff_style(buff)));
+        line2.push(" ".into());
+    }
+    if now < g.immune_until {
+        line2.push(Span::styled(" IMUNE ", Style::new().bg(Color::Red).fg(Color::Black).bold()));
     }
     f.render_widget(Line::from(line2), l2);
 
@@ -284,15 +276,26 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     f.render_widget(Paragraph::new(target_line).centered().block(target_block), target);
 
     let pulse = ((now - g.started).as_millis() / PULSE_MS).is_multiple_of(2);
-    let color = match (ready, pulse) {
-        (false, _) => Color::DarkGray,
-        (true, true) => Color::Magenta,
-        (true, false) => Color::LightMagenta,
+    let buffs = g.buffs(now);
+    let color = match (ready, pulse, buffs.is_empty()) {
+        (false, _, _) => Color::DarkGray,
+        (true, true, true) => Color::Magenta,
+        (true, false, true) => Color::LightMagenta,
+        (true, true, false) => BUFF_GOLD,
+        (true, false, false) => Color::LightYellow,
     };
-    let block = Block::bordered()
+    let mut block = Block::bordered()
         .border_type(if ready { BorderType::Thick } else { BorderType::Plain })
-        .border_style(fg(color))
+        .border_style(fg(if buffs.is_empty() { color } else { BUFF_GOLD }))
         .title(Line::from(" [ESPAÇO] ").centered());
+    if !buffs.is_empty() {
+        let mut spans = vec![Span::styled(" ⚡ BUFFADO ", Style::new().bg(BUFF_GOLD).fg(Color::Black).bold()), " ".into()];
+        for (buff, left) in &buffs {
+            spans.push(Span::styled(format!(" {} {}{} ", buff.label(), buff.effect(), buff_left(*left)), buff_style(*buff)));
+            spans.push(" ".into());
+        }
+        block = block.title_bottom(Line::from(spans).centered());
+    }
     let inner = block.inner(button);
     let art: Vec<&str> = if inner.width as usize > BIG_BUTTON[0].chars().count() {
         BIG_BUTTON.to_vec()
@@ -339,6 +342,26 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
         _ => Line::raw(""),
     };
     f.render_widget(Paragraph::new(text).centered().block(Block::bordered()), banner);
+}
+
+const BUFF_GOLD: Color = Color::Rgb(255, 200, 40);
+
+/// Badge style for a buff.
+fn buff_style(buff: Buff) -> Style {
+    let color = match buff {
+        Buff::Shield => Color::Cyan,
+        Buff::Angle => Color::Yellow,
+        Buff::Mirror => Color::LightBlue,
+        Buff::Tape => Color::LightCyan,
+        Buff::PreWorkout => Color::LightMagenta,
+        Buff::Cologne => Color::LightGreen,
+    };
+    Style::new().bg(color).fg(Color::Black).bold()
+}
+
+/// Remaining time of a timed buff, or nothing for one that waits to be used.
+fn buff_left(left: Option<Duration>) -> String {
+    left.map_or(String::new(), |l| format!(" {}s", l.as_secs_f64().ceil() as u64))
 }
 
 /// Fixed RGB so terminal themes can't remap the tier colors.

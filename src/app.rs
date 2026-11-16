@@ -344,6 +344,7 @@ impl App {
             }
         }
         self.game.predict_duel(now);
+        self.game.note_expired_buffs(now);
         for msg in std::mem::take(&mut self.game.outbox) {
             if !conn.send(&msg) {
                 lost.get_or_insert_with(|| "A conexão com o servidor caiu.".to_string());

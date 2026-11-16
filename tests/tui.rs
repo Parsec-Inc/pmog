@@ -850,3 +850,23 @@ fn blocked_purchase_is_explained_and_never_sent() {
         render(&a, w, h);
     }
 }
+
+#[test]
+fn active_buffs_stand_out_and_their_end_is_announced() {
+    let mut a = playing();
+    assert!(!render(&a, 150, 42).contains("BUFFADO"));
+    state_with(&mut a, |s| {
+        s.me.angle_armed = true;
+        s.cologne_ms = 3_000;
+    });
+    let screen = render(&a, 150, 42);
+    assert!(screen.contains("BUFFADO"), "{screen}");
+    assert!(screen.contains("ÂNGULO poder x2") && screen.contains("COLÔNIA +50% MP 3s"), "{screen}");
+    let now = Instant::now();
+    a.game.note_expired_buffs(now);
+    a.game.note_expired_buffs(now + Duration::from_secs(4));
+    assert!(a.game.feed.iter().any(|l| l.text.contains("O efeito de Colônia de Feromônio acabou")), "expiry is logged");
+    for (w, h) in [(40, 12), (80, 24)] {
+        render(&a, w, h);
+    }
+}

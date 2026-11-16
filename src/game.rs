@@ -466,7 +466,56 @@ pub struct Game {
     pub macros_input: String,
     /// Corrects duel timing for network lag; off only to compare against the old behaviour.
     pub compensate: bool,
+    /// Timed buffs active at the last check, to announce when they wear off.
+    timed_buffs: Vec<Buff>,
     logged: usize,
+}
+
+/// An edge from a consumable that is active right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Buff {
+    Shield,
+    Angle,
+    Mirror,
+    Tape,
+    PreWorkout,
+    Cologne,
+}
+
+impl Buff {
+    pub fn label(self) -> &'static str {
+        match self {
+            Buff::Shield => "ESCUDO",
+            Buff::Angle => "ÂNGULO",
+            Buff::Mirror => "ESPELHO",
+            Buff::Tape => "FITA",
+            Buff::PreWorkout => "PRÉ-TREINO",
+            Buff::Cologne => "COLÔNIA",
+        }
+    }
+
+    pub fn effect(self) -> &'static str {
+        match self {
+            Buff::Shield => "perda de mog bloqueada",
+            Buff::Angle => "poder x2",
+            Buff::Mirror => "defesa x3",
+            Buff::Tape => "mog errado não custa",
+            Buff::PreWorkout => "cooldown ÷2",
+            Buff::Cologne => "+50% MP",
+        }
+    }
+
+    pub fn item_name(self) -> &'static str {
+        let id = match self {
+            Buff::Shield => ItemId::SigmaShield,
+            Buff::Angle => ItemId::AngleShot,
+            Buff::Mirror => ItemId::PocketMirror,
+            Buff::Tape => ItemId::JawTape,
+            Buff::PreWorkout => ItemId::PreWorkout,
+            Buff::Cologne => ItemId::Cologne,
+        };
+        crate::items::def(id).name
+    }
 }
 
 impl Game {
@@ -510,6 +559,7 @@ impl Game {
             macros_local: None,
             macros_input: String::new(),
             compensate: true,
+            timed_buffs: Vec::new(),
             logged: 0,
         }
     }
@@ -518,6 +568,27 @@ impl Game {
         self.feed.push_front(FeedLine { text: text.into(), tone });
         self.feed.truncate(FEED_LEN);
         self.logged += 1;
+    }
+
+    /// Active buffs and, for timed ones, how long they still last.
+    pub fn buffs(&self, now: Instant) -> Vec<(Buff, Option<Duration>)> {
+        let p = &self.player;
+        let left = |until: Instant| (now < until).then(|| until - now);
+        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape)];
+        let timed = [(Buff::PreWorkout, left(self.preworkout_until)), (Buff::Cologne, left(self.cologne_until))];
+        armed
+            .into_iter()
+            .filter_map(|(on, b)| on.then_some((b, None)))
+            .chain(timed.into_iter().filter_map(|(b, l)| l.map(|l| (b, Some(l)))))
+            .collect()
+    }
+
+    /// Logs timed buffs that just wore off.
+    pub fn note_expired_buffs(&mut self, now: Instant) {
+        let active: Vec<Buff> = self.buffs(now).into_iter().filter_map(|(b, left)| left.map(|_| b)).collect();
+        for gone in std::mem::replace(&mut self.timed_buffs, active.clone()).into_iter().filter(|b| !active.contains(b)) {
+            self.log(Tone::Info, format!("O efeito de {} acabou ({}).", gone.item_name(), gone.effect()));
+        }
     }
 
     /// Number of feed lines ever logged.
