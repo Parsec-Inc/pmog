@@ -208,7 +208,8 @@ fn lobby_asks_once_and_u_asks_again() {
     let offer = app.release + 1;
     let deadline = Instant::now() + DEADLINE;
     while app.confirm.is_none() && Instant::now() < deadline {
-        beacon(p.discovery, 1, vec![("windows".into(), offer + 5), (pmog::update::platform().into(), offer)]);
+        let other = if pmog::update::platform() == "windows" { "linux" } else { "windows" };
+        beacon(p.discovery, 1, vec![(other.into(), offer + 5), (pmog::update::platform().into(), offer)]);
         thread::sleep(Duration::from_millis(50));
         app.step(Instant::now());
     }
