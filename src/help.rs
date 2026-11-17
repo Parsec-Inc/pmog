@@ -62,21 +62,22 @@ fn duels() -> Vec<Line<'static>> {
     use crate::duel::Minigame;
     let mut lines = vec![
         title("Duelo direto"),
-        text(format!("Fora do botão MOGAR, dá para chamar alguém para um duelo de verdade: {DUEL_ROUNDS} rodadas de minigames escolhidos pelos dois.")),
+        text(format!("Fora do botão MOGAR, dá para chamar alguém para um duelo de verdade: {DUEL_ROUNDS} rodadas de minigames sorteados.")),
         gap(),
-        key("D", "desafia o jogador selecionado (escolha a aposta e aperte Enter)"),
+        key("D", "desafia o jogador selecionado (escolha a aposta e aperte Enter; ↓ troca Aleatório por Escolher)"),
         key("F", &format!("entra na fila: junta você com alguém até 1 rank de distância (depois de {} s esperando, com qualquer um)", QUEUE_RELAX.as_secs())),
         key("A / R", "aceita ou recusa um desafio recebido"),
         key("X", "cancela o desafio que você mandou"),
         key("Esc", "dentro do duelo, desiste (perde a aposta)"),
         gap(),
         title("Escolha e rodadas"),
+        bullet("Por padrão os minigames são sorteados. Para escolher, desça para a linha Minigames no seletor de aposta e marque Escolher. Na fila, só vale se os dois marcarem."),
         bullet(format!(
-            "Antes de começar, cada um escolhe {} minigames, alternando (quem começa é sorteado). Use as setas e Enter; o Aleatório sorteia um que ninguém escolheu. Acabou o tempo de {} s, o servidor sorteia por você.",
+            "Escolhendo, antes de começar cada um pega {} minigames, alternando (quem começa é sorteado). Use as setas e Enter; o Aleatório sorteia um que ninguém escolheu. Acabou o tempo de {} s, o servidor sorteia por você.",
             DUEL_ROUNDS / 2,
             DRAFT_PICK_TIME.as_secs()
         )),
-        bullet(format!("As {DUEL_ROUNDS} rodadas seguem a ordem das escolhas. O duelo acaba antes se alguém abrir uma vantagem que não dá mais para tirar.")),
+        bullet(format!("As {DUEL_ROUNDS} rodadas seguem a ordem do sorteio ou das escolhas. O duelo acaba antes se alguém abrir uma vantagem que não dá mais para tirar.")),
         bullet(format!("Empatou depois de {DUEL_ROUNDS}? Morte súbita com um minigame sorteado que ainda não saiu, até alguém vencer uma rodada (no máximo {DUEL_MAX_ROUNDS} rodadas no total).")),
         gap(),
         title("Aposta"),
@@ -98,7 +99,7 @@ fn duels() -> Vec<Line<'static>> {
         text("O jogo mede o atraso da sua rede e conta o momento em que você apertou, não quando chegou no servidor. Quem joga no Wi-Fi ruim disputa de igual para igual com quem hospeda. O servidor confere esse horário e não aceita trapaça."),
         gap(),
         title("Nome com estilo"),
-        text("Seu nome muda de cara conforme o rank: estático até MTN, brilho pulsando no HTN, gradiente no Chadlite, reflexo dourado no Chad, fogo no Gigachad e arco-íris com coroa no Ascendido."),
+        text("Seu nome muda de cara conforme o rank: estático até MTN, brilho pulsando no HTN, gradiente no Chadlite, reflexo dourado no Chad, fogo no Gigachad, arco-íris com coroa no Ascendido e um efeito próprio em cada rank acima (veja todos com P)."),
     ]);
     lines
 }
@@ -122,6 +123,7 @@ fn basics() -> Vec<Line<'static>> {
         key("L", "abrir a loja (↑ ↓ escolhe, Enter compra)"),
         key("1 a 9, 0", "usar um consumível"),
         key("C", "conquistas e estatísticas"),
+        key("P", "todos os ranks, com o visual de cada nome"),
         key("S", "painel do servidor"),
         key("D / F", "duelo direto ou fila de duelo (veja a página Duelos)"),
         key("?", "esta ajuda (← → troca de aba, ↑ ↓ rola)"),
@@ -337,15 +339,15 @@ fn ranks(g: &Game) -> Vec<Line<'static>> {
         let marker = if rank == current { "▶ " } else { "  " };
         let style = if rank <= current { Style::new().bold() } else { Style::new().fg(Color::DarkGray) };
         lines.push(Line::from(vec![
-            Span::styled(format!("{marker}{:<10}", rank.label()), style),
+            Span::styled(format!("{marker}{:<14}", rank.label()), style),
             Span::styled(format!("{:>8} MP  ", format_mp(rank.threshold())), Style::new().fg(Color::Cyan)),
             Span::raw(unlocks.join(", ")),
         ]));
     }
     lines.push(gap());
     lines.push(title("Conquistas"));
-    lines.push(text("Marcos que ficam salvos no seu perfil (tecla C para ver as suas):"));
-    for a in Achievement::ALL {
+    lines.push(text("Marcos que ficam salvos no seu perfil (tecla C para ver as suas e o progresso). Algumas são secretas."));
+    for a in Achievement::ALL.into_iter().filter(|a| !a.secret()) {
         lines.push(term(a.name(), a.desc()));
     }
     lines
@@ -399,8 +401,8 @@ fn glossary() -> Vec<Line<'static>> {
         term("Aura farming", "fazer algo de propósito para parecer descolado: a dança na proa do barco, encostar na porta, câmera lenta."),
         term("+1000 / -1000 de aura", "placar imaginário de quanto uma atitude te deixou mais (ou menos) descolado."),
         term("6-7", "o \"six seven\" sem significado nenhum, com as mãos subindo e descendo como uma balança. Daí o Gesto do 6-7, a altura de 6'7\" e o Combo 6-7."),
-        term("Brainrot", "humor absurdo da internet, como os bichos italianos feitos por IA: tubarão de tênis, crocodilo-avião, macaco-banana e o tung tung sahur."),
-        term("Capoeira proibida", "a capoeira já foi crime no Brasil (de 1890 até a década de 1930). No jogo, o Golpe Proibido é a meia-lua que ninguém ensina."),
+        term("Brainrot", "humor absurdo da internet, os bichos do brainrot italiano feitos por IA. Na loja: Tralalero Tralala, Chimpanzini Bananini, Tung Tung Tung Sahur e Bombardiro Crocodilo."),
+        term("Capoeira proibida", "meme dos edits de golpes de capoeira absurdos com phonk e caveira: \"eu sabendo capoeira proibida ☠️\". É o item de poder e contra-ataque da aba Brainrot e 67."),
         gap(),
         title("Ranks"),
         term("Sub-5", "abaixo da nota 5, o ponto de partida."),
@@ -409,6 +411,7 @@ fn glossary() -> Vec<Line<'static>> {
         term("Chad", "o arquétipo do cara confiante que mogga sem esforço."),
         term("Gigachad", "o Chad levado ao extremo, o meme do rosto esculpido."),
         term("Ascendido", "quem completou a jornada do looksmaxxing."),
+        term("Lorde da Aura", "quem farmou aura até não caber mais."),
         gap(),
         title("Termos do jogo"),
         term("MP", "Mogging Points, a moeda e o placar."),

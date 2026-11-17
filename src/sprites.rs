@@ -85,6 +85,13 @@ fn asset(id: ItemId) -> (&'static [u8], &'static [u8], &'static str) {
         ItemId::CrocBomber => asset!("croc_bomber"),
         ItemId::ComboSixSeven => asset!("combo_67"),
         ItemId::AuraFarm => asset!("aura_farm"),
+        ItemId::WolfHood => asset!("wolf_hood"),
+        ItemId::AuraScepter => asset!("aura_scepter"),
+        ItemId::Trophy67 => asset!("trophy_67"),
+        ItemId::PhoenixFeather => asset!("phoenix_feather"),
+        ItemId::MarbleBust => asset!("marble_bust"),
+        ItemId::PocketMeteor => asset!("pocket_meteor"),
+        ItemId::ThirdEye => asset!("third_eye"),
     }
 }
 

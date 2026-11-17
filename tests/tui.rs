@@ -581,11 +581,11 @@ fn challenging_through_the_bet_picker() {
     let screen = render(&a, 120, 30);
     assert!(screen.contains("Desafiar Rival") && screen.contains("Cada um aposta 12 MP"), "{screen}");
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.25 }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.25, draft: false }));
     assert_eq!(a.game.overlay, Overlay::None);
 
     state_with(&mut a, |s| {
-        s.outgoing = Some(InviteView { peer: 2, name: "Rival".into(), fraction: 0.25, stake: 12.0, expires_ms: 9_500 })
+        s.outgoing = Some(InviteView { peer: 2, name: "Rival".into(), fraction: 0.25, stake: 12.0, expires_ms: 9_500, draft: false })
     });
     assert!(render(&a, 150, 42).contains("Desafio para Rival · 12 MP · expira em 10 s"));
     press(&mut a, KeyCode::Char('x'));
@@ -593,21 +593,34 @@ fn challenging_through_the_bet_picker() {
 
     press(&mut a, KeyCode::Char('f'));
     assert_eq!(a.game.overlay, Overlay::Stake);
-    assert!(render(&a, 120, 30).contains("Fila de duelo"));
+    let screen = render(&a, 120, 30);
+    assert!(screen.contains("Fila de duelo") && screen.contains("Aleatório") && screen.contains("sorteados"), "{screen}");
     press(&mut a, KeyCode::Left);
     press(&mut a, KeyCode::Left);
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: Some(0.0) }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: Some(0.0), draft: false }), "random is the default");
+
+    press(&mut a, KeyCode::Char('d'));
+    press(&mut a, KeyCode::Down);
+    press(&mut a, KeyCode::Right);
+    assert!(render(&a, 120, 30).contains("Cada um escolhe 3 minigames"));
+    press(&mut a, KeyCode::Up);
+    press(&mut a, KeyCode::Right);
+    press(&mut a, KeyCode::Enter);
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.1, draft: true }), "second row picks the draft");
+    press(&mut a, KeyCode::Char('d'));
+    assert!(!a.game.stake_draft, "reopening goes back to random");
+    press(&mut a, KeyCode::Esc);
     state_with(&mut a, |s| s.queued = Some(0.0));
     assert!(render(&a, 150, 42).contains("Na fila de duelo"));
     press(&mut a, KeyCode::Char('f'));
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: None }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: None, draft: false }));
 }
 
 #[test]
 fn invitations_can_be_answered() {
     let mut a = playing();
-    let invite = InviteView { peer: 2, name: "Rival".into(), fraction: 0.5, stake: 25.0, expires_ms: 14_000 };
+    let invite = InviteView { peer: 2, name: "Rival".into(), fraction: 0.5, stake: 25.0, expires_ms: 14_000, draft: false };
     state_with(&mut a, |s| s.invites = vec![invite.clone(), InviteView { peer: 3, ..invite.clone() }]);
     let screen = render(&a, 150, 42);
     assert!(screen.contains("te desafiou para um duelo") && screen.contains("25 MP"), "{screen}");
@@ -621,10 +634,10 @@ fn invitations_can_be_answered() {
 #[test]
 fn names_wear_their_rank() {
     let mut a = playing();
-    a.game.player.lifetime = 1e12;
+    a.game.player.lifetime = 3e5;
     state_with(&mut a, |s| {
-        s.me.lifetime = 1e12;
-        s.players[0].lifetime = 1e12;
+        s.me.lifetime = 3e5;
+        s.players[0].lifetime = 3e5;
         s.players[0].in_duel = true;
     });
     let screen = render(&a, 170, 42);
@@ -919,7 +932,7 @@ fn draft_screen_moves_and_picks() {
     use rand::SeedableRng;
     let mut rng = rand::rngs::StdRng::seed_from_u64(1);
     let now = Instant::now();
-    let d = pmog::duel::Duel::new([1, 2], ["Igor".into(), "Rival".into()], 0.0, now, &mut rng);
+    let d = pmog::duel::Duel::new([1, 2], ["Igor".into(), "Rival".into()], 0.0, true, now, &mut rng);
     let side = (0..2).find(|s| matches!(d.view(*s, 0.0, now).board, Board::Draft { my_turn: true, .. })).unwrap();
     let mut a = dueling(d.view(side, 0.0, now));
     let screen = render(&a, 150, 42);
@@ -980,7 +993,7 @@ fn shop_tabs_group_items_and_move_between_them() {
     }
     assert_eq!(a.game.shop_category(), Category::Brainrot);
     let screen = render(&a, 150, 42);
-    assert!(screen.contains("Gesto do 6-7") && screen.contains("Golpe Proibido da Capoeira") && screen.contains("Bastão do Sahur"), "{screen}");
+    assert!(screen.contains("Gesto do 6-7") && screen.contains("Capoeira Proibida") && screen.contains("Tung Tung Tung Sahur"), "{screen}");
     press(&mut a, KeyCode::Enter);
     assert!(render(&a, 150, 42).contains("Confirmar compra"), "buying still asks first");
     for (w, h) in [(40, 12), (80, 24)] {
@@ -997,4 +1010,38 @@ fn new_buffs_show_up() {
     });
     let screen = render(&a, 150, 42);
     assert!(screen.contains("COMBO 6-7") && screen.contains("FARMANDO AURA"), "{screen}");
+}
+
+#[test]
+fn rank_list_shows_every_rank_and_the_way_up() {
+    let mut a = playing();
+    state_with(&mut a, |s| {
+        s.me.lifetime = 150_000.0;
+        s.players[0].lifetime = 1e6;
+    });
+    press(&mut a, KeyCode::Char('p'));
+    assert_eq!(a.game.overlay, Overlay::Ranks);
+    let screen = render(&a, 150, 60);
+    assert!(screen.contains("Ranks 7/15") && screen.contains("até Ascendido"), "{screen}");
+    assert!(screen.contains("◀ você"), "{screen}");
+    press(&mut a, KeyCode::PageDown);
+    press(&mut a, KeyCode::PageDown);
+    press(&mut a, KeyCode::PageDown);
+    let screen = render(&a, 150, 60);
+    assert!(screen.contains("Transcendente") && screen.contains("na rede: Rival"), "{screen}");
+    press(&mut a, KeyCode::Esc);
+    assert_eq!(a.game.overlay, Overlay::None);
+    press(&mut a, KeyCode::Char('p'));
+    assert_eq!(a.game.list_scroll, 0, "reopening starts at the top");
+}
+
+#[test]
+fn achievements_are_grouped_with_progress_and_secrets() {
+    let mut a = playing();
+    state_with(&mut a, |s| s.me.mogs_won = 37);
+    press(&mut a, KeyCode::Char('c'));
+    let screen = render(&a, 150, 80);
+    assert!(screen.contains("── Mog (") && screen.contains("37/100") && screen.contains("37/1.000"), "{screen}");
+    assert!(screen.contains("??? · Conquista secreta"), "{screen}");
+    assert!(!screen.contains("Sessenta e Sete"), "secrets stay hidden");
 }

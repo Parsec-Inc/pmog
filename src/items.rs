@@ -59,6 +59,13 @@ pub enum ItemId {
     BananaMonkey,
     ComboSixSeven,
     AuraFarm,
+    WolfHood,
+    AuraScepter,
+    Trophy67,
+    PhoenixFeather,
+    MarbleBust,
+    PocketMeteor,
+    ThirdEye,
 }
 
 /// Shop tab an item belongs to.
@@ -158,11 +165,16 @@ impl ItemDef {
             return Category::Consumable;
         }
         match self.id {
-            Mewing | Sunscreen | GuaSha | Skincare | Veneers | CanthalTape | DiamondJaw | Minoxidil | Dermaroller | FoxEyes => Category::Face,
+            Mewing | Sunscreen | GuaSha | Skincare | Veneers | CanthalTape | DiamondJaw | Minoxidil | Dermaroller | FoxEyes | MarbleBust => {
+                Category::Face
+            }
             WaterBottle | Creatine | MasticGum | GymPlan | Insoles | ShoulderPads | SleepKit | Whey => Category::Body,
-            MidFade | RingLight | NichePerfume | Sunglasses | Photographer | LuxuryWatch | PrivateJet | Mansion | MogCrown => Category::Drip,
-            Therapy | PhonkTrack | Meditation | InfiniteAura | BlessedGenes | BoatDance | DoorLean | Jestermaxxing => Category::Aura,
-            SixSeven | SixSevenHeight | Capoeira | SharkSneakers | SahurBat | CrocBomber | BananaMonkey => Category::Brainrot,
+            MidFade | RingLight | NichePerfume | Sunglasses | Photographer | LuxuryWatch | PrivateJet | Mansion | MogCrown | WolfHood | PocketMeteor => {
+                Category::Drip
+            }
+            Therapy | PhonkTrack | Meditation | InfiniteAura | BlessedGenes | BoatDance | DoorLean | Jestermaxxing | AuraScepter | PhoenixFeather
+            | ThirdEye => Category::Aura,
+            SixSeven | SixSevenHeight | Capoeira | SharkSneakers | SahurBat | CrocBomber | BananaMonkey | Trophy67 => Category::Brainrot,
             EnergyDrink | SigmaShield | AngleShot | PreWorkout | PocketMirror | JawTape | Cologne | IcePack | ComboSixSeven | AuraFarm => {
                 Category::Consumable
             }
@@ -243,7 +255,7 @@ const fn consumable(
     ItemDef { id, name, flavor, min_rank, base_cost, max_level: 99, effects: &[], usage: Some((key, text)) }
 }
 
-pub const CATALOG: [ItemDef; 52] = [
+pub const CATALOG: [ItemDef; 59] = [
     permanent(ItemId::Mewing, "Tutorial de Mewing", "Língua no céu da boca, 24 horas por dia.", Rank::Sub5, 25.0, 50,
         &[Effect::Passive(0.5), Effect::MewGain(0.25)]),
     permanent(ItemId::Sunscreen, "Protetor Solar FPS 70", "Envelhecer é para quem foi moggado.", Rank::Sub5, 45.0, 20,
@@ -334,18 +346,32 @@ pub const CATALOG: [ItemDef; 52] = [
         &[Effect::Attack(0.6), Effect::Defense(0.7)]),
     permanent(ItemId::SixSevenHeight, "Altura de 6'7\"", "Dois metros e um centímetro de height mog.", Rank::Chadlite, 6_767.0, 7,
         &[Effect::Attack(20.0), Effect::Defense(7.0)]),
-    permanent(ItemId::Capoeira, "Golpe Proibido da Capoeira", "A meia-lua que nenhum mestre te ensinou.", Rank::Htn, 3_300.0, 10,
+    permanent(ItemId::Capoeira, "Capoeira Proibida", "Eu sabendo capoeira proibida ☠️ (toca phonk).", Rank::Htn, 3_300.0, 10,
         &[Effect::Attack(10.0), Effect::CounterBonus(6.0)]),
-    permanent(ItemId::SharkSneakers, "Tubarão de Tênis", "Tralalero tralalá: corre na areia de tênis de marca.", Rank::Mtn, 1_200.0, 10,
+    permanent(ItemId::SharkSneakers, "Tralalero Tralala", "O tubarão de três patas e tênis azul.", Rank::Mtn, 1_200.0, 10,
         &[Effect::CooldownCut(0.1), Effect::Passive(2.0)]),
-    permanent(ItemId::BananaMonkey, "Macaco-Banana", "Metade macaco, metade banana, totalmente brainrot.", Rank::Ltn, 400.0, 10,
+    permanent(ItemId::BananaMonkey, "Chimpanzini Bananini", "Metade chimpanzé, metade banana. Wa wa wa.", Rank::Ltn, 400.0, 10,
         &[Effect::MewGain(1.0), Effect::MewCap(1)]),
-    permanent(ItemId::SahurBat, "Bastão do Sahur", "Tung tung tung tung... acorda pra mogar.", Rank::Chad, 18_000.0, 10,
+    permanent(ItemId::SahurBat, "Tung Tung Tung Sahur", "O tronco com taco de beisebol que te acorda pra mogar.", Rank::Chad, 18_000.0, 10,
         &[Effect::Attack(25.0), Effect::StreakBonus(0.02)]),
-    permanent(ItemId::CrocBomber, "Crocodilo Bombardeiro", "Meio crocodilo, meio avião, todo destruição.", Rank::Gigachad, 70_000.0, 10,
+    permanent(ItemId::CrocBomber, "Bombardiro Crocodilo", "Meio crocodilo, meio bombardeiro, todo destruição.", Rank::Gigachad, 70_000.0, 10,
         &[Effect::Attack(60.0), Effect::WinBonus(0.05)]),
     consumable(ItemId::ComboSixSeven, "Combo 6-7", "Seis, sete, e o MP vem junto.", Rank::Mtn, 670.0, '9',
         "o próximo mog que acertar rende +67% de MP"),
     consumable(ItemId::AuraFarm, "Farmar Aura", "Pose, phonk e câmera lenta por 45 s.", Rank::Htn, 2_000.0, '0',
         "por 45 s, o MP passivo vem em dobro"),
+    permanent(ItemId::WolfHood, "Capuz do Lobo Solitário", "Ninguém vê sua cara. Ninguém precisa ver.", Rank::Sigma, 600_000.0, 5,
+        &[Effect::Defense(150.0), Effect::LossShield(0.05)]),
+    permanent(ItemId::AuraScepter, "Cetro da Aura", "Cada aura farmada vira poder.", Rank::AuraLord, 1_500_000.0, 5,
+        &[Effect::Aura(0.25), Effect::Passive(100.0)]),
+    permanent(ItemId::Trophy67, "Troféu 6-7", "Ninguém sabe por que você ganhou, mas ganhou.", Rank::SixSeven, 6_700_000.0, 7,
+        &[Effect::Attack(67.0), Effect::Defense(67.0), Effect::Passive(167.0)]),
+    permanent(ItemId::PhoenixFeather, "Pena de Fênix", "Moggado hoje, renascido amanhã.", Rank::Mythic, 12_000_000.0, 5,
+        &[Effect::ImmunityBonus(2.0), Effect::LossShield(0.05), Effect::StreakBonus(0.05)]),
+    permanent(ItemId::MarbleBust, "Busto de Mármore", "Proporção áurea esculpida em pedra.", Rank::GreekGod, 35_000_000.0, 5,
+        &[Effect::Attack(300.0), Effect::Defense(300.0)]),
+    permanent(ItemId::PocketMeteor, "Meteoro de Bolso", "Um pedaço do espaço sideral que rende juros.", Rank::Cosmic, 80_000_000.0, 5,
+        &[Effect::Passive(2_000.0), Effect::WinBonus(0.10)]),
+    permanent(ItemId::ThirdEye, "Terceiro Olho", "Vê o mog antes de ele acontecer.", Rank::Transcendent, 250_000_000.0, 3,
+        &[Effect::Aura(0.5), Effect::PerfectZone(0.02), Effect::MeterSlow(0.03)]),
 ];

@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use pmog::app::{App, Screen};
 use pmog::discovery::Discovery;
-use pmog::duel::{Board, DuelView, HunterProgress, Minigame, Phase, TypingProgress};
+use pmog::duel::{Board, DraftPick, DuelView, HunterProgress, Minigame, Phase, Stance, TypingProgress};
 use pmog::game::{Achievement, Overlay, Player, Tone};
 use pmog::items::ItemId;
 use pmog::protocol::{PeerView, ServerMsg, StateView};
@@ -307,4 +307,54 @@ fn main() {
     let board = Board::Typing { text: text.into(), mine: typing(41, 78.0, 0.96), theirs: typing(33, 64.0, 0.91) };
     let typing_duel = playing(Some(duel_view(Minigame::Typing, 9_000, board)));
     shot(&typing_duel, "digitacao", "pmog · batalha de digitação", w, h);
+
+    let pick = |mine, game, random| DraftPick { mine, game, random };
+    let picks = vec![
+        pick(false, Minigame::FitCheck, false),
+        pick(true, Minigame::Staredown, false),
+        pick(false, Minigame::ReverseMog, true),
+        pick(true, Minigame::Typing, false),
+    ];
+    let mut draft = duel_view(Minigame::Staredown, 4_000, Board::Draft { picks, my_turn: true });
+    (draft.phase, draft.phase_len_ms, draft.round, draft.my_wins, draft.their_wins) = (Phase::Draft, 12_000, 0, 0, 0);
+    let mut drafting = playing(Some(draft));
+    drafting.game.draft_cursor = 7;
+    shot(&drafting, "draft", "pmog · escolha dos minigames", w, h);
+
+    let throws = |list: [Option<Stance>; 5]| list.to_vec();
+    let rps = Board::ReverseMog {
+        mine: throws([Some(Stance::Mog), Some(Stance::Defend), Some(Stance::Ignore), Some(Stance::Mog), None]),
+        theirs: throws([Some(Stance::Ignore), Some(Stance::Mog), Some(Stance::Ignore), None, None]),
+        their_ready: true,
+    };
+    let mut reverse = duel_view(Minigame::ReverseMog, 15_000, rps);
+    (reverse.round, reverse.my_wins, reverse.their_wins) = (5, 3, 1);
+    shot(&playing(Some(reverse)), "mog-reverso", "pmog · mog reverso", w, h);
+
+    let mut stake = playing(None);
+    stake.game.overlay = Overlay::Stake;
+    stake.game.stake_target = Some(2);
+    stake.game.stake_cursor = 2;
+    stake.game.stake_row = 1;
+    shot(&stake, "aposta", "pmog · desafio", w, h);
+
+    let mut ranks = playing(None);
+    ranks.game.player.lifetime = 1_240_000.0;
+    ranks.game.overlay = Overlay::Ranks;
+    ranks.game.list_scroll = u16::MAX;
+    shot(&ranks, "ranks", "pmog · ranks", w, h);
+
+    let mut achievements = playing(None);
+    let p = &mut achievements.game.player;
+    (p.mews, p.perfects, p.defends_won, p.defends_lost, p.purchases, p.items_used) = (4_210, 64, 38, 21, 47, 12);
+    p.achievements = Achievement::ALL.into_iter().filter(|a| a.reached(p) || a.group() == pmog::achievements::Group::Mog && !a.secret()).collect();
+    achievements.game.overlay = Overlay::Achievements;
+    shot(&achievements, "conquistas", "pmog · conquistas", w, h);
+
+    let mut exclusive = playing(None);
+    exclusive.game.player.lifetime = 7_100_000.0;
+    exclusive.game.player.mp = 9_400_000.0;
+    exclusive.game.overlay = Overlay::Shop;
+    exclusive.game.shop_cursor = pmog::items::CATALOG.iter().position(|d| d.id == ItemId::Trophy67).unwrap();
+    shot(&exclusive, "loja-67", "pmog · loja: Brainrot e 67", w, h);
 }

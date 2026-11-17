@@ -5,6 +5,19 @@ use std::collections::VecDeque;
 use crate::constants::{APP_DIR, LEGACY_APP_DIR, MAX_NAME_LEN, RTT_SMOOTHING, RTT_WINDOW};
 
 /// Formats a point amount with k/M/B suffixes.
+/// Whole number with dots between thousands, like `6.767`.
+pub fn format_count(value: u64) -> String {
+    let digits = value.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push('.');
+        }
+        out.push(c);
+    }
+    out
+}
+
 pub fn format_mp(value: f64) -> String {
     let abs = value.abs();
     let text = if abs >= 1e9 {

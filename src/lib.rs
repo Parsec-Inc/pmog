@@ -1,5 +1,6 @@
 //! PMOG (parses mogging): LAN mogging game for the terminal.
 
+pub mod achievements;
 pub mod app;
 pub mod bot;
 pub mod chat;

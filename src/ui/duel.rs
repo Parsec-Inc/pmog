@@ -561,9 +561,19 @@ pub fn duel_footer(d: &DuelView) -> Line<'static> {
     Line::from(spans)
 }
 
+/// One choice in a stake picker row; the focused row shows its pick brighter.
+fn stake_option(label: String, chosen: bool, focused: bool) -> Span<'static> {
+    let style = match (chosen, focused) {
+        (true, true) => Style::new().bold().fg(Color::Black).bg(Color::Magenta),
+        (true, false) => Style::new().bold().fg(Color::Magenta),
+        _ => fg(Color::Gray),
+    };
+    Span::styled(format!(" {label} "), style)
+}
+
 /// Bet picker for a challenge or the queue.
 pub fn draw_stake_picker(f: &mut Frame, g: &Game) {
-    let area = small_popup(f.area(), 64, 10);
+    let area = small_popup(f.area(), 64, 14);
     f.render_widget(Clear, area);
     let target = g.stake_target.and_then(|id| g.peers.iter().find(|p| p.id == id));
     let title = match target {
@@ -579,15 +589,20 @@ pub fn draw_stake_picker(f: &mut Frame, g: &Game) {
                 1.0 => "Tudo".to_string(),
                 f => format!("{}%", (f * 100.0) as u32),
             };
-            let style = if i == g.stake_cursor {
-                Style::new().bold().fg(Color::Black).bg(Color::Magenta)
-            } else {
-                fg(Color::Gray)
-            };
-            Span::styled(format!(" {label} "), style)
+            stake_option(label, i == g.stake_cursor, g.stake_row == 0)
         })
         .flat_map(|s| [s, Span::raw("  ")])
         .collect();
+    let modes: Vec<Span> = [("Aleatório", false), ("Escolher", true)]
+        .into_iter()
+        .map(|(label, draft)| stake_option(label.into(), draft == g.stake_draft, g.stake_row == 1))
+        .flat_map(|s| [s, Span::raw("  ")])
+        .collect();
+    let mode_hint = if g.stake_draft {
+        format!("Cada um escolhe {} minigames (na fila, só se os dois escolherem).", DUEL_ROUNDS / 2)
+    } else {
+        "Os minigames são sorteados.".to_string()
+    };
     let fraction = STAKE_FRACTIONS[g.stake_cursor.min(STAKE_FRACTIONS.len() - 1)];
     let base = match target {
         Some(peer) => g.player.mp.min(peer.mp),
@@ -602,9 +617,13 @@ pub fn draw_stake_picker(f: &mut Frame, g: &Game) {
         Line::styled("Quanto do MP do mais pobre vale o duelo?", fg(Color::Gray)),
         Line::raw(""),
         Line::from(options).centered(),
-        Line::raw(""),
         Line::styled(estimate, fg(Color::Yellow)),
-        Line::styled("←→ escolher · Enter confirmar · Esc cancelar", fg(Color::DarkGray)),
+        Line::raw(""),
+        Line::styled("Minigames:", fg(Color::Gray)),
+        Line::from(modes).centered(),
+        Line::styled(mode_hint, fg(Color::Yellow)),
+        Line::raw(""),
+        Line::styled("←→ escolher · ↑↓ linha · Enter confirmar · Esc cancelar", fg(Color::DarkGray)),
     ];
     let block = Block::bordered().border_type(BorderType::Double).border_style(fg(Color::Magenta)).title(title);
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(block), area);
@@ -623,7 +642,12 @@ pub fn draw_invite(f: &mut Frame, g: &Game, now: Instant) {
     let lines = vec![
         Line::from(who).centered(),
         Line::styled(
-            format!("Aposta: {} MP cada · {DUEL_ROUNDS} rodadas · expira em {} s", format_mp(invite.stake), invite.expires_ms.div_ceil(1000)),
+            format!(
+                "Aposta: {} MP cada · {DUEL_ROUNDS} rodadas · {} · expira em {} s",
+                format_mp(invite.stake),
+                if invite.draft { "cada um escolhe os minigames" } else { "minigames sorteados" },
+                invite.expires_ms.div_ceil(1000)
+            ),
             fg(Color::Yellow),
         )
         .centered(),

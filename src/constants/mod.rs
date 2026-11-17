@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 11;
+pub const PROTOCOL_VERSION: u32 = 14;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -46,6 +46,8 @@ pub const HIT_FLASH: Duration = Duration::from_millis(700);
 pub const PULSE_MS: u128 = 400;
 pub const SHOP_PREVIEW_WIDTH: u16 = 44;
 pub const HELP_PAGE_STEP: i32 = 10;
+/// Width of the name column in the rank list, crest included.
+pub const RANK_NAME_COLUMN: usize = 20;
 pub const SHOP_PREVIEW_MIN_WIDTH: u16 = 100;
 
 // Combat

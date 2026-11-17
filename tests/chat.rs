@@ -407,7 +407,7 @@ fn messages_carry_sender_rank_and_name() {
     match to(&events, ana)[0] {
         ChatEvent::Message { msg, .. } => {
             assert_eq!((msg.name.as_str(), msg.sender), ("Ana", ana));
-            assert_eq!(msg.rank, pmog::game::Rank::Ascended);
+            assert_eq!(msg.rank, pmog::game::Rank::Transcendent);
             assert!(msg.at > 1_600_000_000);
         }
         other => panic!("{other:?}"),

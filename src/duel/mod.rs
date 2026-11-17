@@ -373,16 +373,30 @@ pub struct Duel {
     draft: Option<Draft>,
     /// Every minigame played so far, so sudden death draws a new one.
     played_games: Vec<Minigame>,
+    /// Each finished round as (minigame, winner side).
+    pub history: Vec<(Minigame, Option<usize>)>,
     /// Counts phase changes; clients use it to tell a new phase from a repeat.
     pub seq: u32,
 }
 
 impl Duel {
-    /// Duel that starts with the draft; who picks first is drawn.
-    pub fn new(players: [PlayerId; 2], names: [String; 2], stake: f64, now: Instant, rng: &mut impl Rng) -> Duel {
+    /// Duel with drawn minigames, or a draft when `draft`; who picks first is drawn.
+    pub fn new(
+        players: [PlayerId; 2],
+        names: [String; 2],
+        stake: f64,
+        draft: bool,
+        now: Instant,
+        rng: &mut impl Rng,
+    ) -> Duel {
         let mut duel = Duel::blank(players, names, stake, now);
         duel.draft = Some(Draft { picks: Vec::new(), turn: rng.gen_range(0..2) });
         duel.set_phase(Phase::Draft, DRAFT_PICK_TIME, now);
+        if !draft {
+            while let Some(turn) = duel.draft.as_ref().filter(|d| d.picks.len() < DUEL_ROUNDS as usize).map(|d| d.turn) {
+                duel.pick(turn, None, now, rng);
+            }
+        }
         duel
     }
 
@@ -420,6 +434,7 @@ impl Duel {
             round: Round::Mewing { count: [0, 0], last: [None, None] },
             draft: None,
             played_games: Vec::new(),
+            history: Vec::new(),
             seq: 0,
         }
     }
@@ -564,6 +579,7 @@ impl Duel {
             self.wins[w] += 1;
         }
         self.played += 1;
+        self.history.push((self.game, winner));
         self.last = Some(RoundResult { winner, text });
         self.set_phase(Phase::RoundOver, DUEL_ROUND_PAUSE, now);
     }
