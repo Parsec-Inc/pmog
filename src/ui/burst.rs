@@ -93,10 +93,14 @@ pub fn render(buf: &mut Buffer, area: Rect, h: &MogHit, age_ms: u64) {
             if k < 0.08 {
                 continue;
             }
+            let beside = beside_text(buf, area.x + col, area.y + row);
             let Some(cell) = buf.cell_mut((area.x + col, area.y + row)) else { continue };
             if cell.symbol() != " " {
                 // The MOGAR letters flash in the tier color.
                 cell.set_fg(Color::Rgb(r.saturating_add(70), g.saturating_add(70), b.saturating_add(70)));
+                continue;
+            }
+            if beside {
                 continue;
             }
             let sparkle = tier == TimingTier::Perfect && hash(col as u64, row as u64, age_ms / 120) == 0;
@@ -128,6 +132,12 @@ const HIT_RED: (u8, u8, u8) = (230, 50, 60);
 
 pub fn hit_duration_ms(h: &HitTaken) -> u64 {
     (900.0 * (0.75 + 0.25 * h.intensity())) as u64
+}
+
+/// A blank cell squeezed against a letter or digit is a gap inside text; effects leave those alone.
+pub(super) fn beside_text(buf: &Buffer, x: u16, y: u16) -> bool {
+    let text = |x: Option<u16>| x.and_then(|x| buf.cell((x, y))).is_some_and(|c| c.symbol().chars().next().is_some_and(char::is_alphanumeric));
+    text(x.checked_sub(1)) || text(x.checked_add(1))
 }
 
 pub(super) fn shade(k: f64) -> &'static str {
@@ -195,10 +205,11 @@ pub fn impact(buf: &mut Buffer, area: Rect, h: &HitTaken, age_ms: u64) {
             if k < 0.1 {
                 continue;
             }
+            let beside = beside_text(buf, area.x + col, area.y + row);
             let Some(cell) = buf.cell_mut((area.x + col, area.y + row)) else { continue };
             if cell.symbol() != " " {
                 cell.set_fg(Color::Rgb(255, 120, 120));
-            } else {
+            } else if !beside {
                 let c = k.max(0.35);
                 cell.set_symbol(shade(k)).set_fg(Color::Rgb((r as f64 * c) as u8, (g as f64 * c) as u8, (b as f64 * c) as u8));
             }
