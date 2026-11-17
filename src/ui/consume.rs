@@ -220,8 +220,9 @@ pub(super) fn draw(
         for col in 0..area.width {
             (c.col, c.row, c.x, c.y) = (col, row, col as f64 + 0.5, (row as f64 + 0.5) * 2.0);
             let Some((glyph, k)) = paint(&c).filter(|(_, k)| *k > 0.08) else { continue };
+            let beside = super::burst::beside_text(buf, area.x + col, area.y + row);
             let Some(cell) = buf.cell_mut((area.x + col, area.y + row)) else { continue };
-            if cell.symbol() == " " {
+            if cell.symbol() == " " && !beside {
                 let k = k.clamp(0.35, 1.0);
                 cell.set_symbol(glyph).set_fg(Color::Rgb((r as f64 * k) as u8, (g as f64 * k) as u8, (b as f64 * k) as u8));
             }
@@ -229,7 +230,7 @@ pub(super) fn draw(
     }
 
     // Name banner: types itself in, then vanishes with the animation.
-    if c.t < 0.85 {
+    if c.t < 0.85 && !label.is_empty() {
         let text: Vec<char> = format!(" {label} ").chars().take(area.width as usize).collect();
         let shown = ((text.len() as f64 * (c.t / 0.25).min(1.0)) as usize).min(text.len());
         let x0 = area.x + (area.width as usize - text.len()) as u16 / 2;

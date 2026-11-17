@@ -91,6 +91,7 @@ pub fn draw_duel(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     let mut padded = vec![Line::raw(""); pad];
     padded.extend(lines);
     f.render_widget(Paragraph::new(padded).centered().wrap(Wrap { trim: false }), inner);
+    super::duelfx::board(f.buffer_mut(), inner, d, (elapsed * 1000.0) as u64);
 
     let total = d.phase_len_ms as f64 / 1000.0;
     let ratio = if total > 0.0 { (1.0 - elapsed / total).clamp(0.0, 1.0) } else { 0.0 };

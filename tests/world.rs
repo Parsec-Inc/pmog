@@ -845,6 +845,7 @@ fn tape_animates_a_failed_mog() {
     let mut w = world(1, now);
     w.slot_mut(1).unwrap().player.tape_armed = true;
     for i in 1..=300 {
+        w.slot_mut(1).unwrap().streak = 0;
         w.mog(1, NPC_TARGET, 0.0, now + Duration::from_secs(30 * i));
         if player(&w, 1).mogs_lost > 0 {
             assert_eq!(fxs(&w, 1), [Fx::TapeSaved]);

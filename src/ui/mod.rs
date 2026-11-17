@@ -5,6 +5,7 @@ pub mod clan;
 mod burst;
 mod consume;
 mod duel;
+mod duelfx;
 mod fx;
 mod minigames;
 pub mod flair;
@@ -83,6 +84,10 @@ pub fn draw(f: &mut Frame, app: &App) {
         }
         if let Some(h) = &app.game.last_mog {
             burst::shake(f.buffer_mut(), h.intensity(), age(h.at));
+        }
+        if let Some(d) = &app.game.duel {
+            let area = f.area();
+            duelfx::screen(f.buffer_mut(), area, d, (app.game.duel_elapsed(now) * 1000.0) as u64);
         }
         if let Some((at, fx)) = app.game.last_fx {
             let area = f.area();
