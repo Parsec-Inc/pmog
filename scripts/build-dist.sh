@@ -19,7 +19,8 @@ publish() {
   cargo run -q --release --example release -- sign "$3" "$PMOG_RELEASE" "$2"
 }
 
-CC_x86_64_unknown_linux_musl=gcc CFLAGS_x86_64_unknown_linux_musl="-DSQLITE_DISABLE_LFS" \
+# musl-gcc (musl-tools no Ubuntu) evita o _FORTIFY_SOURCE do gcc do Ubuntu, que puxa __memcpy_chk da glibc
+CC_x86_64_unknown_linux_musl="$(command -v musl-gcc || echo gcc)" CFLAGS_x86_64_unknown_linux_musl="-DSQLITE_DISABLE_LFS" \
   cargo build --release --target x86_64-unknown-linux-musl
 publish target/x86_64-unknown-linux-musl/release/pmog dist/pmog-linux linux
 
