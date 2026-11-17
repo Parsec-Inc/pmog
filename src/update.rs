@@ -31,7 +31,13 @@ pub fn enabled() -> bool {
 }
 
 pub fn platform() -> &'static str {
-    if cfg!(windows) { "windows" } else { "linux" }
+    if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    }
 }
 
 /// Why a client on `client` (protocol, release) can't join a server on `server`; `None` when they match.
@@ -223,7 +229,11 @@ pub fn fetch(addr: SocketAddr, platform: &str, have: u64, pubkey_hex: &str) -> R
 
 /// File name of a published build, as `scripts/build-dist.sh` writes it.
 pub fn dist_name(platform: &str) -> &'static str {
-    if platform == "windows" { "pmog-windows.exe" } else { "pmog-linux" }
+    match platform {
+        "windows" => "pmog-windows.exe",
+        "macos" => "pmog-macos",
+        _ => "pmog-linux",
+    }
 }
 
 /// A newer signed build published in the GitHub releases.
@@ -285,8 +295,27 @@ fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(name)
 }
 
+/// Whether this user can create files in `dir`.
+pub fn writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".pmog-write-test-{}", std::process::id()));
+    let ok = fs::OpenOptions::new().write(true).create_new(true).open(&probe).is_ok();
+    if ok {
+        let _ = fs::remove_file(&probe);
+    }
+    ok
+}
+
 /// Puts a verified build in place of `exe`, keeping its manifest next to it so this computer can pass it on.
+/// When a package installed the game where this user can't write, the system asks for the admin password.
 pub fn install(exe: &Path, manifest: &Manifest, bytes: &[u8]) -> Result<(), String> {
+    let manifest = serde_json::to_vec_pretty(manifest).map_err(|e| e.to_string())?;
+    match exe.parent() {
+        Some(dir) if dir.is_dir() && !writable(dir) => install_elevated(exe, &manifest, bytes),
+        _ => install_direct(exe, &manifest, bytes),
+    }
+}
+
+fn install_direct(exe: &Path, manifest: &[u8], bytes: &[u8]) -> Result<(), String> {
     let fail = |e: io::Error| format!("Não consegui trocar o executável em {}: {e}", exe.display());
     let fresh = with_suffix(exe, ".new");
     fs::write(&fresh, bytes).map_err(fail)?;
@@ -303,8 +332,92 @@ pub fn install(exe: &Path, manifest: &Manifest, bytes: &[u8]) -> Result<(), Stri
         fs::rename(exe, &old).map_err(fail)?;
     }
     fs::rename(&fresh, exe).map_err(fail)?;
-    let manifest = serde_json::to_vec_pretty(manifest).map_err(|e| e.to_string())?;
     fs::write(sidecar(exe), manifest).map_err(fail)
+}
+
+/// Stages the build in a temp folder and lets an elevated helper move it into place.
+fn install_elevated(exe: &Path, manifest: &[u8], bytes: &[u8]) -> Result<(), String> {
+    let staging = std::env::temp_dir().join(format!("pmog-update-{}", std::process::id()));
+    let fail = |e: io::Error| format!("Não consegui preparar a atualização em {}: {e}", staging.display());
+    fs::create_dir_all(&staging).map_err(fail)?;
+    let (binary, signature) = (staging.join("pmog"), staging.join("pmog.sig"));
+    fs::write(&binary, bytes).map_err(fail)?;
+    fs::write(&signature, manifest).map_err(fail)?;
+    let result = run_elevated(&binary, exe, &signature, &sidecar(exe), &staging);
+    let _ = fs::remove_dir_all(&staging);
+    result
+}
+
+/// Asks for the admin password and copies the staged build and manifest over `exe` and `sig`.
+fn run_elevated(binary: &Path, exe: &Path, signature: &Path, sig: &Path, staging: &Path) -> Result<(), String> {
+    let mut command = elevation_command(binary, exe, signature, sig, staging).map_err(|e| format!("Não consegui preparar a atualização: {e}"))?;
+    let status = command.status().map_err(|e| format!("Não consegui pedir a senha de administrador: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("A troca do executável em {} não foi autorizada.", exe.display()))
+    }
+}
+
+/// Shell steps that copy the new build next to `$2`, swap it in and write the manifest; paths come as `$1`..`$4`.
+pub const ELEVATED_SWAP: &str = r#"install -m 755 "$1" "$2.new" && mv -f "$2.new" "$2" && install -m 644 "$3" "$4""#;
+
+/// polkit on Linux, which shows the system password prompt.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn elevation_command(binary: &Path, exe: &Path, signature: &Path, sig: &Path, _staging: &Path) -> io::Result<Command> {
+    let mut command = Command::new("pkexec");
+    command.args(linux_elevation_args(binary, exe, signature, sig));
+    Ok(command)
+}
+
+/// Arguments for `pkexec`: the swap script and the four paths, never spliced into the script.
+pub fn linux_elevation_args(binary: &Path, exe: &Path, signature: &Path, sig: &Path) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = ["/bin/sh", "-c", ELEVATED_SWAP, "pmog-update"].map(Into::into).to_vec();
+    args.extend([binary, exe, signature, sig].map(|p| p.as_os_str().to_owned()));
+    args
+}
+
+/// The macOS admin prompt through AppleScript, with the paths passed as `argv` and quoted by AppleScript itself.
+#[cfg(target_os = "macos")]
+fn elevation_command(binary: &Path, exe: &Path, signature: &Path, sig: &Path, _staging: &Path) -> io::Result<Command> {
+    let script = [
+        "on run argv",
+        "set q to {}",
+        "repeat with p in argv",
+        "set end of q to quoted form of (p as text)",
+        "end repeat",
+        r#"do shell script "/bin/sh -c " & quoted form of (system attribute "PMOG_SWAP") & " pmog-update " & (item 1 of q) & " " & (item 2 of q) & " " & (item 3 of q) & " " & (item 4 of q) with administrator privileges"#,
+        "end run",
+    ];
+    let mut command = Command::new("osascript");
+    for line in script {
+        command.args(["-e", line]);
+    }
+    command.args([binary, exe, signature, sig]).env("PMOG_SWAP", ELEVATED_SWAP);
+    Ok(command)
+}
+
+/// UAC on Windows: a batch file in the staging folder does the swap, started elevated through PowerShell.
+#[cfg(windows)]
+fn elevation_command(binary: &Path, exe: &Path, signature: &Path, sig: &Path, staging: &Path) -> io::Result<Command> {
+    let script = staging.join("swap.cmd");
+    fs::write(&script, windows_swap_script(binary, exe, signature, sig))?;
+    let mut command = Command::new("powershell");
+    command
+        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command"])
+        .arg("$p = Start-Process -FilePath $env:PMOG_SWAP -Verb RunAs -Wait -PassThru -WindowStyle Hidden; exit $p.ExitCode")
+        .env("PMOG_SWAP", &script);
+    Ok(command)
+}
+
+/// Batch steps that move the running exe aside (Windows can't overwrite it) and copy the new one in.
+pub fn windows_swap_script(binary: &Path, exe: &Path, signature: &Path, sig: &Path) -> String {
+    let quote = |p: &Path| format!("\"{}\"", p.display().to_string().replace('%', "%%"));
+    let old = quote(&with_suffix(exe, ".old"));
+    let (binary, exe, signature, sig) = (quote(binary), quote(exe), quote(signature), quote(sig));
+    format!(
+        "@echo off\r\ndel /f /q {old} 2>nul\r\nmove /y {exe} {old} >nul || exit /b 1\r\ncopy /y {binary} {exe} >nul || (move /y {old} {exe} >nul & exit /b 1)\r\ncopy /y {signature} {sig} >nul || exit /b 1\r\n"
+    )
 }
 
 /// Removes what a previous update left behind on Windows.

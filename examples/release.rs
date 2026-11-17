@@ -1,7 +1,7 @@
 //! Release signing for self-update. The private key stays in the user's config folder and is never printed.
 //!
 //! cargo run --example release -- keygen
-//! cargo run --example release -- sign <linux|windows> <release> <binary>
+//! cargo run --example release -- sign <linux|windows|macos> <release> <binary>
 //! cargo run --example release -- check <dir>
 
 use std::fs;
@@ -54,8 +54,8 @@ fn load_key() -> SigningKey {
 }
 
 fn sign(platform: &str, release: &str, binary: &str) {
-    if !["linux", "windows"].contains(&platform) {
-        fail("Plataforma deve ser linux ou windows.");
+    if !["linux", "windows", "macos"].contains(&platform) {
+        fail("Plataforma deve ser linux, windows ou macos.");
     }
     let release: u64 = release.parse().unwrap_or_else(|_| fail("Release deve ser um número."));
     let bytes = fs::read(binary).unwrap_or_else(|e| fail(&format!("{binary}: {e}")));
@@ -86,6 +86,6 @@ fn main() {
         ["keygen"] => keygen(),
         ["sign", platform, release, binary] => sign(platform, release, binary),
         ["check", dir] => check(dir),
-        _ => fail("uso: release keygen | release sign <linux|windows> <release> <binário> | release check <pasta>"),
+        _ => fail("uso: release keygen | release sign <linux|windows|macos> <release> <binário> | release check <pasta>"),
     }
 }

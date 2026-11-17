@@ -1,7 +1,7 @@
 //! Stable per-computer id derived from the hardware UUID, hashed and cached.
 
 use std::fs;
-#[cfg(not(windows))]
+#[cfg(all(unix, not(target_os = "macos")))]
 use std::io;
 use std::path::PathBuf;
 use std::process::Command;
@@ -10,9 +10,9 @@ use sha2::{Digest, Sha256};
 
 use crate::constants::MACHINE_ID_SALT;
 
-#[cfg(not(windows))]
+#[cfg(all(unix, not(target_os = "macos")))]
 const PRODUCT_UUID: &str = "/sys/class/dmi/id/product_uuid";
-#[cfg(not(windows))]
+#[cfg(all(unix, not(target_os = "macos")))]
 const BOARD_SERIAL: &str = "/sys/class/dmi/id/board_serial";
 
 /// Placeholder UUIDs some vendors ship on every board.
@@ -90,7 +90,7 @@ fn write_cache(id: &str) {
 }
 
 /// Reads the identifiers directly (works as root or on permissive systems).
-#[cfg(not(windows))]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn read_direct() -> io::Result<(String, String)> {
     let uuid = fs::read_to_string(PRODUCT_UUID)?;
     let serial = fs::read_to_string(BOARD_SERIAL).unwrap_or_default();
@@ -98,7 +98,7 @@ fn read_direct() -> io::Result<(String, String)> {
 }
 
 /// Reads the identifiers through polkit, which asks for the admin password.
-#[cfg(not(windows))]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn read_elevated() -> Result<(String, String), IdError> {
     let script = format!("cat {PRODUCT_UUID}; echo '|'; cat {BOARD_SERIAL} 2>/dev/null; true");
     let output = Command::new("pkexec")
@@ -162,8 +162,32 @@ fn reg_value(text: &str, name: &str) -> Option<String> {
         .find_map(|mut parts| (parts.next() == Some(name)).then(|| parts.nth(1).map(str::to_string)).flatten())
 }
 
+/// Returns the cached id, or reads the hardware UUID and serial from IOKit, which needs no admin rights.
+#[cfg(target_os = "macos")]
+pub fn resolve(_allow_prompt: bool) -> Result<String, IdError> {
+    if let Some(id) = read_cache() {
+        return Ok(id);
+    }
+    let output = Command::new("ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .map_err(|e| IdError::Unavailable(format!("ioreg indisponível: {e}")))?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let uuid = ioreg_value(&text, "IOPlatformUUID").ok_or_else(|| IdError::Unavailable("IOPlatformUUID ausente".into()))?;
+    let id = derive(&uuid, &ioreg_value(&text, "IOPlatformSerialNumber").unwrap_or_default())?;
+    write_cache(&id);
+    Ok(id)
+}
+
+/// Value of `"key" = "value"` in `ioreg` output.
+#[cfg(any(target_os = "macos", test))]
+fn ioreg_value(text: &str, key: &str) -> Option<String> {
+    let prefix = format!("\"{key}\" = \"");
+    text.lines().find_map(|line| line.trim().strip_prefix(prefix.as_str())?.strip_suffix('"').map(str::to_string))
+}
+
 /// Returns the cached id, or reads the hardware (asking for permission once).
-#[cfg(not(windows))]
+#[cfg(all(unix, not(target_os = "macos")))]
 pub fn resolve(allow_prompt: bool) -> Result<String, IdError> {
     if let Some(id) = read_cache() {
         return Ok(id);
@@ -197,6 +221,14 @@ mod tests {
         assert_eq!(reg_value(text, "MachineGuid").as_deref(), Some("a1ff69ec-2f73-462e-b523-d97fe5b81b29"));
         assert_eq!(reg_value("", "MachineGuid"), None);
         assert!(derive("a1ff69ec-2f73-462e-b523-d97fe5b81b29", MACHINE_GUID_TAG).is_ok());
+    }
+
+    #[test]
+    fn mac_uuid_and_serial_are_read_from_ioreg_output() {
+        let text = "+-o J314sAP  <class IOPlatformExpertDevice>\n    {\n      \"IOPlatformSerialNumber\" = \"C02XK1ABCD12\"\n      \"IOPlatformUUID\" = \"0A1B2C3D-1111-2222-3333-444455556666\"\n    }\n";
+        assert_eq!(ioreg_value(text, "IOPlatformUUID").as_deref(), Some("0A1B2C3D-1111-2222-3333-444455556666"));
+        assert_eq!(ioreg_value(text, "IOPlatformSerialNumber").as_deref(), Some("C02XK1ABCD12"));
+        assert_eq!(ioreg_value(text, "missing"), None);
     }
 
     #[test]

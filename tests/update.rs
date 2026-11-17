@@ -17,7 +17,7 @@ use pmog::input::handle_key;
 use pmog::protocol::Beacon;
 use pmog::server::ServerHandle;
 use pmog::constants::GITHUB_LATEST_URL;
-use pmog::update::{Manifest, Shelf, UpdateReply, dist_name, fetch, fetch_web, hex_encode, install, release_label, sidecar, web_offer};
+use pmog::update::{Manifest, Shelf, UpdateReply, dist_name, fetch, fetch_web, hex_encode, install, release_label, sidecar, web_offer, windows_swap_script};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn key(seed: u8) -> SigningKey {
@@ -184,7 +184,7 @@ fn install_never_touches_the_executable_when_writing_fails() {
     let dir = Dir::new("readonly");
     let exe = dir.file("missing-folder").join("pmog");
     let m = Manifest::sign(&key(1), "linux", 2, b"x");
-    assert!(install(&exe, &m, b"x").is_err());
+    assert!(install(&exe, &m, b"x").is_err(), "a missing folder is an error, not a reason to ask for the password");
     assert!(!exe.exists());
 }
 
@@ -338,4 +338,58 @@ fn downloads_go_through_the_system_curl() {
     fs::write(&path, b"bytes do build").unwrap();
     assert_eq!(pmog::update::download(&format!("file://{}", path.display())).unwrap(), b"bytes do build");
     assert!(pmog::update::download(&format!("file://{}", dir.file("missing").display())).is_err());
+}
+
+#[test]
+fn every_platform_has_its_own_published_name() {
+    assert_eq!(dist_name("linux"), "pmog-linux");
+    assert_eq!(dist_name("windows"), "pmog-windows.exe");
+    assert_eq!(dist_name("macos"), "pmog-macos");
+    assert!(["linux", "windows", "macos"].contains(&pmog::update::platform()));
+}
+
+#[cfg(unix)]
+#[test]
+fn read_only_install_folders_are_detected() {
+    use pmog::update::writable;
+    use std::os::unix::fs::PermissionsExt;
+    let dir = Dir::new("readonly");
+    assert!(writable(&dir.0));
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o555)).unwrap();
+    let root = fs::write(dir.file("probe"), b"x").is_ok();
+    assert_eq!(writable(&dir.0), root, "only root writes into a read-only folder");
+    fs::set_permissions(&dir.0, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn the_elevated_swap_script_replaces_the_build_and_its_manifest() {
+    // Runs the same script pkexec would, as the current user, so no password prompt opens.
+    use pmog::update::{ELEVATED_SWAP, linux_elevation_args};
+    let dir = Dir::new("swap");
+    let (binary, exe, signature, sig) = (dir.file("staged"), dir.file("pmog dir/pmog"), dir.file("staged.sig"), dir.file("pmog dir/pmog.sig"));
+    fs::create_dir_all(exe.parent().unwrap()).unwrap();
+    fs::write(&binary, b"nova").unwrap();
+    fs::write(&exe, b"velha").unwrap();
+    fs::write(&signature, b"{}").unwrap();
+    let status = std::process::Command::new("/bin/sh").args(["-c", ELEVATED_SWAP, "pmog-update"]).args([&binary, &exe, &signature, &sig]).status().unwrap();
+    assert!(status.success());
+    assert_eq!(fs::read(&exe).unwrap(), b"nova");
+    assert_eq!(fs::read(&sig).unwrap(), b"{}");
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(fs::metadata(&exe).unwrap().permissions().mode() & 0o777, 0o755);
+
+    let args = linux_elevation_args(&binary, &exe, &signature, &sig);
+    assert_eq!(args[..3], ["/bin/sh", "-c", ELEVATED_SWAP].map(std::ffi::OsString::from));
+    assert_eq!(args[4..], [&binary, &exe, &signature, &sig].map(|p| p.as_os_str().to_owned()), "paths travel as arguments");
+}
+
+#[test]
+fn the_windows_swap_script_quotes_paths_and_keeps_the_old_exe() {
+    let p = |s: &str| PathBuf::from(s);
+    let script = windows_swap_script(&p(r"C:\Temp\pmog"), &p(r"C:\Program Files\PMOG\pmog.exe"), &p(r"C:\Temp\pmog.sig"), &p(r"C:\Program Files\PMOG\pmog.exe.sig"));
+    assert!(script.contains(r#"move /y "C:\Program Files\PMOG\pmog.exe" "C:\Program Files\PMOG\pmog.exe.old""#), "{script}");
+    assert!(script.contains(r#"copy /y "C:\Temp\pmog" "C:\Program Files\PMOG\pmog.exe""#), "{script}");
+    let odd = windows_swap_script(&p(r"C:\a%b\x"), &p(r"C:\y.exe"), &p(r"C:\s"), &p(r"C:\y.exe.sig"));
+    assert!(odd.contains(r"C:\a%%b\x"), "percent signs are escaped for cmd");
 }

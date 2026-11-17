@@ -360,3 +360,12 @@ fn delivered_text_is_sanitized_before_the_sink() {
     assert_eq!(log[0].0.title, "T[2J");
     assert_eq!(log[0].0.body.chars().count(), NOTIFY_BODY_MAX);
 }
+
+#[test]
+fn mac_notifications_pass_the_text_as_arguments() {
+    let notice = pmog::notify::Notice { title: "PMOG \"aspas\"".into(), body: "end run; do shell script \"x\"".into() };
+    let args = pmog::notify::macos_notify_args(&notice);
+    let script: Vec<&String> = args.iter().skip(1).step_by(2).take(3).collect();
+    assert!(script.iter().all(|line| !line.contains("aspas") && !line.contains("do shell")), "text never enters the script");
+    assert_eq!(&args[args.len() - 2..], [notice.title.clone(), notice.body.clone()]);
+}

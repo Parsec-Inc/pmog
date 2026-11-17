@@ -128,11 +128,10 @@ impl SystemSink {
         SystemSink::default()
     }
 
-    /// Starts `notify-send` without waiting for it.
+    /// Starts the desktop notifier without waiting for it.
     #[cfg(not(windows))]
     fn spawn(notice: &Notice, urgency: Urgency) -> io::Result<()> {
-        let mut child = Command::new(NOTIFY_PROGRAM)
-            .args(notify_send_args(notice, urgency))
+        let mut child = notifier_command(notice, urgency)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -159,6 +158,29 @@ impl SystemSink {
         });
         Ok(())
     }
+}
+
+/// `notify-send` on Linux and other Unix desktops.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn notifier_command(notice: &Notice, urgency: Urgency) -> Command {
+    let mut command = Command::new(NOTIFY_PROGRAM);
+    command.args(notify_send_args(notice, urgency));
+    command
+}
+
+/// macOS Notification Center through `osascript`; title and body travel as arguments, never in the script.
+#[cfg(target_os = "macos")]
+fn notifier_command(notice: &Notice, _urgency: Urgency) -> Command {
+    let mut command = Command::new(MACOS_NOTIFY_PROGRAM);
+    command.args(macos_notify_args(notice));
+    command
+}
+
+/// Arguments for `osascript`: the fixed script, then title and body as its `argv`.
+pub fn macos_notify_args(notice: &Notice) -> Vec<String> {
+    let mut args: Vec<String> = MACOS_NOTIFY_SCRIPT.iter().flat_map(|line| ["-e".to_string(), line.to_string()]).collect();
+    args.extend([notice.title.clone(), notice.body.clone()]);
+    args
 }
 
 /// Builds the toast from `PMOG_TITLE` and `PMOG_BODY` as plain text nodes, under PowerShell's own app id.

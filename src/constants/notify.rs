@@ -14,6 +14,10 @@ pub const NOTIFY_TITLE_MAX: usize = 64;
 pub const NOTIFY_BODY_MAX: usize = 240;
 pub const NOTIFY_PROGRAM: &str = "notify-send";
 pub const NOTIFY_APP_NAME: &str = "PMOG";
+/// Notifier on macOS.
+pub const MACOS_NOTIFY_PROGRAM: &str = "osascript";
+/// AppleScript that shows `argv` 1 as the title and `argv` 2 as the body.
+pub const MACOS_NOTIFY_SCRIPT: [&str; 3] = ["on run argv", "display notification (item 2 of argv) with title (item 1 of argv)", "end run"];
 
 // Titles; the kind of a notice is told by its title.
 pub const NOTIFY_TITLE_MOGGED: &str = "PMOG: você foi moggado";
