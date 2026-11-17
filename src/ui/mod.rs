@@ -20,7 +20,7 @@ use crate::duel::Minigame;
 use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
-use crate::sprites::{self, Sprite};
+use crate::sprites;
 use crate::utils::{decimal, format_count, format_mp, format_wait};
 
 const BIG_BUTTON: [&str; 6] = [
@@ -762,10 +762,16 @@ fn confirm_lines(g: &Game, def: &ItemDef) -> Vec<Line<'static>> {
     lines
 }
 
-/// Renders a sprite with half blocks: two pixels per terminal cell.
-fn sprite_lines(sprite: &Sprite, dim: bool) -> Vec<Line<'static>> {
-    let pixel = |c: char| {
-        sprites::color(c).map(|(r, g, b)| {
+/// Milliseconds since the first call; drives sprite animation.
+fn anim_ms() -> u64 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
+
+/// Renders a sprite frame with half blocks: two pixels per terminal cell.
+fn sprite_lines(frame: &sprites::Frame, dim: bool) -> Vec<Line<'static>> {
+    let pixel = |p: Option<sprites::Rgb>| {
+        p.map(|(r, g, b)| {
             if dim {
                 let gray = ((r as u16 + g as u16 + b as u16) / 6) as u8;
                 Color::Rgb(gray, gray, gray)
@@ -774,13 +780,14 @@ fn sprite_lines(sprite: &Sprite, dim: bool) -> Vec<Line<'static>> {
             }
         })
     };
-    sprite
+    frame
+        .rows
         .chunks(2)
         .map(|pair| {
             let spans: Vec<Span> = pair[0]
-                .chars()
-                .zip(pair[1].chars())
-                .map(|(top, bottom)| match (pixel(top), pixel(bottom)) {
+                .iter()
+                .zip(&pair[1])
+                .map(|(&top, &bottom)| match (pixel(top), pixel(bottom)) {
                     (None, None) => Span::raw(" "),
                     (Some(t), None) => Span::styled("▀", fg(t)),
                     (None, Some(b)) => Span::styled("▄", fg(b)),
@@ -801,7 +808,7 @@ fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
     let heading = |t: &str| Line::styled(t.to_string(), fg(Color::Magenta).bold());
 
     let mut lines = vec![Line::raw("")];
-    lines.extend(sprite_lines(sprites::sprite(def.id), locked).into_iter().map(Line::centered));
+    lines.extend(sprite_lines(sprites::sprite_at(def.id, anim_ms()), locked).into_iter().map(Line::centered));
     lines.push(Line::raw(""));
     lines.push(Line::styled(def.name, fg(Color::Yellow).bold()).centered());
     lines.push(Line::styled(def.flavor, fg(Color::Gray).italic()).centered());
