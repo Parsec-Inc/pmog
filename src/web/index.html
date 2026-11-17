@@ -26,6 +26,7 @@
   .card { width: min(92vw, 360px); padding: 20px; border: 2px solid var(--accent); border-radius: 10px; text-align: center; }
   .card h1 { margin: 0 0 4px; color: var(--accent); font: 800 28px ui-monospace, monospace; letter-spacing: 4px; }
   .card p { margin: 8px 0 14px; line-height: 1.4; }
+  .card .error { color: #f14c4c; font-weight: 600; }
   .card input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid #444; border-radius: 6px; background: #000; color: var(--fg); font-size: 16px; }
   .card button { width: 100%; height: 44px; margin-top: 10px; border: 0; border-radius: 6px; background: var(--accent); color: #000; font: 700 16px system-ui, sans-serif; }
   #hint { width: 100%; text-align: center; font-size: 12px; color: #999; }
@@ -164,39 +165,40 @@
     if (button) button.onclick = action;
   }
 
-  function askName(then) {
-    showVeil(`<h1>PMOG</h1><p>Qual vai ser o seu nome no servidor?</p>
-      <input id="name" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="seu nome">
+  function askPassword(error) {
+    showVeil(`<h1>PMOG</h1><p>Digite a senha do celular que foi criada no PC.</p>
+      ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
+      <input id="password" type="password" maxlength="64" autocomplete="current-password" placeholder="senha">
       <button>Entrar</button>`, () => {
-      const name = card.querySelector("#name").value.trim();
-      if (!name) return;
-      store.set("name", name);
-      veil.hidden = true;
-      then();
+      const password = card.querySelector("#password").value;
+      if (!password) return;
+      send({ t: "login", password });
+      showVeil(`<h1>PMOG</h1><p>Conferindo a senha...</p>`);
     });
-    const input = card.querySelector("#name");
-    input.value = store.get("name") || "";
+    const input = card.querySelector("#password");
     input.onkeydown = e => { if (e.key === "Enter") card.querySelector("button").click(); };
     input.focus();
   }
 
   function connect() {
     ended = false;
-    veil.hidden = true;
     lines = [];
     redrawAll();
     ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
-    ws.onopen = () => send({ t: "hello", id: token, name: store.get("name") || "", cols, rows });
+    showVeil(`<h1>PMOG</h1><p>Conectando...</p>`);
+    ws.onopen = () => send({ t: "hello", id: token, cols, rows });
     ws.onmessage = e => {
       const msg = JSON.parse(e.data);
       if (msg.t === "frame") {
         if (msg.rows) lines = new Array(msg.rows).fill(null);
         for (const [y, runs] of msg.lines) { lines[y] = runs; if (y < rows) drawRow(y); }
-      } else if (msg.t === "name") {
-        store.set("name", msg.v);
+      } else if (msg.t === "auth") {
+        askPassword(msg.error);
+      } else if (msg.t === "ready") {
+        veil.hidden = true;
       } else if (msg.t === "bye") {
         ended = true;
-        showVeil(`<h1>PMOG</h1><p>${escapeHtml(msg.reason)}</p><button>Entrar de novo</button>`, connect);
+        showVeil(`<h1>PMOG</h1><p>${escapeHtml(msg.reason)}</p><button>Tentar de novo</button>`, connect);
       }
     };
     ws.onclose = () => {
@@ -217,7 +219,7 @@
   window.addEventListener("resize", onResize);
   if (window.visualViewport) window.visualViewport.addEventListener("resize", onResize);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && ended && !veil.hidden && store.get("name")) connect();
+    if (document.visibilityState === "visible" && ended && !veil.hidden) connect();
   });
 
   // On-screen keys: fire on press, repeat while held, never steal focus from the keyboard field.
@@ -282,7 +284,7 @@
   term.addEventListener("pointerdown", () => { if (document.activeElement === kb) kb.blur(); });
 
   measure();
-  if (store.get("name")) connect(); else askName(connect);
+  connect();
 })();
 </script>
 </body>

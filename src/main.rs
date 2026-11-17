@@ -5,11 +5,12 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use pmog::app::App;
-use pmog::constants::TICK;
+use pmog::constants::{TICK, WEB_PORT_START};
 use pmog::discovery::Discovery;
-use pmog::input::handle_key;
+use pmog::input::handle_local_key;
 use pmog::server::{self, Ports};
 use pmog::notify::SystemSink;
+use pmog::web::Remote;
 use pmog::{bot, machine_id, save, ui, update, utils};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, DisableFocusChange, EnableFocusChange, Event, KeyEventKind};
@@ -67,6 +68,7 @@ fn main() -> io::Result<()> {
 
     app.notifier.enabled = config.notifications;
     app.notifier.set_sink(Box::new(SystemSink::new()));
+    app.remote = Some(Remote::start(WEB_PORT_START, config.phone.clone()));
 
     let mut terminal = ratatui::init();
     let _ = execute!(io::stdout(), EnableFocusChange);
@@ -87,13 +89,13 @@ fn main() -> io::Result<()> {
 
 fn run(terminal: &mut DefaultTerminal, app: &mut App, config: &mut save::Config) -> io::Result<()> {
     loop {
-        terminal.draw(|f| ui::draw(f, app))?;
+        terminal.draw(|f| ui::draw_local(f, app))?;
         let wait = app.game.next_wake(Instant::now()).map_or(TICK, |w| w.min(TICK));
         if event::poll(wait)? {
             match event::read()? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     app.notifier.focus.key_pressed(Instant::now());
-                    if !handle_key(app, key, Instant::now()) {
+                    if !handle_local_key(app, key, Instant::now()) {
                         return Ok(());
                     }
                 }
@@ -107,9 +109,13 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App, config: &mut save::Config)
             return Ok(());
         }
         let name_changed = std::mem::take(&mut app.name_changed);
-        if std::mem::take(&mut app.notifications_changed) || name_changed {
+        let phone_changed = app.remote.as_ref().is_some_and(|r| r.take_dirty());
+        if std::mem::take(&mut app.notifications_changed) || name_changed || phone_changed {
             config.name = app.name.clone();
             config.notifications = app.notifier.enabled;
+            if let Some(remote) = &app.remote {
+                config.phone = remote.settings();
+            }
             save::store(config);
         }
     }

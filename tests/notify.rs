@@ -319,7 +319,7 @@ fn config_defaults_on_and_persists_the_toggle() {
     let old = save::load_from(&path);
     assert!(old.notifications);
     assert_eq!(old.name, "Igor");
-    save::store_to(&path, &save::Config { name: "Igor".into(), notifications: false });
+    save::store_to(&path, &save::Config { name: "Igor".into(), notifications: false, ..Default::default() });
     let back = save::load_from(&path);
     assert!(!back.notifications);
     assert_eq!(back.name, "Igor");

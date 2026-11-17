@@ -96,10 +96,25 @@ pub fn draw(f: &mut Frame, app: &App) {
         }
     }
     if let Some(typed) = &app.editing_name {
-        draw_name_editor(f, typed);
+        draw_text_editor(f, " Seu nome · Enter salva · Esc cancela ", typed);
+    }
+    if let Some(typed) = &app.editing_phone_password {
+        draw_text_editor(f, " Senha do celular · Enter salva · Esc cancela ", &"•".repeat(typed.chars().count()));
     }
     if let Some(question) = app.confirm {
         draw_confirm(f, app, question);
+    }
+}
+
+/// The PC's own screen: the game plus a notice while a phone has taken over.
+pub fn draw_local(f: &mut Frame, app: &App) {
+    draw(f, app);
+    if app.phone_controls() {
+        let area = small_popup(f.area(), 46, 5);
+        f.render_widget(Clear, area);
+        let block = Block::bordered().border_type(BorderType::Double).border_style(fg(Color::LightGreen)).title(" Celular no controle ");
+        let lines = vec![Line::raw(""), Line::from(vec![Span::raw("O jogo está no celular. "), Span::styled("R", Style::new().bold()), Span::raw(" retoma aqui.")])];
+        f.render_widget(Paragraph::new(lines).centered().block(block), area);
     }
 }
 
@@ -1010,10 +1025,6 @@ fn draw_lobby(f: &mut Frame, app: &App) {
                     ),
                 ])
             }
-            LobbyRow::Home => ListItem::new(vec![
-                Line::styled("Servidor deste computador", Style::new().bold()),
-                Line::styled("   Enter para entrar de novo · Q para sair", fg(Color::DarkGray)),
-            ]),
             LobbyRow::Server(entry) => {
                 let mut title = vec![Span::styled(entry.name.clone(), Style::new().bold())];
                 if entry.update.is_some_and(|r| app.release > 0 && r > app.release) {
@@ -1043,24 +1054,28 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     let mut state = ListState::default().with_selected(Some(app.lobby_cursor.min(rows.len().saturating_sub(1))));
     f.render_stateful_widget(list, list_area, &mut state);
 
-    let info = vec![
+    let mut info = vec![
         Line::styled("VOCÊ", fg(Color::Magenta).bold()),
         Line::from(vec![Span::raw("Nome: "), Span::styled(app.name.clone(), Style::new().bold())]),
-        Line::styled(format!("{}: {}", if app.home.is_some() { "Celular" } else { "Computador" }, &app.machine_id[..8.min(app.machine_id.len())]), fg(Color::Gray)),
+        Line::styled(format!("Computador: {}", &app.machine_id[..8.min(app.machine_id.len())]), fg(Color::Gray)),
         Line::styled(
             if app.release > 0 { format!("Versão: {}", crate::update::release_label(app.release)) } else { "Versão: desenvolvimento".into() },
             fg(Color::Gray),
         ),
         Line::raw(""),
+    ];
+    let phone_info = phone_lines(app, false);
+    if !phone_info.is_empty() {
+        info.push(Line::styled("CELULAR", fg(Color::Magenta).bold()));
+        info.extend(phone_info);
+        info.push(Line::raw(""));
+    }
+    info.extend([
         Line::styled("COMO FUNCIONA", fg(Color::Magenta).bold()),
-        Line::raw(if app.home.is_some() {
-            "Seu progresso fica salvo no servidor, ligado a este navegador do celular."
-        } else {
-            "Seu progresso fica salvo no servidor em que você joga, ligado a este computador."
-        }),
+        Line::raw("Seu progresso fica salvo no servidor em que você joga, ligado a este computador."),
         Line::raw(""),
         Line::raw("Para jogar com amigos, um de vocês hospeda e os outros entram pela lista, na mesma rede."),
-    ];
+    ]);
     let info_block = Block::bordered().border_type(BorderType::Rounded);
     f.render_widget(Paragraph::new(info).wrap(Wrap { trim: true }).block(info_block), info_area);
 
@@ -1070,7 +1085,7 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     }
 
     let key = |k: &'static str| Span::styled(format!(" {k} "), Style::new().bg(Color::DarkGray).fg(Color::White).bold());
-    let mut keys = vec![key("↑↓"), " escolher ".into(), key("Enter"), " entrar ".into(), key("N"), " trocar nome ".into()];
+    let mut keys = vec![key("↑↓"), " escolher ".into(), key("Enter"), " entrar ".into(), key("N"), " trocar nome ".into(), key("C"), " senha do celular ".into()];
     if app.host.is_some() {
         keys.extend([key("P"), " parar servidor ".into()]);
     }
@@ -1078,17 +1093,41 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     f.render_widget(Line::from(keys), footer);
 }
 
-/// Page a phone opens to play on the server this client is in; none on phones themselves.
+/// Page a phone opens to reach this PMOG, once a password exists.
 fn phone_url(app: &App) -> Option<String> {
-    if app.home.is_some() {
-        return None;
+    let remote = app.remote.as_ref().filter(|r| r.port > 0 && r.has_password())?;
+    Some(crate::web::page_url(crate::utils::lan_ip()?, remote.port))
+}
+
+/// Phone access status and its keys, for the server panel and the lobby.
+fn phone_lines(app: &App, beside_qr: bool) -> Vec<Line<'static>> {
+    let Some(remote) = &app.remote else { return Vec::new() };
+    if remote.port == 0 {
+        return vec![Line::styled(" Sem porta livre para o celular (47800 a 47809).", fg(Color::Red))];
     }
-    let addr = match (&app.host, &app.conn) {
-        (Some(host), _) => std::net::SocketAddr::new(crate::utils::lan_ip()?, host.port),
-        (None, Some(conn)) if !conn.addr.ip().is_loopback() => conn.addr,
-        _ => return None,
-    };
-    Some(crate::web::page_url(addr.ip(), addr.port()))
+    if !remote.has_password() {
+        return vec![Line::raw(" C  criar a senha e liberar o acesso pelo celular")];
+    }
+    let mut lines = Vec::new();
+    match phone_url(app) {
+        Some(url) => {
+            lines.push(Line::raw(" Na mesma rede, abra no navegador do celular:"));
+            lines.push(Line::styled(format!(" {url}"), fg(Color::LightGreen).bold()));
+            if beside_qr {
+                lines.push(Line::styled(" ou aponte a câmera para o QR code ao lado.", fg(Color::Gray)));
+            }
+        }
+        None => lines.push(Line::raw(format!(" Porta {} (sem rede local encontrada)", remote.port))),
+    }
+    let mode = if remote.takeover() { "assume (o PC só assiste)" } else { "espelho (os dois controlam)" };
+    let state = if remote.connected() { "conectado" } else { "nenhum" };
+    lines.push(Line::raw(format!(" Celular: {state} · modo {mode}")));
+    let mut keys = " E  trocar o modo · C  trocar a senha".to_string();
+    if remote.connected() {
+        keys.push_str(" · X  desconectar o celular");
+    }
+    lines.push(Line::raw(keys));
+    lines
 }
 
 /// QR code of `text` drawn with half blocks, two modules per line, quiet zone included.
@@ -1142,13 +1181,10 @@ fn draw_server_panel(f: &mut Frame, app: &App) {
         }
         lines.push(Line::raw(""));
     }
-    if let Some(url) = &phone {
+    let phone_info = phone_lines(app, wide);
+    if !phone_info.is_empty() {
         lines.push(heading("JOGAR NO CELULAR"));
-        lines.push(Line::raw(" Na mesma rede, abra no navegador do celular:"));
-        lines.push(Line::styled(format!(" {url}"), fg(Color::LightGreen).bold()));
-        if wide {
-            lines.push(Line::styled(" ou aponte a câmera para o QR code ao lado.", fg(Color::Gray)));
-        }
+        lines.extend(phone_info);
         lines.push(Line::raw(""));
     }
     lines.push(heading("AÇÕES"));
@@ -1182,13 +1218,13 @@ fn small_popup(area: Rect, width: u16, height: u16) -> Rect {
     Rect { x: area.x + (area.width - w) / 2, y: area.y + (area.height - h) / 2, width: w, height: h }
 }
 
-fn draw_name_editor(f: &mut Frame, typed: &str) {
+fn draw_text_editor(f: &mut Frame, title: &str, typed: &str) {
     let area = small_popup(f.area(), 50, 5);
     f.render_widget(Clear, area);
     let block = Block::bordered()
         .border_type(BorderType::Double)
         .border_style(fg(Color::Magenta))
-        .title(" Seu nome · Enter salva · Esc cancela ");
+        .title(title.to_string());
     let line = Line::from(vec![Span::raw(" "), Span::styled(typed.to_string(), Style::new().bold()), Span::styled("█", fg(Color::Magenta))]);
     f.render_widget(Paragraph::new(vec![Line::raw(""), line]).block(block), area);
 }

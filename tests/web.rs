@@ -1,4 +1,4 @@
-//! Phone client: the page, the WebSocket session and the key mapping.
+//! Phone access: the page, the password, one phone at a time, mirror and takeover.
 
 mod common;
 
@@ -7,13 +7,31 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
 use common::{DEADLINE, ports};
-use pmog::server::ServerHandle;
-use pmog::web::{key_event, phone_id};
-use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+use pmog::app::App;
+use pmog::input::handle_local_key;
+use pmog::web::{PhoneSettings, Remote, key_event};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde_json::{Value, json};
 use tungstenite::{Message, WebSocket};
 
-const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+const PHONE_A: &str = "0123456789abcdef0123456789abcdef";
+const PHONE_B: &str = "fedcba9876543210fedcba9876543210";
+const PASSWORD: &str = "mog67";
+
+/// An offline PMOG with phone access on its own port.
+fn pmog(slot: u16, password: Option<&str>) -> App {
+    let mut settings = PhoneSettings::default();
+    if let Some(p) = password {
+        settings.set_password(p);
+    }
+    let mut app = App::new("Igor".into(), pmog::machine_id::for_bot("web"), None, None, ports(slot));
+    app.remote = Some(Remote::start(ports(slot).tcp_start, settings));
+    app
+}
+
+fn addr(app: &App) -> SocketAddr {
+    SocketAddr::from(([127, 0, 0, 1], app.remote.as_ref().unwrap().port))
+}
 
 fn get(addr: SocketAddr, path: &str) -> String {
     let mut stream = TcpStream::connect(addr).unwrap();
@@ -23,139 +41,271 @@ fn get(addr: SocketAddr, path: &str) -> String {
     body
 }
 
-fn open(addr: SocketAddr) -> WebSocket<TcpStream> {
-    let stream = TcpStream::connect(addr).unwrap();
-    stream.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
-    let (ws, _) = tungstenite::client(format!("ws://{addr}/ws"), stream).unwrap();
-    ws
+fn screen_of(app: &App) -> String {
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30)).unwrap();
+    terminal.draw(|f| pmog::ui::draw_local(f, app)).unwrap();
+    terminal.backend().buffer().content().iter().map(|c| c.symbol()).collect()
 }
 
-fn send(ws: &mut WebSocket<TcpStream>, value: Value) {
-    ws.send(Message::text(value.to_string())).unwrap();
+/// A phone browser: its socket and the screen it shows.
+struct Phone {
+    ws: WebSocket<TcpStream>,
+    screen: Vec<String>,
+    seen: Vec<Value>,
 }
 
-/// The screen as plain text, kept up to date from frame messages.
-struct Screen(Vec<String>);
+impl Phone {
+    fn open(app: &App, token: &str) -> Phone {
+        let stream = TcpStream::connect(addr(app)).unwrap();
+        stream.set_read_timeout(Some(Duration::from_millis(20))).unwrap();
+        let (ws, _) = tungstenite::client(format!("ws://{}/ws", addr(app)), stream).unwrap();
+        let mut phone = Phone { ws, screen: Vec::new(), seen: Vec::new() };
+        phone.send(json!({"t": "hello", "id": token, "cols": 100, "rows": 30}));
+        phone
+    }
 
-impl Screen {
-    fn apply(&mut self, msg: &Value) {
-        if let Some(rows) = msg["rows"].as_u64() {
-            self.0 = vec![String::new(); rows as usize];
-        }
-        for line in msg["lines"].as_array().into_iter().flatten() {
-            let y = line[0].as_u64().unwrap() as usize;
-            self.0[y] = line[1].as_array().unwrap().iter().map(|run| run[0].as_str().unwrap()).collect();
-        }
+    fn send(&mut self, value: Value) {
+        self.ws.send(Message::text(value.to_string())).unwrap();
+    }
+
+    fn key(&mut self, k: &str) {
+        self.send(json!({"t": "key", "k": k}));
     }
 
     fn text(&self) -> String {
-        self.0.join("\n")
+        self.screen.join("\n")
     }
-}
 
-/// Reads messages until `done` holds for the screen, returning every non-frame message seen.
-fn until(ws: &mut WebSocket<TcpStream>, screen: &mut Screen, done: impl Fn(&Screen) -> bool) -> Vec<Value> {
-    let started = Instant::now();
-    let mut others = Vec::new();
-    while !done(screen) {
-        assert!(started.elapsed() < DEADLINE, "a tela não chegou no esperado:\n{}", screen.text());
-        match ws.read() {
-            Ok(Message::Text(text)) => {
-                let msg: Value = serde_json::from_str(text.as_str()).unwrap();
-                if msg["t"] == "frame" { screen.apply(&msg) } else { others.push(msg) }
-            }
-            Ok(_) => {}
-            Err(tungstenite::Error::Io(_)) => {}
-            Err(e) => panic!("WebSocket caiu: {e}"),
-        }
-    }
-    others
-}
-
-fn wait_for(done: impl Fn() -> bool, why: &str) {
-    let started = Instant::now();
-    while !done() {
-        assert!(started.elapsed() < DEADLINE, "{why}");
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-#[test]
-fn the_game_port_serves_the_phone_page() {
-    let server = ServerHandle::start("Host", None, ports(40)).unwrap();
-    let page = get(server.local_addr(), "/");
-    assert!(page.starts_with("HTTP/1.1 200 OK"), "{page}");
-    assert!(page.contains("<title>PMOG</title>"));
-    assert!(get(server.local_addr(), "/nada").starts_with("HTTP/1.1 404"));
-}
-
-#[test]
-fn a_phone_plays_through_the_websocket() {
-    let server = ServerHandle::start("Casa", None, ports(41)).unwrap();
-    let mut ws = open(server.local_addr());
-    send(&mut ws, json!({"t": "hello", "id": TOKEN, "name": "Zap", "cols": 100, "rows": 30}));
-    let mut screen = Screen(Vec::new());
-    until(&mut ws, &mut screen, |s| s.text().contains("Casa") && s.text().contains("Zap"));
-    assert_eq!(screen.0.len(), 30);
-    assert!(screen.0.iter().all(|row| row.chars().count() == 100), "cada linha tem todas as colunas");
-    wait_for(|| server.status().online.contains(&"Zap".to_string()), "o celular não apareceu online");
-
-    send(&mut ws, json!({"t": "key", "k": "?"}));
-    until(&mut ws, &mut screen, |s| s.text().contains("Como jogar"));
-
-    send(&mut ws, json!({"t": "resize", "cols": 60, "rows": 20}));
-    until(&mut ws, &mut screen, |s| s.0.len() == 20);
-    assert!(screen.0.iter().all(|row| row.chars().count() == 60));
-}
-
-#[test]
-fn quitting_on_the_phone_ends_the_session_and_frees_the_player() {
-    let server = ServerHandle::start("Casa", None, ports(42)).unwrap();
-    let mut ws = open(server.local_addr());
-    send(&mut ws, json!({"t": "hello", "id": TOKEN, "name": "Zap", "cols": 100, "rows": 30}));
-    let mut screen = Screen(Vec::new());
-    until(&mut ws, &mut screen, |s| s.text().contains("Casa"));
-    send(&mut ws, json!({"t": "key", "k": "q"}));
-    let started = Instant::now();
-    let bye = loop {
-        assert!(started.elapsed() < DEADLINE, "a sessão não terminou");
-        if let Ok(Message::Text(text)) = ws.read() {
-            let msg: Value = serde_json::from_str(text.as_str()).unwrap();
-            if msg["t"] == "bye" {
-                break msg;
+    /// Steps the PMOG and reads the socket until `done` holds.
+    fn until(&mut self, app: &mut App, done: impl Fn(&Phone) -> bool) {
+        let started = Instant::now();
+        while !done(self) {
+            assert!(started.elapsed() < DEADLINE, "o celular não chegou no esperado: {:?}\n{}", self.seen, self.text());
+            app.step(Instant::now());
+            match self.ws.read() {
+                Ok(Message::Text(text)) => {
+                    let msg: Value = serde_json::from_str(text.as_str()).unwrap();
+                    if msg["t"] == "frame" {
+                        if let Some(rows) = msg["rows"].as_u64() {
+                            self.screen = vec![String::new(); rows as usize];
+                        }
+                        for line in msg["lines"].as_array().unwrap() {
+                            let runs = line[1].as_array().unwrap();
+                            self.screen[line[0].as_u64().unwrap() as usize] = runs.iter().map(|r| r[0].as_str().unwrap()).collect();
+                        }
+                    } else {
+                        self.seen.push(msg);
+                    }
+                }
+                Ok(_) | Err(tungstenite::Error::Io(_)) => {}
+                Err(_) => std::thread::sleep(Duration::from_millis(5)),
             }
         }
-    };
-    assert_eq!(bye["reason"], "Você saiu do jogo.");
-    wait_for(|| server.status().online.is_empty(), "o jogador continuou online");
-}
-
-#[test]
-fn a_bad_phone_token_is_refused() {
-    let server = ServerHandle::start("Casa", None, ports(43)).unwrap();
-    let mut ws = open(server.local_addr());
-    send(&mut ws, json!({"t": "hello", "id": "não é hex", "name": "Zap", "cols": 100, "rows": 30}));
-    let mut screen = Screen(Vec::new());
-    let others = until(&mut ws, &mut screen, |_| true);
-    let started = Instant::now();
-    let mut seen = others;
-    while !seen.iter().any(|m| m["t"] == "bye") {
-        assert!(started.elapsed() < DEADLINE);
-        if let Ok(Message::Text(text)) = ws.read() {
-            seen.push(serde_json::from_str(text.as_str()).unwrap());
-        }
     }
-    assert!(server.status().online.is_empty());
+
+    fn got(&self, kind: &str) -> Option<&Value> {
+        self.seen.iter().rev().find(|m| m["t"] == kind)
+    }
+
+    fn bye(&self) -> Option<String> {
+        self.got("bye").map(|m| m["reason"].as_str().unwrap().to_string())
+    }
+
+    fn login(&mut self, app: &mut App, password: &str) {
+        self.until(app, |p| p.got("auth").is_some());
+        self.seen.clear();
+        self.send(json!({"t": "login", "password": password}));
+    }
+
+    /// Opens the page, types the password if asked and waits until the PMOG has the phone.
+    fn enter(app: &mut App, token: &str) -> Phone {
+        let mut phone = Phone::open(app, token);
+        phone.until(app, |p| p.got("auth").is_some() || p.got("ready").is_some());
+        if phone.got("auth").is_some() {
+            phone.seen.clear();
+            phone.send(json!({"t": "login", "password": PASSWORD}));
+        }
+        phone.until(app, |p| p.got("ready").is_some());
+        let started = Instant::now();
+        while !app.remote.as_ref().unwrap().connected() {
+            assert!(started.elapsed() < DEADLINE, "o PMOG não registrou o celular");
+            app.step(Instant::now());
+        }
+        phone
+    }
+}
+
+fn local(app: &mut App, code: KeyCode) {
+    handle_local_key(app, KeyEvent::new(code, KeyModifiers::NONE), Instant::now());
+}
+
+fn local_text(app: &mut App, text: &str) {
+    text.chars().for_each(|c| local(app, KeyCode::Char(c)));
 }
 
 #[test]
-fn phone_ids_are_stable_and_validated() {
-    let id = phone_id(TOKEN).unwrap();
-    assert_eq!(phone_id(&TOKEN.to_uppercase()), Some(id.clone()));
-    assert!(pmog::machine_id::is_valid(&id));
-    assert_ne!(phone_id("fedcba9876543210fedcba9876543210"), Some(id));
-    assert_eq!(phone_id("curto"), None);
-    assert_eq!(phone_id("zz23456789abcdef0123456789abcdef"), None);
+fn this_pmog_serves_the_phone_page() {
+    let app = pmog(40, None);
+    let page = get(addr(&app), "/");
+    assert!(page.starts_with("HTTP/1.1 200 OK") && page.contains("<title>PMOG</title>"), "{page}");
+    assert!(get(addr(&app), "/nada").starts_with("HTTP/1.1 404"));
+}
+
+#[test]
+fn without_a_password_the_phone_is_told_to_create_one_on_the_pc() {
+    let mut app = pmog(41, None);
+    let mut phone = Phone::open(&app, PHONE_A);
+    phone.until(&mut app, |p| p.bye().is_some());
+    assert!(phone.bye().unwrap().contains("ainda não tem senha"));
+    assert!(!app.remote.as_ref().unwrap().connected());
+}
+
+#[test]
+fn the_password_is_asked_once_per_browser_and_again_after_it_changes() {
+    let mut app = pmog(42, Some(PASSWORD));
+    let mut phone = Phone::open(&app, PHONE_A);
+    phone.login(&mut app, "errada");
+    phone.until(&mut app, |p| p.got("auth").is_some());
+    assert_eq!(phone.got("auth").unwrap()["error"], "Senha errada.");
+    phone.seen.clear();
+    phone.send(json!({"t": "login", "password": PASSWORD}));
+    phone.until(&mut app, |p| p.got("ready").is_some() && p.text().contains("Igor"));
+    assert!(app.remote.as_ref().unwrap().connected());
+    assert!(app.remote.as_ref().unwrap().take_dirty(), "o navegador lembrado precisa ser salvo");
+    drop(phone);
+
+    let started = Instant::now();
+    while app.remote.as_ref().unwrap().connected() {
+        assert!(started.elapsed() < DEADLINE, "o celular fechado continuou conectado");
+        app.step(Instant::now());
+    }
+    let mut again = Phone::open(&app, PHONE_A);
+    again.until(&mut app, |p| p.got("ready").is_some() || p.got("auth").is_some());
+    assert!(again.got("auth").is_none(), "o mesmo navegador não digita a senha de novo");
+    while !app.remote.as_ref().unwrap().connected() {
+        app.step(Instant::now());
+    }
+
+    app.remote.as_mut().unwrap().set_password("nova-senha");
+    again.until(&mut app, |p| p.bye().is_some());
+    assert!(again.bye().unwrap().contains("senha do celular mudou"));
+    let mut after = Phone::open(&app, PHONE_A);
+    after.until(&mut app, |p| p.got("auth").is_some());
+}
+
+#[test]
+fn only_one_phone_at_a_time() {
+    let mut app = pmog(43, Some(PASSWORD));
+    let mut first = Phone::enter(&mut app, PHONE_A);
+    let mut second = Phone::open(&app, PHONE_B);
+    second.login(&mut app, PASSWORD);
+    second.until(&mut app, |p| p.bye().is_some());
+    assert!(second.bye().unwrap().contains("Só um por vez"));
+    assert!(first.bye().is_none());
+
+    app.drop_phone("O PC desconectou o celular.");
+    first.until(&mut app, |p| p.bye().is_some());
+    Phone::enter(&mut app, PHONE_B);
+}
+
+#[test]
+fn in_mirror_mode_phone_and_pc_drive_the_same_game() {
+    let mut app = pmog(44, Some(PASSWORD));
+    let mut phone = Phone::enter(&mut app, PHONE_A);
+    phone.key("n");
+    phone.until(&mut app, |p| p.text().contains("Seu nome"));
+    assert!(app.editing_name.is_some(), "a tecla do celular chega na mesma sessão");
+    local_text(&mut app, "x");
+    phone.until(&mut app, |p| p.text().contains("Igorx"));
+    assert!(!app.phone_controls());
+    phone.key("Enter");
+    phone.until(&mut app, |p| p.text().contains("Celular: conectado"));
+    phone.key("e");
+    phone.until(&mut app, |p| p.text().contains("modo assume"));
+    assert!(app.remote.as_ref().unwrap().takeover(), "o celular também troca o modo");
+}
+
+#[test]
+fn in_takeover_mode_the_pc_only_watches_until_it_takes_back() {
+    let mut app = pmog(45, Some(PASSWORD));
+    app.toggle_phone_mode();
+    let mut phone = Phone::enter(&mut app, PHONE_A);
+    app.step(Instant::now());
+    assert!(app.phone_controls());
+    local_text(&mut app, "n");
+    assert!(app.editing_name.is_none(), "o PC não joga enquanto o celular assume");
+    assert!(screen_of(&app).contains("Celular no controle"));
+    assert!(!phone.text().contains("Celular no controle"), "o aviso é só da tela do PC");
+
+    local_text(&mut app, "r");
+    phone.until(&mut app, |p| p.bye().is_some());
+    assert_eq!(phone.bye().unwrap(), "O PC retomou o controle.");
+    assert!(!app.phone_controls());
+}
+
+#[test]
+fn quitting_on_the_phone_keeps_the_pmog_running() {
+    let mut app = pmog(46, Some(PASSWORD));
+    let mut phone = Phone::enter(&mut app, PHONE_A);
+    phone.key("q");
+    phone.until(&mut app, |p| p.bye().is_some());
+    assert!(phone.bye().unwrap().contains("continua aberto no PC"));
+    assert!(!app.quit);
+}
+
+#[test]
+fn wrong_passwords_lock_the_door_for_a_while() {
+    let mut app = pmog(47, Some(PASSWORD));
+    let mut phone = Phone::open(&app, PHONE_A);
+    for _ in 0..pmog::constants::WEB_MAX_FAILURES {
+        phone.login(&mut app, "chute");
+    }
+    phone.login(&mut app, PASSWORD);
+    phone.until(&mut app, |p| p.got("auth").is_some());
+    assert!(phone.got("auth").unwrap()["error"].as_str().unwrap().contains("Muitas tentativas"));
+}
+
+#[test]
+fn the_pc_sets_the_password_with_a_masked_editor() {
+    let mut app = pmog(48, None);
+    local_text(&mut app, "cabc");
+    local(&mut app, KeyCode::Enter);
+    assert!(!app.remote.as_ref().unwrap().has_password(), "curta demais");
+    local_text(&mut app, "c");
+    local_text(&mut app, PASSWORD);
+    let screen = screen_of(&app);
+    assert!(screen.contains("•••••") && !screen.contains(PASSWORD), "a senha não aparece na tela");
+    local(&mut app, KeyCode::Enter);
+    let settings = app.remote.as_ref().unwrap().settings();
+    assert!(settings.check_password(PASSWORD) && !settings.password_hash.contains(PASSWORD));
+}
+
+#[test]
+fn the_lobby_shows_the_phone_address_once_there_is_a_password() {
+    let mut app = pmog(49, None);
+    assert!(screen_of(&app).contains("criar a senha"));
+    app.remote.as_mut().unwrap().set_password(PASSWORD);
+    let Some(ip) = pmog::utils::lan_ip() else { return };
+    let url = pmog::web::page_url(ip, addr(&app).port());
+    let screen = screen_of(&app);
+    assert!(screen.contains(&url) && screen.contains("modo espelho"), "{screen}");
+    app.toggle_phone_mode();
+    assert!(screen_of(&app).contains("modo assume"));
+}
+
+#[test]
+fn settings_remember_a_few_browsers_and_forget_them_on_a_new_password() {
+    let mut settings = PhoneSettings::default();
+    assert!(!settings.trusts(PHONE_A), "sem senha ninguém entra");
+    settings.set_password(PASSWORD);
+    assert!(!settings.check_password("outra"));
+    for i in 0..20 {
+        settings.trust(&format!("{i:032x}"));
+    }
+    assert_eq!(settings.trusted.len(), pmog::constants::WEB_MAX_TRUSTED);
+    assert!(settings.trusts(&format!("{:032x}", 19)) && !settings.trusts(&format!("{:032x}", 0)));
+    settings.set_password("nova");
+    assert!(settings.trusted.is_empty());
 }
 
 #[test]
@@ -170,43 +320,4 @@ fn page_keys_map_to_terminal_keys() {
     assert!(key_event("Ctrl+").is_none());
     assert!(key_event("Unidentified").is_none());
     assert!(key_event("\u{7}").is_none());
-}
-
-fn render(app: &pmog::app::App, w: u16, h: u16) -> String {
-    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
-    terminal.draw(|f| pmog::ui::draw(f, app)).unwrap();
-    let buffer = terminal.backend().buffer();
-    (0..h).map(|y| (0..w).map(|x| buffer[(x, y)].symbol()).collect::<String>()).collect::<Vec<_>>().join("\n")
-}
-
-fn press(app: &mut pmog::app::App, code: KeyCode) {
-    pmog::input::handle_key(app, ratatui::crossterm::event::KeyEvent::new(code, KeyModifiers::NONE), Instant::now());
-}
-
-#[test]
-fn the_host_sees_the_phone_address_and_qr_code() {
-    let p = ports(44);
-    let mut host = pmog::app::App::new("Host".into(), pmog::machine_id::for_bot("web-host"), None, None, p);
-    press(&mut host, KeyCode::Enter);
-    assert!(host.host.is_some(), "{:?}", host.notice);
-    press(&mut host, KeyCode::Char('s'));
-    let Some(ip) = pmog::utils::lan_ip() else { return };
-    let url = pmog::web::page_url(ip, host.host.as_ref().unwrap().port);
-    let wide = render(&host, 140, 45);
-    assert!(wide.contains("JOGAR NO CELULAR") && wide.contains(&url), "{wide}");
-    assert!(wide.contains("▀▀▀▀▀▀▀▀"), "o QR code aparece ao lado: {wide}");
-    let narrow = render(&host, 80, 30);
-    assert!(narrow.contains(&url) && !narrow.contains("▀▀▀▀▀▀▀▀"), "{narrow}");
-    host.shutdown();
-}
-
-#[test]
-fn a_phone_lobby_only_offers_its_server() {
-    let mut phone = pmog::app::App::new("Zap".into(), phone_id(TOKEN).unwrap(), None, None, ports(46));
-    phone.home = Some(SocketAddr::from(([127, 0, 0, 1], ports(46).tcp_start)));
-    assert_eq!(phone.lobby_rows(), vec![pmog::app::LobbyRow::Home]);
-    let screen = render(&phone, 120, 30);
-    assert!(screen.contains("Servidor deste computador") && !screen.contains("Hospedar"), "{screen}");
-    press(&mut phone, KeyCode::Enter);
-    assert!(phone.notice.is_some(), "sem servidor, Enter avisa que não conectou");
 }
