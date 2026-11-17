@@ -48,7 +48,7 @@ pub fn shake(buf: &mut Buffer, power: f64, age_ms: u64) {
 }
 
 /// Cheap deterministic noise for sparkles.
-fn hash(a: u64, b: u64, c: u64) -> u64 {
+pub(super) fn hash(a: u64, b: u64, c: u64) -> u64 {
     (a.wrapping_mul(73856093) ^ b.wrapping_mul(19349663) ^ c.wrapping_mul(83492791)) % 97
 }
 
@@ -130,7 +130,7 @@ pub fn hit_duration_ms(h: &HitTaken) -> u64 {
     (900.0 * (0.75 + 0.25 * h.intensity())) as u64
 }
 
-fn shade(k: f64) -> &'static str {
+pub(super) fn shade(k: f64) -> &'static str {
     if k > 0.75 { "▓" } else if k > 0.5 { "▒" } else if k > 0.25 { "░" } else { "·" }
 }
 

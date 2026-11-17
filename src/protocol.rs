@@ -137,6 +137,31 @@ pub struct StateView {
     pub clan_tag: Option<String>,
 }
 
+/// A consumable going off at the moment of impact; each client animates the ones sent to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Fx {
+    /// Defender: the Sigma Shield took the hit.
+    ShieldBlocked,
+    /// Attacker: the mog bounced off a Sigma Shield.
+    ShieldBounced,
+    /// Attacker: the Angle Shot doubled this mog.
+    AngleStrike,
+    /// Defender: the Pocket Mirror reflected the attack.
+    MirrorHeld,
+    /// Defender: the Pocket Mirror was used but the attack still landed.
+    MirrorCracked,
+    /// Attacker: the Jaw Tape covered a failed mog.
+    TapeSaved,
+    /// Attacker: the Combo 6-7 paid out.
+    ComboHit,
+    /// Attacker: the Cologne boosted a won mog.
+    CologneHit,
+    /// Attacker: the Pre-Workout sped this mog's cooldown.
+    RushPress,
+    /// Both: the mog bounced off Ice Pack immunity.
+    IceBounced,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "t")]
 pub enum ServerMsg {
@@ -146,6 +171,7 @@ pub enum ServerMsg {
     /// Outcome of a shop purchase, for the shop screen.
     Purchase { item: crate::items::ItemId, ok: bool, text: String },
     Event { tone: Tone, text: String, banner: Option<String>, hit: bool },
+    Fx(Fx),
     Shutdown,
     /// Round-trip probe; the client answers with `ClientMsg::Pong` at once.
     Ping { n: u32 },

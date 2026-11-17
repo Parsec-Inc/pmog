@@ -3,7 +3,9 @@
 pub mod chat;
 pub mod clan;
 mod burst;
+mod consume;
 mod duel;
+mod fx;
 mod minigames;
 pub mod flair;
 
@@ -81,6 +83,16 @@ pub fn draw(f: &mut Frame, app: &App) {
         }
         if let Some(h) = &app.game.last_mog {
             burst::shake(f.buffer_mut(), h.intensity(), age(h.at));
+        }
+        if let Some((at, fx)) = app.game.last_fx {
+            let area = f.area();
+            fx::render(f.buffer_mut(), area, fx, age(at));
+            burst::shake(f.buffer_mut(), fx::shake_power(fx), age(at));
+        }
+        if let Some((at, item)) = app.game.last_used {
+            let area = f.area();
+            consume::render(f.buffer_mut(), area, item, age(at));
+            burst::shake(f.buffer_mut(), consume::shake_power(item), age(at));
         }
     }
     if let Some(typed) = &app.editing_name {
