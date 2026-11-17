@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use pmog::constants::*;
 use pmog::game::{Player, Rank, TimingTier, meter_speed};
 use pmog::items::{CATALOG, ItemId};
-use pmog::protocol::{NPC_TARGET, PlayerId, ServerMsg};
+use pmog::protocol::{Fx, NPC_TARGET, PlayerId, ServerMsg};
 use pmog::world::World;
 
 /// World with players 1..=n named p1, p2, ...
@@ -783,4 +783,90 @@ fn new_achievement_counters_add_up() {
     let p = &w.slot(1).unwrap().player;
     assert_eq!((p.mews, p.items_used), (1, 3));
     assert!(p.achievements.contains(&Achievement::Arsenal));
+}
+
+fn fxs(w: &World, id: PlayerId) -> Vec<Fx> {
+    w.outbox.iter().filter(|(to, _)| *to == id).filter_map(|(_, m)| if let ServerMsg::Fx(f) = m { Some(*f) } else { None }).collect()
+}
+
+#[test]
+fn shield_animates_both_sides_of_the_impact() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    w.slot_mut(2).unwrap().player.shield_armed = true;
+    w.mog(1, 2, 0.0, now);
+    assert_eq!(fxs(&w, 2), [Fx::ShieldBlocked]);
+    assert_eq!(fxs(&w, 1), [Fx::ShieldBounced]);
+}
+
+#[test]
+fn angle_and_pre_workout_animate_the_press() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    w.slot_mut(1).unwrap().player.angle_armed = true;
+    w.slot_mut(1).unwrap().preworkout_until = now + Duration::from_secs(30);
+    w.mog(1, 2, 0.0, now);
+    assert_eq!(fxs(&w, 1), [Fx::AngleStrike, Fx::RushPress]);
+    assert!(fxs(&w, 2).is_empty());
+}
+
+#[test]
+fn mirror_animates_the_defender_and_matches_the_outcome() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    give(&mut w, 1, ItemId::DiamondJaw, 50);
+    w.slot_mut(2).unwrap().player.mirror_armed = true;
+    w.mog(1, 2, 0.0, now);
+    let expected = if w.duels[0].outcome == "won" { Fx::MirrorCracked } else { Fx::MirrorHeld };
+    assert_eq!(fxs(&w, 2), [expected]);
+}
+
+#[test]
+fn combo_and_cologne_animate_a_won_mog() {
+    let now = Instant::now();
+    let mut w = world(1, now);
+    w.slot_mut(1).unwrap().player.combo_armed = true;
+    w.slot_mut(1).unwrap().cologne_until = now + Duration::from_secs(60);
+    for i in 1..=300 {
+        let t = now + Duration::from_secs(30 * i);
+        w.slot_mut(1).unwrap().cologne_until = t + Duration::from_secs(60);
+        w.mog(1, NPC_TARGET, 1.0, t);
+        if player(&w, 1).mogs_won > 0 {
+            assert_eq!(fxs(&w, 1), [Fx::ComboHit, Fx::CologneHit]);
+            return;
+        }
+    }
+    panic!("never won against the NPC");
+}
+
+#[test]
+fn tape_animates_a_failed_mog() {
+    let now = Instant::now();
+    let mut w = world(1, now);
+    w.slot_mut(1).unwrap().player.tape_armed = true;
+    for i in 1..=300 {
+        w.mog(1, NPC_TARGET, 0.0, now + Duration::from_secs(30 * i));
+        if player(&w, 1).mogs_lost > 0 {
+            assert_eq!(fxs(&w, 1), [Fx::TapeSaved]);
+            return;
+        }
+    }
+    panic!("never lost against the NPC");
+}
+
+#[test]
+fn ice_pack_bounce_animates_both_but_plain_immunity_does_not() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    give(&mut w, 2, ItemId::IcePack, 1);
+    w.use_item(2, ItemId::IcePack, now);
+    w.outbox.clear();
+    w.mog(1, 2, 0.0, now);
+    assert_eq!(fxs(&w, 1), [Fx::IceBounced]);
+    assert_eq!(fxs(&w, 2), [Fx::IceBounced]);
+    // Immunity earned by being hit is not ice.
+    w.slot_mut(2).unwrap().ice_until = now;
+    w.outbox.clear();
+    w.mog(1, 2, 0.0, now);
+    assert!(fxs(&w, 1).is_empty() && fxs(&w, 2).is_empty());
 }

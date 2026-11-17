@@ -10,7 +10,7 @@ use crate::db::{DuelRecord, MatchRecord, PurchaseRecord};
 use crate::duel::{Duel, DuelKey, DuelView};
 use crate::game::{Achievement, Player, Rank, TimingTier, Tone, meter_value, streak_mult};
 use crate::items::{self, ItemId};
-use crate::protocol::{InviteView, NPC_TARGET, PeerView, PlayerId, ServerMsg, StateView};
+use crate::protocol::{Fx, InviteView, NPC_TARGET, PeerView, PlayerId, ServerMsg, StateView};
 use crate::utils::{clean_name, decimal, format_mp, format_wait, sane};
 
 /// Runtime state of one online player.
@@ -24,6 +24,8 @@ pub struct Slot {
     pub preworkout_until: Instant,
     pub cologne_until: Instant,
     pub aura_farm_until: Instant,
+    /// Until when the Ice Pack immunity lasts, to tell it from immunity earned by being hit.
+    pub ice_until: Instant,
     pub meter_started: Instant,
     mew_window: (Instant, u32),
     /// Mogs suffered in a row and when the last one landed; each one lengthens the immunity.
@@ -46,6 +48,7 @@ impl Slot {
             preworkout_until: now,
             cologne_until: now,
             aura_farm_until: now,
+            ice_until: now,
             meter_started: now,
             mew_window: (now, 0),
             hits_in_row: 0,
@@ -127,6 +130,10 @@ impl World {
 
     fn event(&mut self, to: PlayerId, tone: Tone, text: impl Into<String>, banner: Option<String>, hit: bool) {
         self.outbox.push((to, ServerMsg::Event { tone, text: text.into(), banner, hit }));
+    }
+
+    fn fx(&mut self, to: PlayerId, fx: Fx) {
+        self.outbox.push((to, ServerMsg::Fx(fx)));
     }
 
     fn broadcast_except(&mut self, except: PlayerId, tone: Tone, text: &str) {
@@ -322,6 +329,7 @@ impl World {
             ItemId::IcePack if slot.immune_until >= now + ICE_PACK_IMMUNITY => Err("Você já está imune por mais tempo que isso."),
             ItemId::IcePack => {
                 slot.immune_until = now + ICE_PACK_IMMUNITY;
+                slot.ice_until = slot.immune_until;
                 slot.hits_in_row = 0;
                 Ok("Imune por 20 s, e a imunidade acumulada voltou ao normal.")
             }
@@ -363,6 +371,11 @@ impl World {
             return;
         }
         if let Some(defender) = self.slots.get(&target).filter(|s| now < s.immune_until) {
+            if now < defender.ice_until {
+                self.fx(id, Fx::IceBounced);
+                self.fx(target, Fx::IceBounced);
+            }
+            let defender = &self.slots[&target];
             let left = format_wait(defender.immune_until - now);
             let text = format!("{} ainda está se recuperando: imune por mais {left}.", defender.player.name);
             self.event(id, Tone::Info, text, None, false);
@@ -382,10 +395,11 @@ impl World {
         let take_mult = tier.reward() * (1.0 + stats.win_bonus) * cologne * combo;
         let timing = if tier == TimingTier::Perfect { PERFECT_MULT } else { TIMING_FLOOR + TIMING_SPAN * meter };
         let mut power = stats.attack * timing * streak_mult(slot.streak, &stats);
-        if slot.player.angle_armed {
-            slot.player.angle_armed = false;
+        let angle = std::mem::take(&mut slot.player.angle_armed);
+        if angle {
             power *= 2.0;
         }
+        let rush = now < slot.preworkout_until;
         if tier == TimingTier::Perfect {
             slot.player.perfects += 1;
         }
@@ -395,6 +409,12 @@ impl World {
         slot.dirty = true;
         let attacker_name = slot.player.name.clone();
         self.event(id, tier_tone(tier), String::new(), Some(format!("{} · MP x{}", tier.label(), decimal(tier.reward()))), false);
+        if angle {
+            self.fx(id, Fx::AngleStrike);
+        }
+        if rush {
+            self.fx(id, Fx::RushPress);
+        }
 
         if target == NPC_TARGET {
             let roll = stats.attack * rand::thread_rng().gen_range(NPC_DEFENSE_ROLL);
@@ -402,6 +422,9 @@ impl World {
                 let streak = streak_mult(self.slots[&id].streak, &stats);
                 let gain = (NPC_REWARD_FLAT + stats.attack * NPC_REWARD_RATIO) * take_mult * streak;
                 let won = self.on_win(id, NPC_NAME, gain, tier, true);
+                if cologne > 1.0 {
+                    self.fx(id, Fx::CologneHit);
+                }
                 ("won", won, 0.0)
             } else {
                 let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
@@ -420,7 +443,11 @@ impl World {
                     self.event(id, Tone::Info, text, None, false);
                 }
                 // Between players MP only changes hands: the attacker gets exactly what the defender lost.
-                ("won", self.on_win(id, &defender_name, loss, tier, punch >= 1.0), loss)
+                let won = self.on_win(id, &defender_name, loss, tier, punch >= 1.0);
+                if cologne > 1.0 {
+                    self.fx(id, Fx::CologneHit);
+                }
+                ("won", won, loss)
             }
             Defense::Held { roll } => {
                 let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
@@ -428,6 +455,7 @@ impl World {
             }
             Defense::Blocked => {
                 self.event(id, Tone::Info, format!("{defender_name} bloqueou com o Escudo Sigma."), None, false);
+                self.fx(id, Fx::ShieldBounced);
                 ("blocked", 0.0, 0.0)
             }
         };
@@ -470,6 +498,9 @@ impl World {
             None,
             false,
         );
+        if combo {
+            self.fx(id, Fx::ComboHit);
+        }
         gain
     }
 
@@ -480,6 +511,7 @@ impl World {
         if slot.player.tape_armed {
             slot.player.tape_armed = false;
             self.event(id, Tone::Good, format!("Seu mog em {target} falhou ({why}), mas a Fita de Mandíbula salvou seu MP e seu streak."), None, false);
+            self.fx(id, Fx::TapeSaved);
             return 0.0;
         }
         let mp = slot.player.mp.max(0.0);
@@ -504,11 +536,12 @@ impl World {
         if slot.player.shield_armed {
             slot.player.shield_armed = false;
             self.event(id, Tone::Good, format!("Escudo Sigma bloqueou o mog de {attacker}!"), None, false);
+            self.fx(id, Fx::ShieldBlocked);
             return Defense::Blocked;
         }
         let stats = slot.player.stats();
-        let mirror = if slot.player.mirror_armed { MIRROR_MULT } else { 1.0 };
-        slot.player.mirror_armed = false;
+        let mirrored = std::mem::take(&mut slot.player.mirror_armed);
+        let mirror = if mirrored { MIRROR_MULT } else { 1.0 };
         let roll = stats.defense * mirror * rand::thread_rng().gen_range(DEFENSE_ROLL);
         if power > roll {
             let mp = slot.player.mp.max(0.0);
@@ -530,11 +563,17 @@ impl World {
                 Some(format!("MOGGADO POR {}", attacker.to_uppercase())),
                 true,
             );
+            if mirrored {
+                self.fx(id, Fx::MirrorCracked);
+            }
             Defense::Won { loss }
         } else {
             slot.player.gain(stats.counter_bonus);
             slot.player.defends_won += 1;
             self.event(id, Tone::Good, format!("Você segurou o mog de {attacker}. +{} MP", format_mp(stats.counter_bonus)), None, false);
+            if mirrored {
+                self.fx(id, Fx::MirrorHeld);
+            }
             Defense::Held { roll }
         }
     }

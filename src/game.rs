@@ -444,6 +444,10 @@ pub struct Game {
     pub last_mog: Option<MogHit>,
     /// Last time someone mogged this player, for the impact burst.
     pub last_taken: Option<HitTaken>,
+    /// Last consumable used, detected when its count drops in a state update.
+    pub last_used: Option<(Instant, ItemId)>,
+    /// Last consumable that went off at impact, sent by the server.
+    pub last_fx: Option<(Instant, crate::protocol::Fx)>,
     /// Latest MP drop seen in a state update, in case it arrives before the hit event.
     recent_drop: Option<(Instant, f64)>,
     pub overlay: Overlay,
@@ -576,6 +580,8 @@ impl Game {
             banner: None,
             last_mog: None,
             last_taken: None,
+            last_used: None,
+            last_fx: None,
             recent_drop: None,
             overlay: Overlay::None,
             shop_cursor: 0,
@@ -1001,6 +1007,7 @@ impl Game {
                     self.last_taken = Some(HitTaken { at: now, bank: self.player.mp + loss, loss });
                 }
             }
+            ServerMsg::Fx(fx) => self.last_fx = Some((now, fx)),
             ServerMsg::Purchase { item, ok, text } => {
                 if self.shop_pending == Some(item) {
                     self.shop_pending = None;
@@ -1029,6 +1036,9 @@ impl Game {
             if let Some(hit) = self.last_taken.as_mut().filter(|h| now.saturating_duration_since(h.at) < MOG_PRIZE_WINDOW) {
                 hit.loss -= delta;
             }
+        }
+        if let Some(def) = CATALOG.iter().find(|d| d.consumable() && view.me.level(d.id) < self.player.level(d.id)) {
+            self.last_used = Some((now, def.id));
         }
         self.player = view.me;
         self.streak = view.streak;
