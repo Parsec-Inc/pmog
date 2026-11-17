@@ -151,7 +151,7 @@ fn basics() -> Vec<Line<'static>> {
         text("Cada computador é identificado pelo UUID do hardware, guardado só como hash. Trocar de nome, rede ou IP não muda nada: você continua com o mesmo progresso em cada servidor. Na primeira vez o jogo pede a senha de administrador para ler esse UUID."),
         gap(),
         title("NPC de Treino"),
-        text("Alvo que está sempre disponível. Serve para ganhar MP sozinho e aquecer o streak antes de enfrentar gente de verdade."),
+        text("Alvo que está sempre disponível. Serve para ganhar MP sozinho e treinar o timing. Mogs nele não contam streak."),
     ]
 }
 
@@ -168,6 +168,12 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
             n(DEFENSE_ROLL.end)
         )),
         bullet("4. Se o seu poder for maior, você mogga. Se não, o mog falha: você perde um pouco de MP e o streak."),
+        bullet(format!(
+            "Crítico: em qualquer mog há uma chance de {} x Poder / (Poder + Defesa do alvo), nunca menos de {}. O crítico atravessa qualquer defesa e leva x{} de MP, então até quem está bem abaixo tem uma chance.",
+            pct(CRIT_CHANCE_SCALE),
+            pct(CRIT_MIN_CHANCE),
+            n(CRIT_TAKE_MULT)
+        )),
         bullet("Ao lado do alvo aparece sua chance de vencer com timing BOM e com PERFECT. Escudo e Espelho do alvo não entram na conta, porque ficam escondidos."),
         gap(),
         title("Timing"),
@@ -211,7 +217,11 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
             "Em compensação, o cursor fica {} mais rápido a cada vitória.",
             pct(METER_STREAK_ACCEL)
         )),
-        bullet("Perder um mog zera o streak. Ser moggado não zera."),
+        bullet("Perder um mog zera o streak, e ser moggado também. Mogs no NPC não contam."),
+        bullet(format!(
+            "Quem quebra o streak de alguém leva +{} do prêmio por vitória do streak quebrado (o líder vira alvo valioso).",
+            pct(STREAK_BOUNTY)
+        )),
         gap(),
         title("Resultados de um mog seu"),
         bullet(format!(
@@ -224,7 +234,7 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
             "Bater em quem está {PUNCH_DOWN_GAP} ranks abaixo rende só {} e não conta streak. A partir de {PUNCH_DOWN_ZERO_GAP} ranks abaixo, não rende nada.",
             pct(PUNCH_DOWN_FACTOR)
         )),
-        bullet("Vitória contra o NPC de treino: o streak multiplica o prêmio."),
+        bullet("Vitória contra o NPC de treino: o streak que você trouxe de mogs em jogadores multiplica o prêmio, mas não cresce."),
         bullet(format!(
             "Derrota (reverse mog): você perde {} do seu MP (mínimo {}) e o streak zera.",
             pct(LOSS_PENALTY_RATIO),

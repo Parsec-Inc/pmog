@@ -189,7 +189,7 @@ fn help_numbers_follow_constants_and_player() {
     a.game.player.items.insert(ItemId::MidFade, 2);
     let screen = render(&a, 200, 80);
     assert!(screen.contains("x1,6"), "perfect multiplier");
-    assert!(screen.contains("até x1,14"), "best non-perfect multiplier");
+    assert!(screen.contains("até x1,18"), "best non-perfect multiplier");
     assert!(screen.contains("máximo 5,0k"), "pt-BR decimal comma");
     assert!(screen.contains("Poder 20"), "player attack with 2 Mid-Fades");
 }
@@ -635,10 +635,10 @@ fn invitations_can_be_answered() {
 #[test]
 fn names_wear_their_rank() {
     let mut a = playing();
-    a.game.player.lifetime = 3e5;
+    a.game.player.lifetime = 6e5;
     state_with(&mut a, |s| {
-        s.me.lifetime = 3e5;
-        s.players[0].lifetime = 3e5;
+        s.me.lifetime = 6e5;
+        s.players[0].lifetime = 6e5;
         s.players[0].in_duel = true;
     });
     let screen = render(&a, 170, 42);
@@ -1017,8 +1017,8 @@ fn new_buffs_show_up() {
 fn rank_list_shows_every_rank_and_the_way_up() {
     let mut a = playing();
     state_with(&mut a, |s| {
-        s.me.lifetime = 150_000.0;
-        s.players[0].lifetime = 1e6;
+        s.me.lifetime = 300_000.0;
+        s.players[0].lifetime = 2e6;
     });
     press(&mut a, KeyCode::Char('p'));
     assert_eq!(a.game.overlay, Overlay::Ranks);

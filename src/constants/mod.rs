@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 15;
+pub const PROTOCOL_VERSION: u32 = 16;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -73,9 +73,9 @@ pub const BASE_DEFENSE: f64 = 10.0;
 pub const BASE_COOLDOWN_SECS: f64 = 4.0;
 pub const MIN_COOLDOWN_SECS: f64 = 1.0;
 pub const IMMUNITY: Duration = Duration::from_secs(5);
-pub const METER_SPEED: f64 = 2.4;
-pub const METER_STREAK_ACCEL: f64 = 0.08;
-pub const PERFECT_THRESHOLD: f64 = 0.9;
+pub const METER_SPEED: f64 = 4.5;
+pub const METER_STREAK_ACCEL: f64 = 0.05;
+pub const PERFECT_THRESHOLD: f64 = 0.97;
 pub const PERFECT_MULT: f64 = 1.6;
 /// Meter position where the OK and GOOD timing tiers start.
 pub const TIMING_OK_FROM: f64 = 0.5;
@@ -89,19 +89,27 @@ pub const TIMING_FLOOR: f64 = 0.6;
 pub const TIMING_SPAN: f64 = 0.6;
 pub const DEFENSE_ROLL: Range<f64> = 0.75..1.25;
 pub const STREAK_CAP: u32 = 10;
-pub const BASE_STREAK_BONUS: f64 = 0.1;
+pub const BASE_STREAK_BONUS: f64 = 0.05;
+/// Extra share of the defender's stake per streak win the attacker breaks.
+pub const STREAK_BOUNTY: f64 = 0.1;
+/// Critical chance at equal attack and defense is half of this.
+pub const CRIT_CHANCE_SCALE: f64 = 0.2;
+/// Critical chance even against a far stronger defense.
+pub const CRIT_MIN_CHANCE: f64 = 0.03;
+/// MP multiplier of a critical mog.
+pub const CRIT_TAKE_MULT: f64 = 1.5;
 
 // Economy
 pub const STAKE_FLAT: f64 = 15.0;
 pub const STAKE_RATIO: f64 = 0.08;
 pub const STAKE_CAP: f64 = 5_000.0;
-pub const LOSS_PENALTY_RATIO: f64 = 0.03;
+pub const LOSS_PENALTY_RATIO: f64 = 0.05;
 pub const LOSS_PENALTY_FLAT: f64 = 2.0;
 pub const COUNTER_BONUS: f64 = 8.0;
 pub const COST_GROWTH: f64 = 1.55;
 pub const MEW_CAP_PER_SEC: u32 = 5;
 pub const MAX_LOSS_SHIELD: f64 = 0.5;
-pub const MIN_METER_FACTOR: f64 = 0.5;
+pub const MIN_METER_FACTOR: f64 = 0.7;
 pub const PREWORKOUT_DURATION: Duration = Duration::from_secs(30);
 pub const PREWORKOUT_FACTOR: f64 = 0.5;
 pub const MIRROR_MULT: f64 = 3.0;

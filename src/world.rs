@@ -8,7 +8,7 @@ use rand::Rng;
 use crate::constants::*;
 use crate::db::{DuelRecord, MatchRecord, PurchaseRecord};
 use crate::duel::{Duel, DuelKey, DuelView};
-use crate::game::{Achievement, Player, Rank, TimingTier, Tone, meter_value, streak_mult};
+use crate::game::{Achievement, Player, Rank, TimingTier, Tone, crit_chance, meter_value, streak_mult};
 use crate::items::{self, ItemId};
 use crate::protocol::{Fx, InviteView, NPC_TARGET, PeerView, PlayerId, ServerMsg, StateView};
 use crate::utils::{clean_name, decimal, format_mp, format_wait, sane};
@@ -65,7 +65,8 @@ impl Slot {
 }
 
 enum Defense {
-    Won { loss: f64 },
+    /// `broken` is the defender's streak that this mog ended.
+    Won { loss: f64, broken: u32 },
     /// `roll` is the defense that beat the attack.
     Held { roll: f64 },
     Blocked,
@@ -87,6 +88,8 @@ pub struct World {
     invites: Vec<Invite>,
     /// Players waiting for a duel, with the bet fraction they accept.
     queue: Vec<(PlayerId, f64, bool, Instant)>,
+    /// Fixed critical chance instead of the attack/defense formula, for exact payouts in tests.
+    pub crit_override: Option<f64>,
 }
 
 struct Invite {
@@ -387,12 +390,16 @@ impl World {
         let client_meter = sane(client_meter).min(1.0);
         let meter = if (client_meter - server_meter).abs() <= METER_TOLERANCE { client_meter } else { server_meter };
 
+        let target_defense = self.slots.get(&target).map(|s| s.player.stats().defense);
         let slot = self.slots.get_mut(&id).expect("checked above");
         let stats = slot.player.stats();
         let tier = TimingTier::from_meter(meter, stats.perfect_threshold);
+        let chance = self.crit_override.unwrap_or_else(|| crit_chance(stats.attack, target_defense.unwrap_or(stats.attack)));
+        let crit = rand::thread_rng().gen_bool(chance.clamp(0.0, 1.0));
         let cologne = if now < slot.cologne_until { COLOGNE_MULT } else { 1.0 };
         let combo = if slot.player.combo_armed { COMBO_MULT } else { 1.0 };
-        let take_mult = tier.reward() * (1.0 + stats.win_bonus) * cologne * combo;
+        let crit_mult = if crit { CRIT_TAKE_MULT } else { 1.0 };
+        let take_mult = tier.reward() * (1.0 + stats.win_bonus) * cologne * combo * crit_mult;
         let timing = if tier == TimingTier::Perfect { PERFECT_MULT } else { TIMING_FLOOR + TIMING_SPAN * meter };
         let mut power = stats.attack * timing * streak_mult(slot.streak, &stats);
         let angle = std::mem::take(&mut slot.player.angle_armed);
@@ -408,7 +415,8 @@ impl World {
         slot.cooldown_until = now + Duration::from_secs_f64(cooldown);
         slot.dirty = true;
         let attacker_name = slot.player.name.clone();
-        self.event(id, tier_tone(tier), String::new(), Some(format!("{} · MP x{}", tier.label(), decimal(tier.reward()))), false);
+        let banner = format!("{} · MP x{}{}", tier.label(), decimal(tier.reward()), if crit { " · CRÍTICO" } else { "" });
+        self.event(id, tier_tone(tier), String::new(), Some(banner), false);
         if angle {
             self.fx(id, Fx::AngleStrike);
         }
@@ -418,10 +426,10 @@ impl World {
 
         if target == NPC_TARGET {
             let roll = stats.attack * rand::thread_rng().gen_range(NPC_DEFENSE_ROLL);
-            let (outcome, won, lost) = if power > roll {
+            let (outcome, won, lost) = if crit || power > roll {
                 let streak = streak_mult(self.slots[&id].streak, &stats);
                 let gain = (NPC_REWARD_FLAT + stats.attack * NPC_REWARD_RATIO) * take_mult * streak;
-                let won = self.on_win(id, NPC_NAME, gain, tier, true);
+                let won = self.on_win(id, NPC_NAME, gain, tier, crit, false);
                 if cologne > 1.0 {
                     self.fx(id, Fx::CologneHit);
                 }
@@ -436,14 +444,18 @@ impl World {
 
         let defender_name = self.slots[&target].player.name.clone();
         let punch = self.punch_down(id, target);
-        let (outcome, won, lost) = match self.defend(target, &attacker_name, power, take_mult * punch, now) {
-            Defense::Won { loss } => {
+        let (outcome, won, lost) = match self.defend(target, &attacker_name, power, take_mult * punch, crit, now) {
+            Defense::Won { loss, broken } => {
                 if punch < 1.0 {
                     let text = format!("{defender_name} está muito abaixo do seu rank: o mog rendeu pouco e não conta para o streak.");
                     self.event(id, Tone::Info, text, None, false);
                 }
                 // Between players MP only changes hands: the attacker gets exactly what the defender lost.
-                let won = self.on_win(id, &defender_name, loss, tier, punch >= 1.0);
+                if broken > 0 {
+                    let text = format!("Você quebrou o streak {broken} de {defender_name}: +{:.0}% de MP no prêmio.", STREAK_BOUNTY * broken as f64 * 100.0);
+                    self.event(id, Tone::Good, text, None, false);
+                }
+                let won = self.on_win(id, &defender_name, loss, tier, crit, punch >= 1.0);
                 if cologne > 1.0 {
                     self.fx(id, Fx::CologneHit);
                 }
@@ -474,8 +486,8 @@ impl World {
         }
     }
 
-    /// Credits a win worth `gain` MP; `counts_streak` is false for mogs on much weaker players.
-    fn on_win(&mut self, id: PlayerId, target: &str, gain: f64, tier: TimingTier, counts_streak: bool) -> f64 {
+    /// Credits a win worth `gain` MP; `counts_streak` is false for the NPC and much weaker players.
+    fn on_win(&mut self, id: PlayerId, target: &str, gain: f64, tier: TimingTier, crit: bool, counts_streak: bool) -> f64 {
         let slot = self.slots.get_mut(&id).expect("attacker online");
         if counts_streak {
             slot.streak += 1;
@@ -489,10 +501,11 @@ impl World {
             id,
             Tone::Good,
             format!(
-                "Você moggou {target}! +{} MP ({} x{}, streak {streak}){}",
+                "Você moggou {target}! +{} MP ({} x{}{}, streak {streak}){}",
                 format_mp(gain),
                 tier.label(),
                 decimal(tier.reward()),
+                if crit { ", CRÍTICO" } else { "" },
                 if combo { ", Combo 6-7 +67%" } else { "" }
             ),
             None,
@@ -529,8 +542,8 @@ impl World {
         penalty
     }
 
-    /// `take_mult` scales how much of the defender's stake the attacker takes.
-    fn defend(&mut self, id: PlayerId, attacker: &str, power: f64, take_mult: f64, now: Instant) -> Defense {
+    /// `take_mult` scales how much of the defender's stake the attacker takes; a `crit` goes through any defense.
+    fn defend(&mut self, id: PlayerId, attacker: &str, power: f64, take_mult: f64, crit: bool, now: Instant) -> Defense {
         let slot = self.slots.get_mut(&id).expect("defender online");
         slot.dirty = true;
         if slot.player.shield_armed {
@@ -543,9 +556,11 @@ impl World {
         let mirrored = std::mem::take(&mut slot.player.mirror_armed);
         let mirror = if mirrored { MIRROR_MULT } else { 1.0 };
         let roll = stats.defense * mirror * rand::thread_rng().gen_range(DEFENSE_ROLL);
-        if power > roll {
+        if crit || power > roll {
             let mp = slot.player.mp.max(0.0);
-            let stake = (STAKE_FLAT + mp * STAKE_RATIO).min(STAKE_CAP) * take_mult;
+            let broken = std::mem::take(&mut slot.streak).min(STREAK_CAP);
+            let bounty = 1.0 + STREAK_BOUNTY * broken as f64;
+            let stake = (STAKE_FLAT + mp * STAKE_RATIO).min(STAKE_CAP) * take_mult * bounty;
             let loss = (stake * (1.0 - stats.loss_shield)).min(mp);
             slot.player.mp -= loss;
             slot.player.defends_lost += 1;
@@ -559,14 +574,20 @@ impl World {
             self.event(
                 id,
                 Tone::Bad,
-                format!("{attacker} te moggou! -{} MP (imune por {} s)", format_mp(loss), immunity.as_secs()),
+                format!(
+                    "{attacker} te moggou{}! -{} MP (imune por {} s){}",
+                    if crit { " com um CRÍTICO" } else { "" },
+                    format_mp(loss),
+                    immunity.as_secs(),
+                    if broken > 0 { format!(", seu streak {broken} acabou") } else { String::new() }
+                ),
                 Some(format!("MOGGADO POR {}", attacker.to_uppercase())),
                 true,
             );
             if mirrored {
                 self.fx(id, Fx::MirrorCracked);
             }
-            Defense::Won { loss }
+            Defense::Won { loss, broken }
         } else {
             slot.player.gain(stats.counter_bonus);
             slot.player.defends_won += 1;

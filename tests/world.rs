@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 use std::time::{Duration, Instant};
 
 use pmog::constants::*;
-use pmog::game::{Player, Rank, TimingTier, meter_speed};
+use pmog::game::{Player, Rank, TimingTier, crit_chance, meter_speed};
 use pmog::items::{CATALOG, ItemId};
 use pmog::protocol::{Fx, NPC_TARGET, PlayerId, ServerMsg};
 use pmog::world::World;
@@ -12,6 +12,7 @@ use pmog::world::World;
 /// World with players 1..=n named p1, p2, ...
 fn world(n: i64, now: Instant) -> World {
     let mut w = World::new();
+    w.crit_override = Some(0.0);
     for id in 1..=n {
         w.join(id, format!("machine-{id}"), Player { name: format!("p{id}"), ..Default::default() }, now).unwrap();
     }
@@ -56,10 +57,10 @@ fn index(id: ItemId) -> usize {
 #[test]
 fn rank_thresholds() {
     assert_eq!(Rank::from_lifetime(0.0), Rank::Sub5);
-    assert_eq!(Rank::from_lifetime(149.9), Rank::Sub5);
-    assert_eq!(Rank::from_lifetime(150.0), Rank::Ltn);
-    assert_eq!(Rank::from_lifetime(749_999.0), Rank::Ascended);
-    assert_eq!(Rank::from_lifetime(6_700_000.0), Rank::SixSeven);
+    assert_eq!(Rank::from_lifetime(299.9), Rank::Sub5);
+    assert_eq!(Rank::from_lifetime(300.0), Rank::Ltn);
+    assert_eq!(Rank::from_lifetime(1_499_999.0), Rank::Ascended);
+    assert_eq!(Rank::from_lifetime(13_400_000.0), Rank::SixSeven);
     assert_eq!(Rank::from_lifetime(1e12), Rank::Transcendent);
     assert_eq!(Rank::Ascended.next(), Some(Rank::Sigma));
     assert_eq!(Rank::Transcendent.next(), None);
@@ -191,12 +192,13 @@ fn perfect_npc_mog_always_wins_and_streak_pays() {
     let t = perfect(&w, 1);
     w.mog(1, NPC_TARGET, 1.0, t);
     assert!((player(&w, 1).mp - base * REWARD_PERFECT).abs() < 1e-9);
-    assert_eq!(w.slot(1).unwrap().streak, 1);
+    assert_eq!(w.slot(1).unwrap().streak, 0, "the NPC builds no streak");
     assert_eq!(w.duels.len(), 1);
     assert_eq!(w.duels[0].outcome, "won");
     assert_eq!(w.duels[0].defender, None);
 
-    // Next perfect peak after the cooldown, with the faster streak-1 meter.
+    // A streak brought from players multiplies the NPC reward without growing.
+    w.slot_mut(1).unwrap().streak = 1;
     let speed = meter_speed(&player(&w, 1).stats(), 1);
     let period = 2.0 * PI / speed;
     let mut t2 = perfect(&w, 1);
@@ -207,6 +209,7 @@ fn perfect_npc_mog_always_wins_and_streak_pays() {
     w.mog(1, NPC_TARGET, 1.0, t2);
     let expected = base * REWARD_PERFECT * (1.0 + BASE_STREAK_BONUS);
     assert!((player(&w, 1).mp - before - expected).abs() < 1e-6, "streak multiplies NPC reward");
+    assert_eq!(w.slot(1).unwrap().streak, 1);
 }
 
 #[test]
@@ -323,9 +326,9 @@ fn client_meter_is_trusted_only_near_the_server_clock() {
     assert_eq!(w.duels[0].tier, TimingTier::Bad.label(), "a lying client gets the server reading");
 
     w.slot_mut(1).unwrap().streak = 0;
-    let t = at_meter(&w, 1, 0.9);
+    let t = at_meter(&w, 1, PERFECT_THRESHOLD - METER_TOLERANCE / 2.0);
     w.slot_mut(1).unwrap().cooldown_until = t;
-    w.mog(1, NPC_TARGET, 0.9 + METER_TOLERANCE / 2.0, t);
+    w.mog(1, NPC_TARGET, PERFECT_THRESHOLD, t);
     assert_eq!(w.duels[1].tier, TimingTier::Perfect.label(), "small lag is forgiven");
 
     w.slot_mut(1).unwrap().cooldown_until = t;
@@ -375,7 +378,7 @@ fn therapy_and_watch_change_defense_outcomes() {
 #[test]
 fn better_timing_pays_more_against_players() {
     let mut gains = Vec::new();
-    for (m, tier) in [(0.2, TimingTier::Bad), (0.6, TimingTier::Ok), (0.8, TimingTier::Good), (0.95, TimingTier::Perfect)] {
+    for (m, tier) in [(0.2, TimingTier::Bad), (0.6, TimingTier::Ok), (0.8, TimingTier::Good), (0.99, TimingTier::Perfect)] {
         let now = Instant::now();
         let mut w = world(2, now);
         give(&mut w, 1, ItemId::DiamondJaw, 50);
@@ -642,7 +645,9 @@ fn shown_odds_match_what_the_server_rolls() {
     let (attack, defense) = (player(&w, 1).stats().attack, player(&w, 2).stats().defense);
     let threshold = player(&w, 1).stats().perfect_threshold;
     let power = attack * PERFECT_MULT;
-    let expected = beat_chance(power, defense, DEFENSE_ROLL);
+    w.crit_override = None;
+    let beat = beat_chance(power, defense, DEFENSE_ROLL);
+    let expected = beat + (1.0 - beat) * crit_chance(attack, defense);
     assert!(expected > 0.1 && expected < 0.9, "pick stats with a real fight: {expected}");
     let trials = 3_000;
     let mut wins = 0;
@@ -869,4 +874,42 @@ fn ice_pack_bounce_animates_both_but_plain_immunity_does_not() {
     w.outbox.clear();
     w.mog(1, 2, 0.0, now);
     assert!(fxs(&w, 1).is_empty() && fxs(&w, 2).is_empty());
+}
+
+#[test]
+fn critical_goes_through_any_defense_and_pays_more() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    give(&mut w, 2, ItemId::DiamondJaw, 50);
+    w.slot_mut(2).unwrap().player.mp = 1000.0;
+    w.crit_override = Some(1.0);
+    w.mog(1, 2, 0.0, now);
+    let take = (STAKE_FLAT + 1000.0 * STAKE_RATIO) * REWARD_BAD * CRIT_TAKE_MULT;
+    assert_eq!(w.duels[0].outcome, "won", "a weak attacker crits through a huge defense");
+    assert!((player(&w, 1).mp - take).abs() < 1e-9);
+    assert!(texts(&w, 1).iter().any(|t| t.contains("CRÍTICO")));
+    assert!(texts(&w, 2).iter().any(|t| t.contains("com um CRÍTICO")));
+}
+
+#[test]
+fn critical_chance_follows_attack_against_defense() {
+    assert!((crit_chance(10.0, 10.0) - CRIT_CHANCE_SCALE / 2.0).abs() < 1e-12);
+    assert_eq!(crit_chance(1.0, 1_000.0), CRIT_MIN_CHANCE, "never zero");
+    assert!(crit_chance(40.0, 10.0) > crit_chance(10.0, 10.0));
+    assert!(crit_chance(1e9, 1.0) <= CRIT_CHANCE_SCALE);
+}
+
+#[test]
+fn breaking_a_streak_pays_a_bounty_and_ends_it() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    give(&mut w, 1, ItemId::DiamondJaw, 50);
+    w.slot_mut(2).unwrap().player.mp = 1000.0;
+    w.slot_mut(2).unwrap().streak = 4;
+    w.mog(1, 2, 0.0, now);
+    let take = (STAKE_FLAT + 1000.0 * STAKE_RATIO) * REWARD_BAD * (1.0 + STREAK_BOUNTY * 4.0);
+    assert!((player(&w, 1).mp - take).abs() < 1e-9, "bounty grows with the broken streak");
+    assert_eq!(w.slot(2).unwrap().streak, 0, "being mogged ends the streak");
+    assert!(texts(&w, 1).iter().any(|t| t.contains("quebrou o streak 4")));
+    assert!(texts(&w, 2).iter().any(|t| t.contains("seu streak 4 acabou")));
 }
