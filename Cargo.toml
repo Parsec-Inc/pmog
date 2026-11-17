@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 dirs = "6"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+png = "0.18.1"
 rand = "0.8"
 ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
 rusqlite = { version = "0.43.0", features = ["bundled"] }

@@ -1,1082 +1,142 @@
-//! Original 16x16 pixel art for every shop item.
+//! Shop item pixel art, drawn and animated in Aseprite (`assets/sprites/*.aseprite`) and
+//! exported as a horizontal PNG strip plus a JSON file with each frame's duration.
+//! Re-export after editing: File > Export Sprite Sheet, "Horizontal Strip", JSON Data (Array).
+
+use std::collections::HashMap;
+use std::io::Cursor;
+use std::sync::{Mutex, OnceLock};
 
 use crate::game::ItemId;
 
-pub const SPRITE_SIZE: usize = 16;
+pub type Rgb = (u8, u8, u8);
 
-pub type Sprite = [&'static str; SPRITE_SIZE];
-
-/// Maps a palette letter to RGB; `.` (or anything unknown) is transparent.
-pub fn color(code: char) -> Option<(u8, u8, u8)> {
-    Some(match code {
-        'k' => (20, 20, 28),
-        'w' => (242, 242, 242),
-        'g' => (160, 160, 170),
-        'd' => (78, 78, 90),
-        'r' => (225, 55, 60),
-        'p' => (242, 160, 185),
-        's' => (240, 198, 160),
-        'S' => (196, 145, 110),
-        'y' => (250, 212, 60),
-        'o' => (240, 140, 40),
-        'b' => (150, 95, 50),
-        'B' => (70, 40, 20),
-        'j' => (95, 200, 145),
-        'J' => (35, 115, 85),
-        'c' => (130, 210, 235),
-        'C' => (45, 105, 215),
-        'n' => (25, 35, 85),
-        'm' => (225, 80, 215),
-        'M' => (115, 40, 160),
-        'l' => (200, 245, 255),
-        _ => return None,
-    })
+pub struct Frame {
+    /// Row-major pixels; `None` is transparent.
+    pub rows: Vec<Vec<Option<Rgb>>>,
+    pub ms: u64,
 }
 
-pub fn sprite(id: ItemId) -> &'static Sprite {
+pub struct Anim {
+    pub frames: Vec<Frame>,
+    total_ms: u64,
+}
+
+macro_rules! asset {
+    ($n:literal) => {
+        (
+            include_bytes!(concat!("../assets/sprites/", $n, ".png")).as_slice(),
+            include_bytes!(concat!("../assets/sprites/", $n, ".json")).as_slice(),
+            $n,
+        )
+    };
+}
+
+fn asset(id: ItemId) -> (&'static [u8], &'static [u8], &'static str) {
     match id {
-        ItemId::Mewing => &MEWING,
-        ItemId::GuaSha => &GUA_SHA,
-        ItemId::MidFade => &MID_FADE,
-        ItemId::Skincare => &SKINCARE,
-        ItemId::Insoles => &INSOLES,
-        ItemId::Sunglasses => &SUNGLASSES,
-        ItemId::PhonkTrack => &PHONK,
-        ItemId::DiamondJaw => &DIAMOND,
-        ItemId::InfiniteAura => &AURA,
-        ItemId::EnergyDrink => &ENERGY_DRINK,
-        ItemId::SigmaShield => &SHIELD,
-        ItemId::AngleShot => &CAMERA,
-        ItemId::WaterBottle => &WATER_BOTTLE,
-        ItemId::GymPlan => &DUMBBELL,
-        ItemId::RingLight => &RING_LIGHT,
-        ItemId::Therapy => &COUCH,
-        ItemId::LuxuryWatch => &WATCH,
-        ItemId::Meditation => &LOTUS,
-        ItemId::PrivateJet => &JET,
-        ItemId::MogCrown => &CROWN,
-        ItemId::PreWorkout => &SHAKER,
-        ItemId::PocketMirror => &MIRROR,
-        ItemId::Sunscreen => &SUNSCREEN,
-        ItemId::Creatine => &CREATINE,
-        ItemId::MasticGum => &GUM,
-        ItemId::NichePerfume => &PERFUME,
-        ItemId::Veneers => &VENEERS,
-        ItemId::Photographer => &PHOTOGRAPHER,
-        ItemId::CanthalTape => &CANTHAL,
-        ItemId::Mansion => &MANSION,
-        ItemId::BlessedGenes => &DNA,
-        ItemId::JawTape => &JAW_TAPE,
-        ItemId::Cologne => &COLOGNE,
-        ItemId::IcePack => &ICE_PACK,
-        ItemId::Minoxidil => &MINOXIDIL,
-        ItemId::Dermaroller => &DERMAROLLER,
-        ItemId::FoxEyes => &FOX_EYES,
-        ItemId::ShoulderPads => &SHOULDER_PADS,
-        ItemId::SleepKit => &SLEEP_KIT,
-        ItemId::Whey => &WHEY,
-        ItemId::BoatDance => &BOAT_DANCE,
-        ItemId::DoorLean => &DOOR_LEAN,
-        ItemId::Jestermaxxing => &JESTER,
-        ItemId::SixSeven => &SIX_SEVEN,
-        ItemId::SixSevenHeight => &HEIGHT_67,
-        ItemId::Capoeira => &CAPOEIRA,
-        ItemId::SharkSneakers => &SHARK,
-        ItemId::BananaMonkey => &BANANA_MONKEY,
-        ItemId::SahurBat => &SAHUR_BAT,
-        ItemId::CrocBomber => &CROC_BOMBER,
-        ItemId::ComboSixSeven => &COMBO_67,
-        ItemId::AuraFarm => &AURA_FARM,
+        ItemId::Mewing => asset!("mewing"),
+        ItemId::GuaSha => asset!("gua_sha"),
+        ItemId::MidFade => asset!("mid_fade"),
+        ItemId::Skincare => asset!("skincare"),
+        ItemId::Insoles => asset!("insoles"),
+        ItemId::Sunglasses => asset!("sunglasses"),
+        ItemId::PhonkTrack => asset!("phonk"),
+        ItemId::DiamondJaw => asset!("diamond"),
+        ItemId::InfiniteAura => asset!("aura"),
+        ItemId::EnergyDrink => asset!("energy_drink"),
+        ItemId::SigmaShield => asset!("shield"),
+        ItemId::AngleShot => asset!("camera"),
+        ItemId::WaterBottle => asset!("water_bottle"),
+        ItemId::GymPlan => asset!("dumbbell"),
+        ItemId::RingLight => asset!("ring_light"),
+        ItemId::Therapy => asset!("couch"),
+        ItemId::LuxuryWatch => asset!("watch"),
+        ItemId::Meditation => asset!("lotus"),
+        ItemId::PrivateJet => asset!("jet"),
+        ItemId::MogCrown => asset!("crown"),
+        ItemId::PreWorkout => asset!("shaker"),
+        ItemId::PocketMirror => asset!("mirror"),
+        ItemId::Sunscreen => asset!("sunscreen"),
+        ItemId::Creatine => asset!("creatine"),
+        ItemId::MasticGum => asset!("gum"),
+        ItemId::NichePerfume => asset!("perfume"),
+        ItemId::Veneers => asset!("veneers"),
+        ItemId::Photographer => asset!("photographer"),
+        ItemId::CanthalTape => asset!("canthal"),
+        ItemId::Mansion => asset!("mansion"),
+        ItemId::BlessedGenes => asset!("dna"),
+        ItemId::JawTape => asset!("jaw_tape"),
+        ItemId::Cologne => asset!("cologne"),
+        ItemId::IcePack => asset!("ice_pack"),
+        ItemId::Minoxidil => asset!("minoxidil"),
+        ItemId::Dermaroller => asset!("dermaroller"),
+        ItemId::FoxEyes => asset!("fox_eyes"),
+        ItemId::ShoulderPads => asset!("shoulder_pads"),
+        ItemId::SleepKit => asset!("sleep_kit"),
+        ItemId::Whey => asset!("whey"),
+        ItemId::BoatDance => asset!("boat_dance"),
+        ItemId::DoorLean => asset!("door_lean"),
+        ItemId::Jestermaxxing => asset!("jester"),
+        ItemId::SixSeven => asset!("six_seven"),
+        ItemId::SixSevenHeight => asset!("height_67"),
+        ItemId::Capoeira => asset!("capoeira"),
+        ItemId::SharkSneakers => asset!("shark"),
+        ItemId::BananaMonkey => asset!("banana_monkey"),
+        ItemId::SahurBat => asset!("sahur_bat"),
+        ItemId::CrocBomber => asset!("croc_bomber"),
+        ItemId::ComboSixSeven => asset!("combo_67"),
+        ItemId::AuraFarm => asset!("aura_farm"),
     }
 }
 
-const MEWING: Sprite = [
-    "....kkkkkkkk....",
-    "....kddddddk....",
-    "....kCCCCCCk....",
-    "....kCCwCCCk....",
-    "....kCCwwCCk....",
-    "....kCCwwwCk....",
-    "....kCCwwCCk....",
-    "....kCCwCCCk....",
-    "....kCCCCCCk....",
-    "....kCSSSSCk....",
-    "....kCCSSCCk....",
-    "....kCCCCCCk....",
-    "....kddddddk....",
-    "....kdddwddk....",
-    "....kkkkkkkk....",
-    "................",
-];
+fn decode(png: &[u8], json: &[u8]) -> Anim {
+    let mut reader = png::Decoder::new(Cursor::new(png)).read_info().expect("sprite png");
+    let mut buf = vec![0; reader.output_buffer_size().expect("sprite png size")];
+    let info = reader.next_frame(&mut buf).expect("sprite png data");
+    assert!(info.color_type == png::ColorType::Rgba && info.bit_depth == png::BitDepth::Eight, "export sprites as 8-bit RGBA");
+    let meta: serde_json::Value = serde_json::from_slice(json).expect("sprite json");
+    let frames: Vec<Frame> = meta["frames"]
+        .as_array()
+        .expect("sprite json frames")
+        .iter()
+        .map(|f| {
+            let n = |k: &str| f["frame"][k].as_u64().expect("frame rect") as usize;
+            let (x0, y0, w, h) = (n("x"), n("y"), n("w"), n("h"));
+            let rows = (y0..y0 + h)
+                .map(|y| {
+                    (x0..x0 + w)
+                        .map(|x| {
+                            let p = &buf[(y * info.width as usize + x) * 4..][..4];
+                            (p[3] > 127).then_some((p[0], p[1], p[2]))
+                        })
+                        .collect()
+                })
+                .collect();
+            Frame { rows, ms: f["duration"].as_u64().unwrap_or(100).max(1) }
+        })
+        .collect();
+    let total_ms = frames.iter().map(|f| f.ms).sum();
+    Anim { frames, total_ms }
+}
 
-const GUA_SHA: Sprite = [
-    "................",
-    "................",
-    "..JJJJ...JJJJ...",
-    ".JjwjjJ.JjjjjJ..",
-    "JjwjjjjJjjjjjjJ.",
-    "JjjjjjjjjjjjjjJ.",
-    "JjjjjjjjjjjjjjJ.",
-    ".JjjjjjjjjjjjJ..",
-    "..JjjjjjjjjjJ...",
-    "...JjjjjjjjJ....",
-    "....JjjjjjJ.....",
-    ".....JjjjJ......",
-    "......JjJ.......",
-    ".......J........",
-    "................",
-    "................",
-];
-
-const MID_FADE: Sprite = [
-    "................",
-    "....BBBBBB......",
-    "...BBBBBBBB.....",
-    "..BBBBBBBBBB....",
-    "..bBBBBBBBBBs...",
-    "..bbBBBBBBsss...",
-    "..SbbbBsssksss..",
-    "..SSbbsssssssss.",
-    "..SSSsssssssss..",
-    "..sSSssssssrrs..",
-    "...ssssssssss...",
-    "....SssssssS....",
-    ".....ssssss.....",
-    ".....ssssss.....",
-    "...CCCCCCCCCC...",
-    "..CCCCCCCCCCCC..",
-];
-
-const SKINCARE: Sprite = [
-    ".....kkk........",
-    ".....kwkkkkk....",
-    ".....kwk........",
-    "....kkkkk.......",
-    "...kpppppk......",
-    "...kpwpppk......",
-    "...kpwpppk......",
-    "...kpppppk......",
-    "...kwwwwwk......",
-    "...kwrwrwk......",
-    "...kpppppk.kkkkk",
-    "...kpppppkkwwwwk",
-    "...kpppppkkppppk",
-    "...kpppppkkppppk",
-    "...kkkkkkkkkkkkk",
-    "................",
-];
-
-const INSOLES: Sprite = [
-    "................",
-    "................",
-    "................",
-    "................",
-    "..kkkkk.........",
-    "..kwwwwk........",
-    "..kwrwwwk.......",
-    "..kwrwwwwk......",
-    "..kwwwwwwwkkk...",
-    "..kwwwwwwwwwwkk.",
-    ".kwwwwwwwwwwwwwk",
-    ".kkkkkkkkkkkkkkk",
-    ".koooooooooooook",
-    ".koooooookkkkkk.",
-    ".kooooook.......",
-    ".kkkkkkkk.......",
-];
-
-const SUNGLASSES: Sprite = [
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "kkkkkkkkkkkkkkkk",
-    "kkMMMMMkkMMMMMkk",
-    ".kMmMMMkkMmMMMk.",
-    ".kMMmMMkkMMmMMk.",
-    ".kMMMmMkkMMMmMk.",
-    "..kMMMk..kMMMk..",
-    "...kkk....kkk...",
-    "................",
-    "................",
-    "................",
-    "................",
-];
-
-const PHONK: Sprite = [
-    "................",
-    "....kkkkkkkk....",
-    "...kMMMMMMMMk...",
-    "..kMk......kMk..",
-    "..kMk......kMk..",
-    ".kMk........kMk.",
-    ".kMk........kMk.",
-    "kkkkk...yy.kkkkk",
-    "kmmmk...y.ykmmmk",
-    "kmwmk...y..kmwmk",
-    "kmmmk.yyy..kmmmk",
-    "kmmmk.yy...kmmmk",
-    "kkkkk......kkkkk",
-    "................",
-    "................",
-    "................",
-];
-
-const DIAMOND: Sprite = [
-    "................",
-    "................",
-    "................",
-    "....kkkkkkkk....",
-    "...klllcllllk...",
-    "..klwllcllllllk.",
-    ".kkkkkkkkkkkkkk.",
-    "..kclllllllcck..",
-    "...kclllllcck...",
-    "....kclllcck....",
-    ".....kcllck.....",
-    "......kcck......",
-    ".......kk.......",
-    "................",
-    "................",
-    "................",
-];
-
-const AURA: Sprite = [
-    "................",
-    "................",
-    "y.......y.......",
-    "................",
-    "..y..........y..",
-    "...MMM....MMM...",
-    "..MmmmM..MmmmM..",
-    ".MmM..MmmM..MmM.",
-    ".MmM...MM...MmM.",
-    ".MmM..MmmM..MmM.",
-    "..MmmmM..MmmmM..",
-    "...MMM....MMM...",
-    "................",
-    ".....y.......y..",
-    "................",
-    "................",
-];
-
-const ENERGY_DRINK: Sprite = [
-    "................",
-    "......gggg......",
-    ".....gwwwwg.....",
-    "....gggggggg....",
-    "....nnnnnnnn....",
-    "....nCnnnnnn....",
-    "....nCnnyynn....",
-    "....nCnyynnn....",
-    "....nCyyyyyn....",
-    "....nCnnyynn....",
-    "....nCnyynnn....",
-    "....nCnynnnn....",
-    "....nCnnnnnn....",
-    "....nnnnnnnn....",
-    "....gggggggg....",
-    ".....gggggg.....",
-];
-
-const SHIELD: Sprite = [
-    "................",
-    ".kkkkkkkkkkkkkk.",
-    ".kCCCCCCCCCCCCk.",
-    ".kCCwwwwwwwCCCk.",
-    ".kCCCwCCCCCCCCk.",
-    ".kCCCCwCCCCCCCk.",
-    ".kCCCCCwCCCCCCk.",
-    ".kCCCCwCCCCCCCk.",
-    ".kCCCwCCCCCCCCk.",
-    ".kCCwwwwwwwCCCk.",
-    "..kCCCCCCCCCCk..",
-    "...kCCCCCCCCk...",
-    "....kCCCCCCk....",
-    ".....kCCCCk.....",
-    "......kkkk......",
-    "................",
-];
-
-const CAMERA: Sprite = [
-    "................",
-    "................",
-    "................",
-    "....kkkk........",
-    ".kkkkkkkkkkkkkk.",
-    ".kddddddddddrdk.",
-    ".kdddkkkkkddddk.",
-    ".kddkCCCCCkdddk.",
-    ".kddkCwCCCkdddk.",
-    ".kddkCCCCCkdddk.",
-    ".kddkCCCCCkdddk.",
-    ".kdddkkkkkddddk.",
-    ".kddddddddddddk.",
-    ".kkkkkkkkkkkkkk.",
-    "................",
-    "................",
-];
-
-const WATER_BOTTLE: Sprite = [
-    "......kkkk......",
-    "......kCCk......",
-    ".....kkkkkk.....",
-    "....kcccccck....",
-    "...kcwccccccck..",
-    "...kcwcccccck...",
-    "...kcwcccccck...",
-    "...kkkkkkkkkk...",
-    "...kCCCCCCCCk...",
-    "...kCwwwwwwCk...",
-    "...kCCCCCCCCk...",
-    "...kkkkkkkkkk...",
-    "...kcwcccccck...",
-    "...kccccccccck..",
-    "....kkkkkkkkk...",
-    "................",
-];
-
-const DUMBBELL: Sprite = [
-    "................",
-    "................",
-    "................",
-    "................",
-    ".kkk........kkk.",
-    "kdgdk......kdgdk",
-    "kdgdkk....kkdgdk",
-    "kdgdggggggggdgdk",
-    "kdgdddddddddddgk",
-    "kdgdkk....kkdgdk",
-    "kdgdk......kdgdk",
-    ".kkk........kkk.",
-    "................",
-    "................",
-    "................",
-    "................",
-];
-
-const RING_LIGHT: Sprite = [
-    "....kkkkkkkk....",
-    "...kwwwwwwwwk...",
-    "..kwwk....kwwk..",
-    "..kwk......kwk..",
-    "..kwk..kk..kwk..",
-    "..kwk.kddk.kwk..",
-    "..kwk..kk..kwk..",
-    "..kwwk....kwwk..",
-    "...kwwwwwwwwk...",
-    "....kkkkkkkk....",
-    ".......kk.......",
-    ".......kk.......",
-    ".......kk.......",
-    ".....kkkkkk.....",
-    "....kk....kk....",
-    "...kk......kk...",
-];
-
-const COUCH: Sprite = [
-    "................",
-    "................",
-    "................",
-    "....kkkkkkkk....",
-    "...kMMMMMMMMk...",
-    "...kMmMMMMmMk...",
-    ".kkkMMMMMMMMkkk.",
-    "kMMkMMMMMMMMkMMk",
-    "kMMkkkkkkkkkkMMk",
-    "kMMkmmmmmmmmkMMk",
-    "kMMMMMMMMMMMMMMk",
-    "kkkkkkkkkkkkkkkk",
-    ".kBk........kBk.",
-    ".kkk........kkk.",
-    "................",
-    "................",
-];
-
-const WATCH: Sprite = [
-    "......kkkk......",
-    "......kyyk......",
-    "......kyyk......",
-    "....kkkkkkkk....",
-    "...kyyyyyyyyk...",
-    "..kykwwwwwwkyk..",
-    "..kykwwwkwwkyk..",
-    "..kykwwwkwwkyk..",
-    "..kykwwwkkwkyk..",
-    "..kykwwwwwwkyk..",
-    "...kyyyyyyyyk...",
-    "....kkkkkkkk....",
-    "......kyyk......",
-    "......kyyk......",
-    "......kkkk......",
-    "................",
-];
-
-const LOTUS: Sprite = [
-    "................",
-    "................",
-    ".......kk.......",
-    "......kppk......",
-    ".....kpwppk.....",
-    "..kk.kpwppk.kk..",
-    ".kppkkpwppkkppk.",
-    ".kpppkppppkpppk.",
-    "..kpppkppkpppk..",
-    "...kpppppppppk..",
-    "....kkkkkkkkk...",
-    "..kjjjjjjjjjjjk.",
-    "...kJJJJJJJJJk..",
-    "....kkkkkkkkk...",
-    "................",
-    "................",
-];
-
-const JET: Sprite = [
-    "................",
-    "................",
-    "..kk............",
-    "..kgk...........",
-    "..kggk..........",
-    "..kgggkkkkkkkk..",
-    ".kkkkkgggggggwk.",
-    "kggggggCCgCCggwk",
-    "kggggggggggggggk",
-    ".kkkgggggggggkk.",
-    "....kkkggkkkk...",
-    "......kggk......",
-    ".......kk.......",
-    "................",
-    "................",
-    "................",
-];
-
-const CROWN: Sprite = [
-    "................",
-    "................",
-    "................",
-    "k......k......k.",
-    "kk....kyk....kk.",
-    "kyk..kyyyk..kyk.",
-    "kyyk.kyyyk.kyyk.",
-    "kyyykyyyyykyyyk.",
-    "kyyyyyryyyyyyyk.",
-    "kyyyyrrryyyyyyk.",
-    "kyyyyyryyyyyyyk.",
-    "kkkkkkkkkkkkkkk.",
-    "kooooooooooooook",
-    "kkkkkkkkkkkkkkkk",
-    "................",
-    "................",
-];
-
-const SHAKER: Sprite = [
-    "................",
-    ".....kkkkkk.....",
-    ".....kddddk.....",
-    "....kkkkkkkk....",
-    "....kggggggk....",
-    "...kmmmmmmmmk...",
-    "...kmwmmmmmmk...",
-    "...kmwmmyymmk...",
-    "...kmwmyymmmk...",
-    "...kmwmmyymmk...",
-    "...kmwmyymmmk...",
-    "...kmmmmmmmmk...",
-    "...kmmmmmmmmk...",
-    "...kkkkkkkkkk...",
-    "................",
-    "................",
-];
-
-const MIRROR: Sprite = [
-    "................",
-    "....kkkkkkk.....",
-    "...kyyyyyyyk....",
-    "..kykllllllyk...",
-    "..kyklwllllyk...",
-    "..kykllwlllyk...",
-    "..kyklllwllyk...",
-    "..kykllllllyk...",
-    "..kykllllllyk...",
-    "...kyyyyyyyk....",
-    "....kkkykkk.....",
-    "......kyk.......",
-    "......kyk.......",
-    "......kyk.......",
-    "......kkk.......",
-    "................",
-];
-
-const SUNSCREEN: Sprite = [
-    "......kkkk......",
-    "......kddk......",
-    ".....kkkkkk.....",
-    "....kyyyyyyk....",
-    "....kywwwwyk....",
-    "....kywoowyk....",
-    "....kwooooyk....",
-    "....kywoowyk....",
-    "....kywwwwyk....",
-    "....kyyyyyyk....",
-    "....kykkkkyk....",
-    "....kykwwkyk....",
-    "....kykkkkyk....",
-    "....kyyyyyyk....",
-    "....kkkkkkkk....",
-    "................",
-];
-
-const CREATINE: Sprite = [
-    "................",
-    "....kkkkkkkk....",
-    "....kddddddk....",
-    "...kkkkkkkkkk...",
-    "...kwwwwwwwwk...",
-    "...kwkkkkkkwk...",
-    "...kwkCCCCkwk...",
-    "...kwkCwwCkwk...",
-    "...kwkCCCCkwk...",
-    "...kwkkkkkkwk...",
-    "...kwwwwwwwwk...",
-    "...kwgwgwgwwk...",
-    "...kwwwwwwwwk...",
-    "...kwwwwwwwwk...",
-    "...kkkkkkkkkk...",
-    "................",
-];
-
-const GUM: Sprite = [
-    "................",
-    "................",
-    "...kkkkkkkkkk...",
-    "..kmmmmmmmmmmk..",
-    "..kmwwmmmmmmmk..",
-    "..kmmmmmmmmmmk..",
-    "..kkkkkkkkkkkk..",
-    "................",
-    "..kkkkkkkkkkkk..",
-    "..kppppppppppk..",
-    "..kpwwpppppppk..",
-    "..kppppppppppk..",
-    "..kkkkkkkkkkkk..",
-    "................",
-    "................",
-    "................",
-];
-
-const PERFUME: Sprite = [
-    "................",
-    "......kkkk......",
-    "......kddk......",
-    ".......kk.......",
-    ".....kkkkkk.....",
-    "....kmmmmmmk....",
-    "...kmmwmmmmmk...",
-    "...kmwmmmmmmk...",
-    "...kmmmmmmmmk...",
-    "...kmmkkkkmmk...",
-    "...kmmkyykmmk...",
-    "...kmmkkkkmmk...",
-    "...kmmmmmmmmk...",
-    "....kMMMMMMk....",
-    ".....kkkkkk.....",
-    "................",
-];
-
-const VENEERS: Sprite = [
-    "................",
-    "................",
-    "...kkkkkkkkkk...",
-    "..krrrrrrrrrrk..",
-    ".krrkkkkkkkkrrk.",
-    ".krkwwkwwkwwkrk.",
-    ".krkwwkwwkwwkrk.",
-    ".krkwwkwwkwwkrk.",
-    ".krkkkkkkkkkkrk.",
-    ".krkwwkwwkwwkrk.",
-    ".krkwwkwwkwwkrk.",
-    ".krrkkkkkkkkrrk.",
-    "..krrrrrrrrrrk..",
-    "...kkkkkkkkkk...",
-    "................",
-    "................",
-];
-
-const PHOTOGRAPHER: Sprite = [
-    "................",
-    "...kkk..........",
-    "..kdddk.........",
-    "kkkkkkkkkkkkkkk.",
-    "kdddddkkkkkdddk.",
-    "kddddkgggggkddk.",
-    "kdddkgkkkkkgkdk.",
-    "kdddkgkcCCkgkdk.",
-    "kdddkgkCwCkgkdk.",
-    "kdddkgkCCCkgkdk.",
-    "kddddkgggggkddk.",
-    "kdddddkkkkkdddk.",
-    "kkkkkkkkkkkkkkk.",
-    ".....k...k......",
-    "....k.....k.....",
-    "...k.......k....",
-];
-
-const CANTHAL: Sprite = [
-    "................",
-    "................",
-    "................",
-    "..kkkk....kkkk..",
-    ".kSSSSk..kSSSSk.",
-    "kSkkkkSk.kSkkkkS",
-    "kkwwnnkk.kknnwwk",
-    "kkwnnwkk.kkwnnwk",
-    ".kSkkkSk..kSkkkk",
-    "..kSSSk....kSSSk",
-    "...kkk......kkk.",
-    "................",
-    "..cccccc..cccccc",
-    "................",
-    "................",
-    "................",
-];
-
-const MANSION: Sprite = [
-    "................",
-    ".......kk.......",
-    "......kyyk......",
-    ".....kyyyyk.....",
-    "....kyyyyyyk....",
-    "...kkkkkkkkkk...",
-    "...kwwwwwwwwk...",
-    "...kwcckkccwk...",
-    "...kwcckkccwk...",
-    "...kwwwwwwwwk...",
-    "...kwcckBBwwk...",
-    "...kwcckBBwwk...",
-    "...kwwwwBBwwk...",
-    "JJJkkkkkkkkkkJJJ",
-    "jjjjjjjjjjjjjjjj",
-    "................",
-];
-
-const DNA: Sprite = [
-    "................",
-    "...kk......kk...",
-    "...kyk....kmk...",
-    "....kyk..kmk....",
-    ".....kyccmk.....",
-    "......kyyk......",
-    ".....kmccyk.....",
-    "....kmk..kyk....",
-    "...kmk....kyk...",
-    "....kmk..kyk....",
-    ".....kmccyk.....",
-    "......kmmk......",
-    ".....kyccmk.....",
-    "....kyk..kmk....",
-    "...kyk....kmk...",
-    "...kk......kk...",
-];
-
-const JAW_TAPE: Sprite = [
-    "................",
-    "................",
-    "....kkkkkkkk....",
-    "...kwwwwwwwwk...",
-    "..kwwkkkkkkwwk..",
-    ".kwwk......kwwk.",
-    ".kwk........kwk.",
-    ".kwk........kwk.",
-    ".kwk........kwk.",
-    ".kwwk......kwwk.",
-    "..kwwkkkkkkwwk..",
-    "...kwwwwwwwwk...",
-    "....kkkkkkkk....",
-    "................",
-    "................",
-    "................",
-];
-
-const COLOGNE: Sprite = [
-    "................",
-    "..c..........c..",
-    ".c.c..kkkk..c.c.",
-    "..c...kddk...c..",
-    "......kddk......",
-    "....kkkkkkkk....",
-    "...kjjjjjjjjk...",
-    "...kjwjjjjjjk...",
-    "...kjwjjjjjjk...",
-    "...kjjkkkkjjk...",
-    "...kjjkyykjjk...",
-    "...kjjkkkkjjk...",
-    "...kjjjjjjjjk...",
-    "...kJJJJJJJJk...",
-    "....kkkkkkkk....",
-    "................",
-];
-
-const ICE_PACK: Sprite = [
-    "................",
-    "......kkkk......",
-    ".....kddddk.....",
-    "....kkkkkkkk....",
-    "...kCCCCCCCCk...",
-    "..kCClllCCCCCk..",
-    "..kClwlCCCCCCk..",
-    "..kCClllCClCCk..",
-    "..kCCCCCClwlCk..",
-    "..kCClCCCClCCk..",
-    "..kClwlCCCCCCk..",
-    "..kCClCCCCCCCk..",
-    "...kCCCCCCCCk...",
-    "....kkkkkkkk....",
-    "................",
-    "................",
-];
-
-const MINOXIDIL: Sprite = [
-    "................",
-    "......kkkk......",
-    "......kddk......",
-    "......kddk......",
-    ".....kkkkkk.....",
-    ".....kwwwwk.....",
-    "....kkkkkkkk....",
-    "....kbbbbbbk....",
-    "....kbwwwwbk....",
-    "....kbwCCwbk....",
-    "....kbwwwwbk....",
-    "....kbbbbbbk....",
-    "....kbbbbbbk....",
-    "....kbbbbbbk....",
-    "....kkkkkkkk....",
-    "................",
-];
-
-const DERMAROLLER: Sprite = [
-    "................",
-    "..kkkkkkkk......",
-    ".kgggggggk......",
-    ".kglglglgk......",
-    ".kgggggggk......",
-    "..kkkkkkkk......",
-    "......kdk.......",
-    "......kdk.......",
-    ".......kdk......",
-    ".......kdk......",
-    "........kmk.....",
-    "........kmk.....",
-    ".........kmk....",
-    ".........kmk....",
-    "..........kk....",
-    "................",
-];
-
-const FOX_EYES: Sprite = [
-    "................",
-    "................",
-    "..........kkkk..",
-    "......kkkkk.....",
-    "..kkkkk.........",
-    "................",
-    "...........kk...",
-    "....kkkkkkkk....",
-    "..kkwwwwwwwwk...",
-    ".kwwwwJJJwwwwk..",
-    "..kwwwJkJwwwk...",
-    "...kkwJJJwkk....",
-    ".....kkkkk......",
-    "................",
-    "................",
-    "................",
-];
-
-const SHOULDER_PADS: Sprite = [
-    "................",
-    "......ssss......",
-    ".....ssssss.....",
-    ".....ssssss.....",
-    "......ssss......",
-    "kkkkkkkSSkkkkkkk",
-    "kCCCCCkSSkCCCCCk",
-    "kCCCCCCCCCCCCCCk",
-    "kkkCCCCCCCCCCkkk",
-    "..kCCCCCCCCCCk..",
-    "..kCCCCCCCCCCk..",
-    "...kCCCCCCCCk...",
-    "...kCCCCCCCCk...",
-    "...kCCCCCCCCk...",
-    "...kkkkkkkkkk...",
-    "................",
-];
-
-const SLEEP_KIT: Sprite = [
-    "...........www..",
-    ".............w..",
-    "............w...",
-    "...........www..",
-    "................",
-    "......ww........",
-    ".......w........",
-    "......ww........",
-    "................",
-    ".kkkkkkkkkkkkkk.",
-    "kMMMMMMMMMMMMMMk",
-    "kMkkkMMMMMMkkkMk",
-    "kMMMMMMkkMMMMMMk",
-    ".kMMMMk..kMMMMk.",
-    "..kkkk....kkkk..",
-    "................",
-];
-
-const WHEY: Sprite = [
-    "................",
-    "...kkkkkkkkkk...",
-    "...kddddddddk...",
-    "..kkkkkkkkkkkk..",
-    "..kwwwwwwwwwwk..",
-    "..kwkkkkkkkkwk..",
-    "..kwkrrrrrrkwk..",
-    "..kwkrwwwwrkwk..",
-    "..kwkrrrrrrkwk..",
-    "..kwkkkkkkkkwk..",
-    "..kwwwwwwwwwwk..",
-    "..kwwwwwwwwwwk..",
-    "..kwwwwwwwwwwk..",
-    "..kkkkkkkkkkkk..",
-    "................",
-    "................",
-];
-
-const BOAT_DANCE: Sprite = [
-    "................",
-    "......BBB.......",
-    "......kkk.......",
-    "......sss.......",
-    "..ssssrrrssss...",
-    "......rrr.......",
-    "......rrr.......",
-    "......n.n.......",
-    "......n.n.......",
-    "bbbbbbbbbbbbbbbb",
-    ".bBBBBBBBBBBBBb.",
-    "..bBBBBBBBBBBb..",
-    "...bbbbbbbbbb...",
-    "cCcCcCcCcCcCcCcC",
-    "CcCcCcCcCcCcCcCc",
-    "................",
-];
-
-const DOOR_LEAN: Sprite = [
-    "..bbbbbbbb......",
-    "..bBBBBBBb......",
-    "..bBBBBBBb..kk..",
-    "..bBBBBBBb.ssss.",
-    "..bBBBBBBb.ssss.",
-    "..bBBBBBBb..ss..",
-    "..bBBBBBBbkkkk..",
-    "..bBBBBByskkkks.",
-    "..bBBBBBBbkkkk..",
-    "..bBBBBBBbkkkk..",
-    "..bBBBBBBb.nn...",
-    "..bBBBBBBb.nn...",
-    "..bBBBBBBb.n.n..",
-    "..bBBBBBBbn...n.",
-    "..bBBBBBBbk...k.",
-    "gggggggggggggggg",
-];
-
-const JESTER: Sprite = [
-    "................",
-    ".y............y.",
-    ".mm..........CC.",
-    "..mm...y....CC..",
-    "..mmm.mmC..CCC..",
-    "...mmmmmCCCCC...",
-    "..yyyyyyyyyyyy..",
-    "...ssssssssss...",
-    "...skkssssskks..",
-    "...ssssssssss...",
-    "...srsssssssrs..",
-    "...ssrrrrrrss...",
-    "....ssssssss....",
-    ".....ssssss.....",
-    "................",
-    "................",
-];
-
-const SIX_SEVEN: Sprite = [
-    "................",
-    "................",
-    "................",
-    "...oooo..ooooo..",
-    "..o..........o..",
-    "..o.........o...",
-    "..oooo.....o....",
-    "..o...o....o....",
-    "..o...o....o....",
-    "...ooo.....o....",
-    "................",
-    ".ss..ss..ss..ss.",
-    ".ssssss..ssssss.",
-    "..ssss....ssss..",
-    "................",
-    "................",
-];
-
-const HEIGHT_67: Sprite = [
-    "yk......ssss....",
-    "y.......ssss....",
-    "yk.....CCCCCC...",
-    "y.....CCCCCCCC..",
-    "yk....sCCCCCCs..",
-    "y.....sCCCCCCs..",
-    "yk....sCCCCCCs..",
-    "y.......nnnn....",
-    "yk......nnnn....",
-    "y.......n..n....",
-    "yk......n..n....",
-    "y.......n..n....",
-    "yk......n..n....",
-    "y.......n..n....",
-    "yk.....kk..kk...",
-    "y...............",
-];
-
-const CAPOEIRA: Sprite = [
-    "..s..........s..",
-    "..w..........w..",
-    "...w........w...",
-    "....w......w....",
-    ".....w....w.....",
-    "......wwww......",
-    "......wwww......",
-    ".......yy.......",
-    "......ssss......",
-    "......ssss......",
-    ".......ss.......",
-    "......kssk......",
-    "......kkkk......",
-    "....s......s....",
-    "...ss......ss...",
-    "gggggggggggggggg",
-];
-
-const SHARK: Sprite = [
-    "................",
-    "........k.......",
-    ".......kgk......",
-    "..kkkkkgggkkkk..",
-    ".kggggggggggggk.",
-    "kgwkgggggggggggk",
-    "kggggggggggggggk",
-    "kwwwwwwwwwwwwwwk",
-    ".kwkwkwkwwwwwwk.",
-    "..kkkkkkkkkkkk..",
-    "....kgk..kgk....",
-    "....kgk..kgk....",
-    "...kwwrk.kwwrk..",
-    "..kwwwwkkwwwwk..",
-    "..kkkkkk.kkkkkk.",
-    "................",
-];
-
-const BANANA_MONKEY: Sprite = [
-    "................",
-    "...........kk...",
-    "..........kyk...",
-    ".........kyyk...",
-    "..BBBB..kyyyk...",
-    ".BbbbbB.kyyyk...",
-    "BbssssbBkyyyk...",
-    "BsksskbBkyyk....",
-    "BssssssBkyyk....",
-    "BsskkssBkyk.....",
-    ".BssssB.kk......",
-    "..BBBB..........",
-    "................",
-    "................",
-    "................",
-    "................",
-];
-
-const SAHUR_BAT: Sprite = [
-    "................",
-    "................",
-    "............bb..",
-    "...........bbbb.",
-    "..........bbbbb.",
-    ".........bbbbb..",
-    "........bbbbb...",
-    ".......bbbbb....",
-    "......bbbbb.....",
-    ".....bbbb.......",
-    "....bbbb........",
-    "...bbb..........",
-    "..kBB...........",
-    ".kBB............",
-    "kBk.............",
-    "kk..............",
-];
-
-const CROC_BOMBER: Sprite = [
-    "................",
-    "................",
-    ".k..............",
-    ".kJk............",
-    ".kJJkkkkkkkkk...",
-    ".kJJJJJJJJJJJkk.",
-    "kJJJJJJJJJJJwkJk",
-    "kjjjjjjjjjjjjjjk",
-    ".kjjjjjjjjwkwkwk",
-    "..kkkkkkkkkkkkk.",
-    ".....kJJJJk.....",
-    "....kJJJJJJk....",
-    "...kkkkkkkkkk...",
-    ".......kdk......",
-    ".......kdk......",
-    "........k.......",
-];
-
-const COMBO_67: Sprite = [
-    "................",
-    ".....mmmmmm.....",
-    "...mmmmmmmmmm...",
-    "..mmmmmmmmmmmm..",
-    ".mmmwwwmwwwmmmm.",
-    ".mmmw..m..wmmmm.",
-    ".mmmwwwm.w.mmmm.",
-    ".mmmw.wm.w.mmmm.",
-    ".mmmwwwm.w.mmmm.",
-    "..mmmmmmmmmmmm..",
-    "...mmmmmmmmmm...",
-    ".....mmmmmm.....",
-    "................",
-    "................",
-    "................",
-    "................",
-];
-
-const AURA_FARM: Sprite = [
-    "....c......c....",
-    ".c....kkkk....c.",
-    "......ssss......",
-    "..c...kssk...c..",
-    "......ssss......",
-    "c...MMMMMMMM...c",
-    "...MMMMMMMMMM...",
-    "..sMMMMMMMMMMs..",
-    "c.sMMMMMMMMMMs.c",
-    "...MMMMMMMMMM...",
-    "....nnnnnnnn....",
-    ".c..nnn..nnn..c.",
-    "....nnn..nnn....",
-    "..c.nnn..nnn.c..",
-    "...kkkk..kkkk...",
-    "jjjjjjjjjjjjjjjj",
-];
+/// The frame to show `t_ms` after the game started; loops through the item's animation.
+pub fn sprite_at(id: ItemId, t_ms: u64) -> &'static Frame {
+    static CACHE: OnceLock<Mutex<HashMap<&'static str, &'static Anim>>> = OnceLock::new();
+    let (png, json, name) = asset(id);
+    let anim = *CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap()
+        .entry(name)
+        .or_insert_with(|| Box::leak(Box::new(decode(png, json))));
+    let mut t = t_ms % anim.total_ms;
+    for f in &anim.frames {
+        if t < f.ms {
+            return f;
+        }
+        t -= f.ms;
+    }
+    &anim.frames[0]
+}
 
 #[cfg(test)]
 mod tests {
@@ -1084,16 +144,14 @@ mod tests {
     use crate::game::CATALOG;
 
     #[test]
-    fn every_item_has_a_well_formed_sprite() {
-        for def in &CATALOG {
-            let rows = sprite(def.id);
-            for (y, row) in rows.iter().enumerate() {
-                assert_eq!(row.chars().count(), SPRITE_SIZE, "{:?} row {y}", def.id);
-                for c in row.chars() {
-                    assert!(c == '.' || color(c).is_some(), "{:?} row {y}: unknown color {c:?}", def.id);
-                }
-            }
-            assert!(rows.iter().any(|r| r.chars().any(|c| c != '.')), "{:?} is empty", def.id);
+    fn every_item_has_an_animation_with_matching_frames() {
+        for def in CATALOG.iter() {
+            let (png, json, name) = asset(def.id);
+            let a = decode(png, json);
+            assert!(!a.frames.is_empty(), "{name}");
+            let (w, h) = (a.frames[0].rows[0].len(), a.frames[0].rows.len());
+            assert!(a.frames.iter().all(|f| f.rows.len() == h && f.rows[0].len() == w), "{name}: frame sizes differ");
+            assert!(a.frames[0].rows.iter().flatten().any(Option::is_some), "{name}: empty");
         }
     }
 }
