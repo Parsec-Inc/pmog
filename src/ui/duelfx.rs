@@ -47,7 +47,7 @@ type Glyph = Option<(&'static str, f64)>;
 /// Glyphs falling in some columns with a fading tail.
 fn rain(c: &Cell, glyphs: &[&'static str]) -> Glyph {
     let col = c.col as u64;
-    if col % 2 != 0 || noise(col, 5, 0) > 0.5 {
+    if !col.is_multiple_of(2) || noise(col, 5, 0) > 0.5 {
         return None;
     }
     let span = c.h + 10.0;
