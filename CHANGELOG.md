@@ -1,3 +1,9 @@
+## 0.3.0 (2026-11-17)
+
+### Feat
+
+- aviso de firewall bloqueando o jogo
+
 ## 0.2.0 (2026-11-17)
 
 ### Feat
