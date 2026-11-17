@@ -351,6 +351,7 @@ fn lobby_renders_and_edits_the_name() {
 }
 
 #[test]
+#[cfg_attr(target_os = "macos", ignore = "o runner do macOS no CI não entrega o beacon UDP para a própria máquina")]
 fn hosting_and_joining_through_the_interface() {
     let p = ports(12);
     let mut host = App::new("Host".into(), machine_id::for_bot("host"), Discovery::start(p.discovery).ok(), None, p);
