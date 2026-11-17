@@ -15,9 +15,9 @@
   #term { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
   canvas { display: block; }
   #bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); background: #141219; }
-  #bar button { flex: 1 1 52px; min-width: 0; height: 40px; border: 0; border-radius: 6px; background: var(--key); color: var(--fg); font: 600 16px system-ui, sans-serif; touch-action: none; }
+  #bar button { flex: 1 1 36px; min-width: 0; height: 36px; border: 0; border-radius: 6px; background: var(--key); color: var(--fg); font: 600 15px system-ui, sans-serif; touch-action: none; }
   #bar button.on, #bar button:active { background: var(--key-on); }
-  #bar button.wide { flex: 2 1 104px; }
+  #bar button.wide { flex: 2 1 72px; }
   #bar .row { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; }
   #letters[hidden] { display: none; }
   #kb { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; resize: none; }
@@ -29,14 +29,11 @@
   .card .error { color: #f14c4c; font-weight: 600; }
   .card input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid #444; border-radius: 6px; background: #000; color: var(--fg); font-size: 16px; }
   .card button { width: 100%; height: 44px; margin-top: 10px; border: 0; border-radius: 6px; background: var(--accent); color: #000; font: 700 16px system-ui, sans-serif; }
-  #hint { width: 100%; text-align: center; font-size: 12px; color: #999; }
-  #hint[hidden] { display: none; }
 </style>
 </head>
 <body>
 <div id="term"><canvas id="screen"></canvas></div>
 <div id="bar">
-  <div id="hint" hidden>Vire o celular de lado para ver a tela inteira.</div>
   <div class="row" id="letters" hidden>
     <button data-key="m">M</button><button data-key="l">L</button><button data-key="d">D</button><button data-key="f">F</button><button data-key="t">T</button><button data-key="c">C</button><button data-key="p">P</button><button data-key="s">S</button><button data-key="?">?</button><button data-key="q">Q</button><button id="ctrl">Ctrl</button><button data-key="PageUp">PgUp</button><button data-key="PageDown">PgDn</button>
   </div>
@@ -65,7 +62,8 @@
   const FONT = "ui-monospace, 'DejaVu Sans Mono', Menlo, 'Roboto Mono', 'Droid Sans Mono', monospace";
   const SENTINEL = "_";
   const REPEAT_DELAY = 350, REPEAT_EVERY = 70, RESIZE_DEBOUNCE = 150;
-  const MIN_FONT = 6, MAX_FONT = 28, NARROW_COLS = 70;
+  const MIN_FONT = 6, MAX_FONT = 28, FIT_MIN = 8, FIT_MAX = 14, MAX_ZOOM = 10, LINE_HEIGHT = 1.2;
+  const PORTRAIT_COLS = 50, LANDSCAPE_COLS = 100, LANDSCAPE_ROWS = 22;
 
   const store = {
     get(k) { try { return localStorage.getItem("pmog-" + k); } catch { return null; } },
@@ -77,7 +75,6 @@
   const kb = document.getElementById("kb");
   const veil = document.getElementById("veil");
   const card = document.getElementById("card");
-  const hint = document.getElementById("hint");
 
   let token = store.get("id");
   if (!token || !/^[0-9a-f]{32}$/.test(token)) {
@@ -85,7 +82,7 @@
     token = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
     store.set("id", token);
   }
-  let fontSize = Number(store.get("font")) || 12;
+  let zoomOffset = Number(store.get("zoom")) || 0, fontSize = 12;
   let cols = 80, rows = 24, cw = 8, ch = 16, dpr = 1;
   let lines = [];
   let ws = null, ended = false;
@@ -93,19 +90,30 @@
   const segmenter = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter() : null;
   const graphemes = s => segmenter ? Array.from(segmenter.segment(s), x => x.segment) : Array.from(s);
 
+  // Font that fits ~50 columns upright, or at least 100x22 sideways, plus the player's A−/A+ offset.
+  function fitFont(box) {
+    g.font = `100px ${FONT}`;
+    const ratio = g.measureText("M").width / 100;
+    const fit = box.width > box.height
+      ? Math.min(box.width / (LANDSCAPE_COLS * ratio), box.height / (LANDSCAPE_ROWS * LINE_HEIGHT))
+      : box.width / (PORTRAIT_COLS * ratio);
+    const base = Math.min(FIT_MAX, Math.max(FIT_MIN, Math.floor(fit * 2) / 2));
+    return Math.min(MAX_FONT, Math.max(MIN_FONT, base + zoomOffset));
+  }
+
   function measure() {
     dpr = window.devicePixelRatio || 1;
+    const box = term.getBoundingClientRect();
+    fontSize = fitFont(box);
     g.font = `${fontSize * dpr}px ${FONT}`;
     cw = Math.max(1, Math.round(g.measureText("M").width));
-    ch = Math.max(1, Math.round(fontSize * 1.2 * dpr));
-    const box = term.getBoundingClientRect();
+    ch = Math.max(1, Math.round(fontSize * LINE_HEIGHT * dpr));
     cols = Math.max(20, Math.floor(box.width * dpr / cw));
     rows = Math.max(8, Math.floor(box.height * dpr / ch));
     canvas.width = cols * cw;
     canvas.height = rows * ch;
     canvas.style.width = canvas.width / dpr + "px";
     canvas.style.height = canvas.height / dpr + "px";
-    hint.hidden = cols >= NARROW_COLS || window.innerWidth > window.innerHeight;
     redrawAll();
   }
 
@@ -247,7 +255,7 @@
     store.set("letters", letters.hidden ? "0" : "1");
     onResize();
   });
-  const zoom = delta => { fontSize = Math.min(MAX_FONT, Math.max(MIN_FONT, fontSize + delta)); store.set("font", fontSize); onResize(); };
+  const zoom = delta => { zoomOffset = Math.min(MAX_ZOOM, Math.max(-MAX_ZOOM, zoomOffset + delta)); store.set("zoom", zoomOffset); onResize(); };
   tap("smaller", () => zoom(-1));
   tap("bigger", () => zoom(1));
   if (store.get("letters") === "1") { document.getElementById("letters").hidden = false; document.getElementById("abc").classList.add("on"); }

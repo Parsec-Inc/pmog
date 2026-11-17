@@ -49,6 +49,23 @@ pub const HELP_PAGE_STEP: i32 = 10;
 /// Width of the name column in the rank list, crest included.
 pub const RANK_NAME_COLUMN: usize = 20;
 pub const SHOP_PREVIEW_MIN_WIDTH: u16 = 100;
+/// Below this width (phones held upright) the screens stack instead of sitting side by side.
+pub const NARROW_WIDTH: u16 = 80;
+/// Lobby height from which the title gets its padding and mascot.
+pub const LOBBY_TALL: u16 = 30;
+/// Shop width below which the table drops the Requer and Efeito columns and shows them under it.
+pub const SHOP_FULL_TABLE_WIDTH: u16 = 76;
+pub const SHOP_DETAILS_ROWS: u16 = 5;
+/// Below this height popups take the whole screen.
+pub const SHORT_HEIGHT: u16 = 24;
+/// Stacked game body tall enough for the bigger MOGAR button.
+pub const NARROW_ROOMY_BODY: u16 = 34;
+/// Upright screens at least this tall show the full header (combat numbers too).
+pub const NARROW_FULL_HEADER_FROM: u16 = 40;
+/// Feed rows kept under a stacked duel or game.
+pub const NARROW_FEED_ROWS: u16 = 6;
+/// Stacked duel body tall enough to also show the feed.
+pub const NARROW_DUEL_FEED_FROM: u16 = 34;
 
 // Combat
 pub const BASE_ATTACK: f64 = 10.0;

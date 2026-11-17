@@ -57,6 +57,7 @@ fn render(app: &App, w: u16, h: u16) -> String {
         .map(|y| (0..w).map(|x| buf[(x, y)].symbol().to_string()).collect::<String>())
         .collect::<Vec<_>>()
         .join("\n")
+        .replace('\u{a0}', " ")
 }
 
 fn press(app: &mut App, code: KeyCode) -> bool {

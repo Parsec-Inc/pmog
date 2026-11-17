@@ -111,6 +111,9 @@ fn label(c: &Conversation) -> String {
 }
 
 fn window_area(area: Rect) -> Rect {
+    if area.width < crate::constants::NARROW_WIDTH {
+        return area;
+    }
     let size = |full: u16, pct: u16, max: u16| (full as u32 * pct as u32 / 100).min(max as u32) as u16;
     let (w, h) = (size(area.width, CHAT_WINDOW_PCT.0, CHAT_WINDOW_MAX.0), size(area.height, CHAT_WINDOW_PCT.1, CHAT_WINDOW_MAX.1));
     Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h)
