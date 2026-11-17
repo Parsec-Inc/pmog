@@ -144,8 +144,9 @@ cargo run --example screenshots     # refaz as imagens deste README
 <details>
 <summary><b>Atualização automática e segurança</b></summary>
 
-Quem hospeda com a versão nova oferece o executável para quem entra com a velha. O jogo pergunta antes, baixa, confere e reabre sozinho (`U` na tela inicial pergunta de novo).
+Quem hospeda com a versão nova oferece o executável para quem entra com a velha, e ao abrir o jogo também procura a última versão nas [releases do GitHub](https://github.com/Parsec-Inc/pmog/releases) (com o `curl` do sistema, sem login). O jogo pergunta antes, baixa, confere e reabre sozinho (`U` na tela inicial pergunta de novo ou procura no GitHub).
 
+- A release do GitHub é tratada como um host qualquer: vale só o `.sig` assinado, não o site.
 - Cada build é assinada com Ed25519. A chave privada fica em `~/.config/pmog-release/release.key` e nunca sai do computador de quem publica; a pública (`release-pubkey.txt`) vai embutida em todo executável.
 - A assinatura cobre plataforma, número da build, tamanho e SHA-256. Um host malicioso não consegue trocar os bytes, mudar a plataforma, fazer downgrade nem assinar nada próprio.
 - Tudo é conferido com o arquivo ainda na memória; nada é gravado se falhar. O download tem limite de 64 MB e de tempo.

@@ -11,12 +11,13 @@ use std::time::{Duration, Instant};
 
 use common::*;
 use ed25519_dalek::SigningKey;
-use pmog::app::{App, Confirm};
+use pmog::app::{App, Confirm, UpdateSource};
 use pmog::discovery::Discovery;
 use pmog::input::handle_key;
 use pmog::protocol::Beacon;
 use pmog::server::ServerHandle;
-use pmog::update::{Manifest, Shelf, UpdateReply, fetch, hex_encode, install, release_label, sidecar};
+use pmog::constants::GITHUB_LATEST_URL;
+use pmog::update::{Manifest, Shelf, UpdateReply, dist_name, fetch, fetch_web, hex_encode, install, release_label, sidecar, web_offer};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn key(seed: u8) -> SigningKey {
@@ -213,7 +214,7 @@ fn lobby_asks_once_and_u_asks_again() {
     }
     assert_eq!(app.confirm, Some(Confirm::Update), "a newer build on the network is offered");
     assert_eq!(app.update_offer().unwrap().1, offer, "only builds for this platform count");
-    let entry = app.update_offer().unwrap().0;
+    let Some((UpdateSource::Lan(entry), _)) = app.update_offer() else { panic!("offer comes from the LAN") };
     assert!(!entry.compatible, "old-protocol servers still show up");
 
     press(&mut app, KeyCode::Char('n'));
@@ -275,3 +276,66 @@ fn release_labels_read_as_dates() {
     assert_eq!(release_label(7), "build 7");
 }
 
+
+/// A fake GitHub: the latest-release JSON plus the files it links to.
+fn github(release_json: String, files: Vec<(&'static str, Vec<u8>)>) -> impl Fn(&str) -> Result<Vec<u8>, String> {
+    move |url: &str| {
+        if url == GITHUB_LATEST_URL {
+            return Ok(release_json.clone().into_bytes());
+        }
+        files.iter().find(|(u, _)| *u == url).map(|(_, b)| b.clone()).ok_or_else(|| format!("404 {url}"))
+    }
+}
+
+fn release_json(platform: &str) -> String {
+    let name = dist_name(platform);
+    format!(
+        r#"{{"tag_name":"0.3.0","assets":[{{"name":"{name}","browser_download_url":"https://x/bin"}},{{"name":"{name}.sig","browser_download_url":"https://x/sig"}},{{"name":"SHA256SUMS","browser_download_url":"https://x/sums"}}]}}"#
+    )
+}
+
+#[test]
+fn github_release_with_a_newer_signed_build_is_offered_and_verified() {
+    let signer = key(7);
+    let platform = pmog::update::platform();
+    let bytes = b"pmog nova".to_vec();
+    let manifest = Manifest::sign(&signer, platform, 202611200000, &bytes);
+    let get = github(release_json(platform), vec![("https://x/bin", bytes.clone()), ("https://x/sig", serde_json::to_vec(&manifest).unwrap())]);
+
+    let offer = web_offer(platform, 202611170000, &get).unwrap().expect("newer build offered");
+    assert_eq!(offer.tag, "0.3.0");
+    assert_eq!(offer.manifest, manifest);
+    assert_eq!(fetch_web(&offer, &public(&signer), &get).unwrap(), bytes);
+    assert!(fetch_web(&offer, &public(&key(8)), &get).is_err(), "a build signed by another key is refused");
+
+    assert!(web_offer(platform, 202611200000, &get).unwrap().is_none(), "same release is not offered");
+    let other = if platform == "linux" { "windows" } else { "linux" };
+    assert!(web_offer(other, 0, &get).unwrap().is_none(), "a manifest for another platform is ignored");
+}
+
+#[test]
+fn github_build_that_does_not_match_its_signature_is_refused() {
+    let signer = key(7);
+    let platform = pmog::update::platform();
+    let manifest = Manifest::sign(&signer, platform, 202611200000, b"build assinada");
+    let get = github(release_json(platform), vec![("https://x/bin", b"build trocada".to_vec()), ("https://x/sig", serde_json::to_vec(&manifest).unwrap())]);
+    let offer = web_offer(platform, 0, &get).unwrap().unwrap();
+    assert!(fetch_web(&offer, &public(&signer), &get).is_err());
+}
+
+#[test]
+fn github_release_without_this_platform_offers_nothing() {
+    let get = github(r#"{"tag_name":"0.3.0","assets":[]}"#.to_string(), vec![]);
+    assert!(web_offer(pmog::update::platform(), 0, &get).unwrap().is_none());
+    let broken = github("not json".to_string(), vec![]);
+    assert!(web_offer(pmog::update::platform(), 0, &broken).is_err());
+}
+
+#[test]
+fn downloads_go_through_the_system_curl() {
+    let dir = Dir::new("curl");
+    let path = dir.file("build");
+    fs::write(&path, b"bytes do build").unwrap();
+    assert_eq!(pmog::update::download(&format!("file://{}", path.display())).unwrap(), b"bytes do build");
+    assert!(pmog::update::download(&format!("file://{}", dir.file("missing").display())).is_err());
+}

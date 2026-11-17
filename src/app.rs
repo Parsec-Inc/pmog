@@ -49,6 +49,23 @@ pub enum LobbyRow {
     Host,
 }
 
+/// Where a newer build comes from.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpdateSource {
+    Lan(ServerEntry),
+    Web(update::WebOffer),
+}
+
+impl UpdateSource {
+    /// Where the build is, for the question shown to the player.
+    pub fn label(&self) -> String {
+        match self {
+            UpdateSource::Lan(entry) => entry.name.clone(),
+            UpdateSource::Web(offer) => format!("GitHub ({})", offer.tag),
+        }
+    }
+}
+
 /// World name being typed: a new world, or renaming the saved one with this id.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorldEdit {
@@ -88,6 +105,10 @@ pub struct App {
     /// Newest release the player said no to, so the question is not repeated.
     pub update_declined: u64,
     update_job: Option<Receiver<Result<u64, String>>>,
+    /// Newer build found in the GitHub releases.
+    web_offer: Option<update::WebOffer>,
+    /// GitHub check in flight; the flag says the player asked for it with U.
+    web_check: Option<(Receiver<Option<update::WebOffer>>, bool)>,
     /// Set once a new build is installed; the binary restarts when the UI closes.
     pub restart: bool,
     /// Phone access to this PMOG; `None` in tests and bots.
@@ -126,6 +147,8 @@ impl App {
             release: if update::enabled() { update::release() } else { 0 },
             update_declined: 0,
             update_job: None,
+            web_offer: None,
+            web_check: None,
             restart: false,
             remote: None,
             editing_phone_password: None,
@@ -385,33 +408,86 @@ impl App {
         entry.update.filter(|r| self.release > 0 && *r > self.release)
     }
 
-    /// The server with the newest build for this computer, if any is newer.
-    pub fn update_offer(&self) -> Option<(ServerEntry, u64)> {
+    /// The newest build for this computer on the LAN or GitHub, if any is newer; the LAN wins ties.
+    pub fn update_offer(&self) -> Option<(UpdateSource, u64)> {
         let servers = self.discovery.as_ref().map_or(&[][..], |d| d.servers());
-        servers.iter().filter_map(|s| self.offered(s).map(|r| (s.clone(), r))).max_by_key(|(_, r)| *r)
+        let lan = servers.iter().filter_map(|s| self.offered(s).map(|r| (UpdateSource::Lan(s.clone()), r))).max_by_key(|(_, r)| *r);
+        let web = self
+            .web_offer
+            .as_ref()
+            .filter(|o| self.release > 0 && o.manifest.release > self.release)
+            .map(|o| (UpdateSource::Web(o.clone()), o.manifest.release));
+        match (lan, web) {
+            (Some(lan), Some(web)) => Some(if web.1 > lan.1 { web } else { lan }),
+            (lan, web) => lan.or(web),
+        }
     }
 
-    /// Opens the update question again after the player said no.
+    /// Looks for a newer build in the GitHub releases in the background; dev builds never do.
+    pub fn check_web_update(&mut self, asked: bool) {
+        if !update::enabled() || self.web_check.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        let have = self.release;
+        thread::spawn(move || {
+            let _ = tx.send(update::web_offer(update::platform(), have, update::download).ok().flatten());
+        });
+        self.web_check = Some((rx, asked));
+    }
+
+    /// Opens the update question again after the player said no, or looks on GitHub when nothing is known.
     pub fn ask_update(&mut self) {
-        if self.update_offer().is_some() && self.update_job.is_none() {
+        if self.update_job.is_some() {
+            return;
+        }
+        if self.update_offer().is_some() {
             self.update_declined = 0;
             self.confirm = Some(Confirm::Update);
+        } else if update::enabled() {
+            self.check_web_update(true);
+            self.notice = Some((Tone::Info, "Procurando versão nova no GitHub...".into()));
         }
     }
 
     fn start_update(&mut self) {
-        let Some((entry, release)) = self.update_offer() else { return };
+        let Some((source, release)) = self.update_offer() else { return };
+        let label = source.label();
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
-            let _ = tx.send(update::update_from(entry.addr));
+            let _ = tx.send(match &source {
+                UpdateSource::Lan(entry) => update::update_from(entry.addr),
+                UpdateSource::Web(offer) => update::update_from_web(offer),
+            });
         });
         self.update_job = Some(rx);
         self.update_declined = release;
-        self.notice = Some((Tone::Info, format!("Baixando a versão nova de {}...", entry.name)));
+        self.notice = Some((Tone::Info, format!("Baixando a versão nova de {label}...")));
+    }
+
+    /// Takes the result of a finished GitHub check.
+    fn step_web_check(&mut self) {
+        let Some((rx, asked)) = &self.web_check else { return };
+        let asked = *asked;
+        match rx.try_recv() {
+            Ok(offer) => {
+                if asked && offer.is_none() {
+                    self.notice = Some((Tone::Info, "Você já está na versão mais nova.".into()));
+                }
+                if asked && offer.is_some() {
+                    self.update_declined = 0;
+                }
+                self.web_offer = offer;
+                self.web_check = None;
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => self.web_check = None,
+        }
     }
 
     /// Offers a newer build once per release and follows a running download.
     fn step_update(&mut self) {
+        self.step_web_check();
         if let Some(job) = &self.update_job {
             match job.try_recv() {
                 Ok(Ok(release)) => {

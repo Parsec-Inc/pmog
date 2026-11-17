@@ -76,6 +76,7 @@ fn main() -> io::Result<()> {
     app.notifier.enabled = config.notifications;
     app.notifier.set_sink(Box::new(SystemSink::new()));
     app.remote = Some(Remote::start(WEB_PORT_START, config.phone.clone()));
+    app.check_web_update(false);
 
     let mut terminal = ratatui::init();
     let _ = execute!(io::stdout(), EnableFocusChange);

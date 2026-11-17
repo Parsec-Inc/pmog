@@ -226,3 +226,11 @@ pub use worlds::*;
 pub const MAX_UPDATE_BYTES: u64 = 64 * 1024 * 1024;
 /// How long an update download may stall.
 pub const UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// Latest published release of the game.
+pub const GITHUB_LATEST_URL: &str = "https://api.github.com/repos/Parsec-Inc/pmog/releases/latest";
+/// Accept header the GitHub API asks for.
+pub const GITHUB_ACCEPT: &str = "Accept: application/vnd.github+json";
+/// Generic client name for downloads; carries nothing about the player.
+pub const UPDATE_USER_AGENT: &str = "pmog-updater";
+/// How long a whole download from the internet may take.
+pub const WEB_UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);

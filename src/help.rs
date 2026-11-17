@@ -135,7 +135,7 @@ fn basics() -> Vec<Line<'static>> {
         bullet("Na tela inicial aparecem os servidores encontrados na rede. Enter conecta no selecionado."),
         bullet("Mundos: cada mundo é um save separado, com seus próprios jogadores e progresso. \"Criar mundo novo\" pede um nome, liga o servidor aqui e já te conecta. Quem estiver na mesma rede vê o mundo na lista com esse nome."),
         bullet("Os mundos salvos aparecem na tela inicial: Enter hospeda, R renomeia e A apaga (vai para a lixeira do PMOG). Dá para hospedar vários ao mesmo tempo, cada um numa porta; P para o mundo selecionado."),
-        bullet("Atualização: se alguém hospedar uma versão mais nova, o jogo pergunta se você quer atualizar. Ele só aceita versões assinadas pelo dono do jogo, confere tudo antes de trocar o executável e reabre sozinho. Se disser não, aperte U na tela inicial depois."),
+        bullet("Atualização: se alguém hospedar uma versão mais nova, ou se sair uma versão nova no GitHub, o jogo pergunta se você quer atualizar. Ele só aceita versões assinadas pelo dono do jogo, confere tudo antes de trocar o executável e reabre sozinho. Se disser não, aperte U na tela inicial depois."),
         bullet("O servidor decide tudo: duelos, compras e MP. Ninguém consegue inventar números."),
         bullet("Cada mundo é um banco SQLite no computador de quem hospeda (~/.local/share/pmog/worlds/). Os apagados ficam em ~/.local/share/pmog/lixeira/."),
         bullet("Se quem hospeda fechar o jogo, os mundos desligam para todos, mas o progresso fica salvo."),

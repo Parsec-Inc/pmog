@@ -1,17 +1,18 @@
-//! Self-update over the LAN: hosts hand out signed builds, players confirm, the executable swaps itself.
+//! Self-update: hosts on the LAN or the GitHub releases hand out signed builds, players confirm, the executable swaps itself.
 //!
-//! The request line and the reply format below must never change, so any old build can update from any new host.
+//! The LAN request line and reply format below must never change, so any old build can update from any new host.
 
 use std::fs;
 use std::io::{self, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::constants::{CONNECT_TIMEOUT, MAX_UPDATE_BYTES, UPDATE_TIMEOUT};
+use crate::constants::{CONNECT_TIMEOUT, GITHUB_ACCEPT, GITHUB_LATEST_URL, MAX_UPDATE_BYTES, UPDATE_TIMEOUT, UPDATE_USER_AGENT, WEB_UPDATE_TIMEOUT};
 use crate::protocol::{read_line, write_msg};
 
 /// Build number baked in by `scripts/build-dist.sh`; 0 for development builds, which never update.
@@ -220,6 +221,64 @@ pub fn fetch(addr: SocketAddr, platform: &str, have: u64, pubkey_hex: &str) -> R
     Ok((manifest, bytes))
 }
 
+/// File name of a published build, as `scripts/build-dist.sh` writes it.
+pub fn dist_name(platform: &str) -> &'static str {
+    if platform == "windows" { "pmog-windows.exe" } else { "pmog-linux" }
+}
+
+/// A newer signed build published in the GitHub releases.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebOffer {
+    pub tag: String,
+    pub manifest: Manifest,
+    pub binary_url: String,
+}
+
+#[derive(Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    assets: Vec<GithubAsset>,
+}
+
+#[derive(Deserialize)]
+struct GithubAsset {
+    name: String,
+    browser_download_url: String,
+}
+
+/// Downloads `url` with the system's curl, so the game needs no TLS stack of its own.
+pub fn download(url: &str) -> Result<Vec<u8>, String> {
+    let output = Command::new("curl")
+        .args(["-fsSL", "--max-time", &WEB_UPDATE_TIMEOUT.as_secs().to_string(), "--max-filesize", &MAX_UPDATE_BYTES.to_string()])
+        .args(["-H", GITHUB_ACCEPT, "-A", UPDATE_USER_AGENT, url])
+        .output()
+        .map_err(|e| format!("Não consegui rodar o curl: {e}"))?;
+    if !output.status.success() {
+        return Err(format!("Download falhou: {}", String::from_utf8_lossy(&output.stderr).trim()));
+    }
+    Ok(output.stdout)
+}
+
+/// The latest GitHub release when it has a newer build for `platform`; `get` fetches a URL.
+pub fn web_offer(platform: &str, have: u64, get: impl Fn(&str) -> Result<Vec<u8>, String>) -> Result<Option<WebOffer>, String> {
+    let release: GithubRelease = serde_json::from_slice(&get(GITHUB_LATEST_URL)?).map_err(|e| format!("Resposta inesperada do GitHub: {e}"))?;
+    let name = dist_name(platform);
+    let url = |wanted: &str| release.assets.iter().find(|a| a.name == wanted).map(|a| a.browser_download_url.clone());
+    let (Some(binary_url), Some(sig_url)) = (url(name), url(&format!("{name}.sig"))) else { return Ok(None) };
+    let manifest: Manifest = serde_json::from_slice(&get(&sig_url)?).map_err(|e| format!("Assinatura malformada no GitHub: {e}"))?;
+    if manifest.platform != platform || manifest.release <= have || manifest.size > MAX_UPDATE_BYTES {
+        return Ok(None);
+    }
+    Ok(Some(WebOffer { tag: release.tag_name, manifest, binary_url }))
+}
+
+/// Downloads the offered build and checks it against its signed manifest.
+pub fn fetch_web(offer: &WebOffer, pubkey_hex: &str, get: impl Fn(&str) -> Result<Vec<u8>, String>) -> Result<Vec<u8>, String> {
+    let bytes = get(&offer.binary_url)?;
+    offer.manifest.verify(pubkey_hex, &bytes)?;
+    Ok(bytes)
+}
+
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.as_os_str().to_owned();
     name.push(suffix);
@@ -260,6 +319,14 @@ pub fn update_from(addr: SocketAddr) -> Result<u64, String> {
     let (manifest, bytes) = fetch(addr, platform(), release(), release_pubkey())?;
     install(&exe, &manifest, &bytes)?;
     Ok(manifest.release)
+}
+
+/// Downloads the GitHub build and installs over the running executable.
+pub fn update_from_web(offer: &WebOffer) -> Result<u64, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Não achei o executável: {e}"))?;
+    let bytes = fetch_web(offer, release_pubkey(), download)?;
+    install(&exe, &offer.manifest, &bytes)?;
+    Ok(offer.manifest.release)
 }
 
 /// Starts the freshly installed executable with the same arguments; never returns.

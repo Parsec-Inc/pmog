@@ -1430,12 +1430,12 @@ fn draw_confirm(f: &mut Frame, app: &App, question: Confirm) {
         }
         Confirm::QuitWhileDueling => "Sair agora conta como desistência do duelo. Sair mesmo?".to_string(),
         Confirm::Update => match app.update_offer() {
-            Some((entry, release)) => format!(
+            Some((source, release)) => format!(
                 "Versão nova do PMOG ({}) disponível em {}. Atualizar agora? O jogo baixa, confere a assinatura e reabre sozinho.",
                 crate::update::release_label(release),
-                entry.name
+                source.label()
             ),
-            None => "A versão nova sumiu da rede. Tente de novo quando o servidor voltar.".to_string(),
+            None => "A versão nova sumiu. Tente de novo mais tarde.".to_string(),
         },
     };
     let area = small_popup(f.area(), 60, 7);
