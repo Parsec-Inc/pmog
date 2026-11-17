@@ -266,6 +266,49 @@ pub struct FeedLine {
     pub tone: Tone,
 }
 
+/// How long after a press the MP that shows up is counted as that mog's prize.
+const MOG_PRIZE_WINDOW: Duration = Duration::from_millis(2000);
+
+/// The last MOGAR press, for the screen-shake / wave / aura burst.
+#[derive(Debug, Clone, Copy)]
+pub struct MogHit {
+    pub at: Instant,
+    pub tier: TimingTier,
+    /// MP before the press.
+    pub bank: f64,
+    /// MP won by it, once the server says so.
+    pub gain: f64,
+}
+
+impl MogHit {
+    /// How big the burst is: the tier sets the base, the prize relative to your bank adds up to double.
+    pub fn intensity(&self) -> f64 {
+        let base = match self.tier {
+            TimingTier::Bad => 0.4,
+            TimingTier::Ok => 0.7,
+            TimingTier::Good => 1.0,
+            TimingTier::Perfect => 1.4,
+        };
+        base * (1.0 + (self.gain / self.bank.max(50.0)).clamp(0.0, 1.0))
+    }
+}
+
+/// A hit this player took (someone mogged them), for the impact burst.
+#[derive(Debug, Clone, Copy)]
+pub struct HitTaken {
+    pub at: Instant,
+    /// MP before the hit.
+    pub bank: f64,
+    pub loss: f64,
+}
+
+impl HitTaken {
+    /// 1.0 for a scratch, up to 2.0 for losing the whole bank.
+    pub fn intensity(&self) -> f64 {
+        1.0 + (self.loss / self.bank.max(50.0)).clamp(0.0, 1.0)
+    }
+}
+
 pub struct Banner {
     pub text: String,
     pub tone: Tone,
@@ -397,6 +440,12 @@ pub struct Game {
     pub aura_farm_until: Instant,
     pub feed: VecDeque<FeedLine>,
     pub banner: Option<Banner>,
+    /// Last MOGAR press and the tier it hit on the local meter; drives the wave/aura burst.
+    pub last_mog: Option<MogHit>,
+    /// Last time someone mogged this player, for the impact burst.
+    pub last_taken: Option<HitTaken>,
+    /// Latest MP drop seen in a state update, in case it arrives before the hit event.
+    recent_drop: Option<(Instant, f64)>,
     pub overlay: Overlay,
     pub shop_cursor: usize,
     /// Shop item waiting for a yes/no before buying.
@@ -525,6 +574,9 @@ impl Game {
             aura_farm_until: now,
             feed: VecDeque::new(),
             banner: None,
+            last_mog: None,
+            last_taken: None,
+            recent_drop: None,
             overlay: Overlay::None,
             shop_cursor: 0,
             shop_confirm: None,
@@ -679,7 +731,10 @@ impl Game {
             self.flash(now, Tone::Info, text);
             return;
         }
-        self.outbox.push(ClientMsg::Mog { target: target.id, meter: self.meter(now) });
+        let meter = self.meter(now);
+        let tier = TimingTier::from_meter(meter, self.player.stats().perfect_threshold);
+        self.last_mog = Some(MogHit { at: now, tier, bank: self.player.mp, gain: 0.0 });
+        self.outbox.push(ClientMsg::Mog { target: target.id, meter });
         // Local guess until the server confirms, so the key can't be spammed.
         let cooldown = self.player.stats().cooldown;
         self.cooldown_until = now + Duration::from_secs_f64(cooldown);
@@ -942,6 +997,8 @@ impl Game {
                 }
                 if hit {
                     self.hit_flash_until = now + HIT_FLASH;
+                    let loss = self.recent_drop.filter(|(t, _)| now.saturating_duration_since(*t) < Duration::from_millis(500)).map_or(0.0, |(_, l)| l);
+                    self.last_taken = Some(HitTaken { at: now, bank: self.player.mp + loss, loss });
                 }
             }
             ServerMsg::Purchase { item, ok, text } => {
@@ -962,6 +1019,17 @@ impl Game {
 
     fn apply_state(&mut self, view: StateView, now: Instant) {
         let ms = Duration::from_millis;
+        // MP that arrives right after a press is the mog's prize; it scales the burst.
+        let delta = view.me.mp - self.player.mp;
+        if let Some(hit) = self.last_mog.as_mut().filter(|h| now.saturating_duration_since(h.at) < MOG_PRIZE_WINDOW) {
+            hit.gain += delta.max(0.0);
+        }
+        if delta < 0.0 {
+            self.recent_drop = Some((now, -delta));
+            if let Some(hit) = self.last_taken.as_mut().filter(|h| now.saturating_duration_since(h.at) < MOG_PRIZE_WINDOW) {
+                hit.loss -= delta;
+            }
+        }
         self.player = view.me;
         self.streak = view.streak;
         self.cooldown_until = now + ms(view.cooldown_ms);

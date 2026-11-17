@@ -2,6 +2,7 @@
 
 pub mod chat;
 pub mod clan;
+mod burst;
 mod duel;
 mod minigames;
 pub mod flair;
@@ -69,6 +70,18 @@ pub fn draw(f: &mut Frame, app: &App) {
     match app.screen {
         Screen::Lobby => draw_lobby(f, app),
         Screen::Playing => draw_game(f, app),
+    }
+    if app.screen == Screen::Playing {
+        let now = Instant::now();
+        let age = |at: Instant| now.saturating_duration_since(at).as_millis() as u64;
+        if let Some(h) = &app.game.last_taken {
+            let area = f.area();
+            burst::vignette(f.buffer_mut(), area, h, age(h.at));
+            burst::shake(f.buffer_mut(), h.intensity() * 1.3, age(h.at));
+        }
+        if let Some(h) = &app.game.last_mog {
+            burst::shake(f.buffer_mut(), h.intensity(), age(h.at));
+        }
     }
     if let Some(typed) = &app.editing_name {
         draw_name_editor(f, typed);
@@ -288,6 +301,7 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
 
     let pulse = ((now - g.started).as_millis() / PULSE_MS).is_multiple_of(2);
     let buffs = g.buffs(now);
+    let burst = g.last_mog.filter(|h| (now - h.at).as_millis() < burst::duration_ms(h) as u128);
     let color = match (ready, pulse, buffs.is_empty()) {
         (false, _, _) => Color::DarkGray,
         (true, true, true) => Color::Magenta,
@@ -297,7 +311,11 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     };
     let mut block = Block::bordered()
         .border_type(if ready { BorderType::Thick } else { BorderType::Plain })
-        .border_style(fg(if buffs.is_empty() { color } else { BUFF_GOLD }))
+        .border_style(fg(match burst {
+            Some(h) => tier_color(h.tier),
+            None if buffs.is_empty() => color,
+            None => BUFF_GOLD,
+        }))
         .title(Line::from(" [ESPAÇO] ").centered());
     if !buffs.is_empty() {
         let mut spans = vec![Span::styled(" ⚡ BUFFADO ", Style::new().bg(BUFF_GOLD).fg(Color::Black).bold()), " ".into()];
@@ -317,6 +335,12 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     let mut lines = vec![Line::raw(""); pad];
     lines.extend(art.into_iter().map(|l| Line::styled(l, fg(color).bold())));
     f.render_widget(Paragraph::new(lines).centered().block(block), button);
+    if let Some(h) = burst {
+        burst::render(f.buffer_mut(), inner, &h, (now - h.at).as_millis() as u64);
+    }
+    if let Some(h) = g.last_taken.filter(|h| (now - h.at).as_millis() < burst::hit_duration_ms(h) as u128) {
+        burst::impact(f.buffer_mut(), inner, &h, (now - h.at).as_millis() as u64);
+    }
 
     let legend: Vec<Span> = TimingTier::ALL
         .iter()
@@ -936,17 +960,23 @@ const TITLE: [&str; 3] = [
 
 fn draw_lobby(f: &mut Frame, app: &App) {
     let [title, body, notice, footer] = Layout::vertical([
-        Constraint::Length(5),
+        Constraint::Length(9),
         Constraint::Min(8),
         Constraint::Length(3),
         Constraint::Length(1),
     ])
     .areas(f.area());
 
-    let mut title_lines = vec![Line::raw("")];
+    let mut title_lines = vec![Line::raw(""), Line::raw(""), Line::raw("")];
     title_lines.extend(TITLE[..2].iter().map(|l| Line::styled(*l, fg(Color::Magenta).bold())));
     title_lines.push(Line::styled(TITLE[2], fg(Color::Gray)));
     f.render_widget(Paragraph::new(title_lines).centered(), title);
+    // Mascot to the left of the title; the 43-col title is centered, so it needs 16 + 43 + margin cols.
+    let mascot_x = (title.width / 2).saturating_sub(22 + 17);
+    if title.width >= 80 {
+        let area = Rect::new(title.x + mascot_x, title.y, 16, title.height);
+        f.render_widget(Paragraph::new(sprite_lines(sprites::mascot_at(anim_ms()), false)), area);
+    }
 
     let [list_area, info_area] =
         Layout::horizontal([Constraint::Percentage(60), Constraint::Percentage(40)]).areas(body);
