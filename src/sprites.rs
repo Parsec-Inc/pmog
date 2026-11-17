@@ -127,8 +127,18 @@ fn decode(png: &[u8], json: &[u8]) -> Anim {
 
 /// The frame to show `t_ms` after the game started; loops through the item's animation.
 pub fn sprite_at(id: ItemId, t_ms: u64) -> &'static Frame {
-    static CACHE: OnceLock<Mutex<HashMap<&'static str, &'static Anim>>> = OnceLock::new();
     let (png, json, name) = asset(id);
+    frame_at(png, json, name, t_ms)
+}
+
+/// The lobby mascot's frame at `t_ms`.
+pub fn mascot_at(t_ms: u64) -> &'static Frame {
+    let (png, json, name) = asset!("mascot");
+    frame_at(png, json, name, t_ms)
+}
+
+fn frame_at(png: &[u8], json: &[u8], name: &'static str, t_ms: u64) -> &'static Frame {
+    static CACHE: OnceLock<Mutex<HashMap<&'static str, &'static Anim>>> = OnceLock::new();
     let anim = *CACHE
         .get_or_init(Default::default)
         .lock()
