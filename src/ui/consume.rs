@@ -83,7 +83,7 @@ fn paint(item: ItemId, c: &Cell) -> Option<(&'static str, f64)> {
             (0..7u64)
                 .any(|i| {
                     let bx = (noise(i, 1, 1) * c.w) as i64 + (hash(row, i, c.age / 70) % 3) as i64 - 1;
-                    col as i64 == bx && (c.row as f64) < reach && (c.age / 50 + i) % 4 != 0
+                    col as i64 == bx && (c.row as f64) < reach && !(c.age / 50 + i).is_multiple_of(4)
                 })
                 .then(|| ("║", (1.0 - t).powf(0.8)))
         }
@@ -172,7 +172,7 @@ fn paint(item: ItemId, c: &Cell) -> Option<(&'static str, f64)> {
         }
         // 6 and 7 rain down like code.
         ItemId::ComboSixSeven => {
-            if hash(col, 5, 0) % 3 != 0 {
+            if !hash(col, 5, 0).is_multiple_of(3) {
                 return None;
             }
             let head = phase / 1000.0 * (14.0 + (hash(col, 6, 0) % 10) as f64) - (hash(col, 7, 0) % 12) as f64;

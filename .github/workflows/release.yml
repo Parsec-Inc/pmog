@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      increment:
+        description: Version increment
+        required: true
+        type: choice
+        options: [PATCH, MINOR, MAJOR]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    if: ${{ !startsWith(github.event.head_commit.message, 'bump:') }}
+    uses: ./.github/workflows/tests.yml
+
+  release:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v10.3.2
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        env:
+          INCREMENT: ${{ inputs.increment }}
+        run: |
+          set +e
+          uvx --from commitizen cz bump --yes ${INCREMENT:+--increment "$INCREMENT"}
+          status=$?
+          set -e
+          if [ "$status" -eq 21 ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$status" -eq 0 ] || exit "$status"
+          version="$(git describe --tags --exact-match HEAD)"
+          uvx --from commitizen cz changelog "$version" --dry-run > release-notes.md
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install toolchain
+        if: steps.bump.outputs.released == 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-mingw-w64-x86-64 musl-tools
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.bump.outputs.released == 'true'
+
+      # Builds assinados com a chave de release (secret em base64) para o auto-update aceitar.
+      - name: Build and sign
+        if: steps.bump.outputs.released == 'true'
+        env:
+          PMOG_RELEASE_KEY: ${{ secrets.PMOG_RELEASE_KEY }}
+        run: |
+          key_dir="${XDG_CONFIG_HOME:-$HOME/.config}/pmog-release"
+          mkdir -p "$key_dir"
+          (umask 077 && printf '%s' "$PMOG_RELEASE_KEY" | base64 -d > "$key_dir/release.key")
+          trap 'rm -f "$key_dir/release.key"' EXIT
+          ./scripts/build-dist.sh
+          test -s dist/pmog-windows.exe.sig
+          (cd dist && sha256sum pmog-* > SHA256SUMS)
+
+      - name: Push version commit and tag
+        if: steps.bump.outputs.released == 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: git push --atomic origin HEAD:main "$VERSION"
+
+      - name: GitHub release
+        if: steps.bump.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: gh release create "$VERSION" dist/* --title "$VERSION" --notes-file release-notes.md
