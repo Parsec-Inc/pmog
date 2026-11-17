@@ -61,8 +61,18 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 
 ## Jogar
 
-1. Baixe o executável do seu sistema (`pmog-linux` ou `pmog-windows.exe`) com quem já tem o jogo.
-2. Abra no terminal. No Linux: `chmod +x pmog-linux && ./pmog-linux`.
+1. Instale pelo seu sistema (página [Releases](https://github.com/Parsec-Inc/pmog/releases)):
+
+   | Sistema | Como |
+   |---|---|
+   | Fedora / openSUSE | `sudo dnf install ./pmog-*.rpm` (ou pelo COPR, quando ligado) |
+   | Debian / Ubuntu | `sudo apt install ./pmog_*.deb` |
+   | Arch | `yay -S pmog-bin` (quando ligado) |
+   | Windows | `pmog-X.Y.Z-x86_64.msi` (já libera o firewall) |
+   | macOS | `brew install Parsec-Inc/tap/pmog` (quando ligado) ou o `.tar.gz` |
+   | Qualquer um | `pmog-linux` / `pmog-windows.exe` direto, ou com quem já tem o jogo |
+
+2. Abra no terminal (`pmog`). Sem pacote, no Linux: `chmod +x pmog-linux && ./pmog-linux`.
 3. Escolha **Criar mundo novo** (ou um mundo salvo) para hospedar, ou entre num servidor da lista. Dá para hospedar vários mundos ao mesmo tempo.
 4. Aperte `?` dentro do jogo para ver todas as regras.
 
@@ -90,7 +100,9 @@ Cada PMOG aberto no PC pode ser jogado de **um** celular por vez, na mesma rede,
 
 ## Rede
 
-Quem hospeda precisa liberar as portas (exemplo no Fedora):
+Os pacotes `.deb`, `.rpm`, AUR e o MSI já liberam as portas no firewall (firewalld ou ufw no Linux,
+exceção do Firewall do Windows) e fecham ao desinstalar. Sem pacote, quem hospeda libera à mão
+(exemplo no Fedora):
 
 ```bash
 sudo firewall-cmd --add-port=47790-47809/tcp --add-port=47777/udp
@@ -105,6 +117,7 @@ cargo run --release                 # abre o jogo
 cargo test --release                # regras, duelos, rede real, stress e TUI
 ./scripts/bots.sh 4                 # 4 bots entram no primeiro servidor da rede
 ./scripts/build-dist.sh             # gera e assina dist/pmog-linux e dist/pmog-windows.exe
+./scripts/package.sh deb rpm        # pacotes a partir do dist/ (ver docs/PACKAGING.md)
 cargo run --example screenshots     # refaz as imagens deste README
 ```
 

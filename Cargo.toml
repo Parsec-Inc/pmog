@@ -2,6 +2,7 @@
 name = "pmog"
 version = "0.1.0"
 edition = "2024"
+description = "Jogo de terminal multiplayer na rede local"
 
 [dependencies]
 dirs = "6"
@@ -16,3 +17,17 @@ serde_json = "1.0.154"
 sha2 = "0.11.1"
 socket2 = { version = "0.6.5", features = ["all"] }
 tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+
+# scripts/package.sh deb: empacota o dist/pmog-linux (musl, já assinado) do scripts/build-dist.sh.
+[package.metadata.deb]
+maintainer = "Parsec-Inc <noreply@github.com>"
+section = "games"
+priority = "optional"
+extended-description = "Jogo de terminal multiplayer na rede local. O pacote libera no firewall (firewalld ou ufw) as portas da descoberta, do servidor e da página do celular."
+maintainer-scripts = "packaging/linux/"
+assets = [
+    ["dist/pmog-linux", "usr/bin/pmog", "755"],
+    ["packaging/linux/pmog.xml", "usr/lib/firewalld/services/pmog.xml", "644"],
+    ["packaging/linux/ufw-pmog", "etc/ufw/applications.d/pmog", "644"],
+    ["packaging/linux/firewall", "usr/share/pmog/firewall", "755"],
+]

@@ -1,0 +1,7 @@
+post_install() {
+    sh /usr/share/pmog/firewall open
+}
+
+pre_remove() {
+    sh /usr/share/pmog/firewall close
+}

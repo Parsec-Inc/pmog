@@ -1,0 +1,4 @@
+#!/bin/sh
+# deb: fecha as portas do pmog antes de remover (não em atualização).
+[ "$1" = remove ] && sh /usr/share/pmog/firewall close
+exit 0

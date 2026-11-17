@@ -1,5 +1,8 @@
 name: Release
 
+# Push na main: testes, bump pelo commitizen, builds assinadas de Linux, Windows e macOS,
+# pacotes, release no GitHub e, se ligados, AUR, COPR e Homebrew. Ver docs/PACKAGING.md.
+
 on:
   push:
     branches: [main]
@@ -23,12 +26,16 @@ jobs:
     if: ${{ !startsWith(github.event.head_commit.message, 'bump:') }}
     uses: ./.github/workflows/tests.yml
 
-  release:
+  bump:
     needs: tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: write
+    outputs:
+      released: ${{ steps.bump.outputs.released }}
+      version: ${{ steps.bump.outputs.version }}
+      pmog_release: ${{ steps.bump.outputs.pmog_release }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -42,6 +49,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # PMOG_RELEASE (número do auto-update) sai daqui para todas as builds terem o mesmo.
       - name: Bump version
         id: bump
         env:
@@ -60,40 +68,277 @@ jobs:
           uvx --from commitizen cz changelog "$version" --dry-run > release-notes.md
           echo "released=true" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "pmog_release=$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
 
-      - name: Install toolchain
-        if: steps.bump.outputs.released == 'true'
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q gcc-mingw-w64-x86-64 musl-tools
-          rustup show active-toolchain
-
-      - uses: Swatinem/rust-cache@v2
-        if: steps.bump.outputs.released == 'true'
-
-      # Builds assinados com a chave de release (secret em base64) para o auto-update aceitar.
-      - name: Build and sign
-        if: steps.bump.outputs.released == 'true'
-        env:
-          PMOG_RELEASE_KEY: ${{ secrets.PMOG_RELEASE_KEY }}
-        run: |
-          key_dir="${XDG_CONFIG_HOME:-$HOME/.config}/pmog-release"
-          mkdir -p "$key_dir"
-          (umask 077 && printf '%s' "$PMOG_RELEASE_KEY" | base64 -d > "$key_dir/release.key")
-          trap 'rm -f "$key_dir/release.key"' EXIT
-          ./scripts/build-dist.sh
-          test -s dist/pmog-windows.exe.sig
-          (cd dist && sha256sum pmog-* > SHA256SUMS)
-
+      # A tag sobe antes dos builds para todos os jobs compilarem o mesmo commit.
       - name: Push version commit and tag
         if: steps.bump.outputs.released == 'true'
         env:
           VERSION: ${{ steps.bump.outputs.version }}
         run: git push --atomic origin HEAD:main "$VERSION"
 
-      - name: GitHub release
+      - uses: actions/upload-artifact@v7
         if: steps.bump.outputs.released == 'true'
+        with:
+          name: notes
+          path: release-notes.md
+
+  linux:
+    needs: bump
+    if: needs.bump.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.bump.outputs.version }}
+      PMOG_RELEASE: ${{ needs.bump.outputs.pmog_release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.bump.outputs.version }}
+          persist-credentials: false
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-mingw-w64-x86-64 musl-tools rpm
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb
+
+      # pmog-linux e pmog-windows.exe com .sig (o auto-update só aceita assinadas)
+      - name: Build and sign
+        env:
+          PMOG_RELEASE_KEY: ${{ secrets.PMOG_RELEASE_KEY }}
+        run: |
+          ./scripts/with-release-key.sh ./scripts/build-dist.sh
+          test -s dist/pmog-windows.exe.sig
+
+      - name: Package
+        run: ./scripts/package.sh deb rpm aur
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: |
+            dist/pmog-*
+            dist/*.deb
+            !dist/*.src.rpm
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aur
+          path: dist/aur/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: srpm
+          path: dist/*.src.rpm
+
+      # o assinador que o build-dist.sh compilou; o macos-sign usa sem recompilar o jogo
+      - uses: actions/upload-artifact@v7
+        with:
+          name: signer
+          path: target/release/examples/release
+
+  macos:
+    needs: bump
+    if: needs.bump.outputs.released == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.bump.outputs.version }}
+      PMOG_RELEASE: ${{ needs.bump.outputs.pmog_release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.bump.outputs.version }}
+          persist-credentials: false
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build universal
+        run: ./scripts/package.sh macos
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-unsigned
+          path: dist/pmog-macos
+
+  # assina o binário do macOS no Linux (a chave não vai para o runner do Mac) e monta a fórmula
+  macos-sign:
+    needs: [bump, linux, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.bump.outputs.version }}
+      PMOG_RELEASE: ${{ needs.bump.outputs.pmog_release }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.bump.outputs.version }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: macos-unsigned
+          path: dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: signer
+          path: signer
+
+      - name: Sign and package
+        env:
+          PMOG_RELEASE_KEY: ${{ secrets.PMOG_RELEASE_KEY }}
+        run: |
+          chmod +x signer/release
+          ./scripts/with-release-key.sh signer/release sign macos "$PMOG_RELEASE" dist/pmog-macos
+          ./scripts/package.sh brew
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: |
+            dist/pmog-macos
+            dist/pmog-macos.sig
+            dist/*.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: brew
+          path: dist/brew/
+
+  msi:
+    needs: [bump, linux]
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.bump.outputs.version }}
+          persist-credentials: false
+
+      # o MSI empacota o mesmo .exe assinado da release, compilado no job linux
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux
+          path: dist
+
+      - name: WiX 3
+        run: |
+          [ -d "/c/Program Files (x86)/WiX Toolset v3.14/bin" ] || choco install wixtoolset --no-progress -y
+          echo 'C:\Program Files (x86)\WiX Toolset v3.14\bin' >> "$GITHUB_PATH"
+
+      - name: Package
+        run: ./scripts/package.sh msi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: msi
+          path: dist/*.msi
+
+  release:
+    needs: [bump, linux, macos-sign, msi]
+    # publica o que saiu mesmo se macOS ou MSI falharem; o linux (builds do auto-update) é obrigatório
+    if: ${{ !cancelled() && needs.linux.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.bump.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: '{linux,macos,msi,notes}'
+          path: dist
+          merge-multiple: true
+
+      - name: GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.bump.outputs.version }}
-        run: gh release create "$VERSION" dist/* --title "$VERSION" --notes-file release-notes.md
+        run: |
+          mv dist/release-notes.md .
+          (cd dist && sha256sum * > SHA256SUMS)
+          gh release create "$VERSION" dist/* -R "$GITHUB_REPOSITORY" --title "$VERSION" --notes-file release-notes.md
+
+  aur:
+    needs: [bump, release]
+    if: ${{ vars.PUBLISH_AUR == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: aur
+          path: aur
+
+      - uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        with:
+          pkgname: pmog-bin
+          pkgbuild: ./aur/PKGBUILD
+          assets: ./aur/pmog.install
+          updpkgsums: true
+          commit_username: github-actions[bot]
+          commit_email: 41898282+github-actions[bot]@users.noreply.github.com
+          commit_message: ${{ needs.bump.outputs.version }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+
+  copr:
+    needs: [bump, release]
+    if: ${{ vars.PUBLISH_COPR == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: srpm
+          path: dist
+
+      - uses: astral-sh/setup-uv@v10.3.2
+
+      # COPR_CONFIG: conteúdo de ~/.config/copr (copr.fedorainfracloud.org/api)
+      - name: Build no COPR
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+          COPR_PROJECT: ${{ vars.COPR_PROJECT }}
+        run: |
+          mkdir -p ~/.config
+          (umask 077 && printf '%s\n' "$COPR_CONFIG" > ~/.config/copr)
+          uvx copr-cli build "$COPR_PROJECT" dist/*.src.rpm
+
+  homebrew:
+    needs: [bump, release, macos-sign]
+    if: ${{ vars.PUBLISH_BREW == 'true' && needs.macos-sign.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: brew
+          path: brew
+
+      # HOMEBREW_TAP_TOKEN: PAT com escrita em Parsec-Inc/homebrew-tap
+      - name: Atualiza a fórmula no tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.bump.outputs.version }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/Parsec-Inc/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp brew/pmog.rb tap/Formula/pmog.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/pmog.rb
+          git diff --cached --quiet || { git commit -m "pmog $VERSION" && git push; }

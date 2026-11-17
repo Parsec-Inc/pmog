@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- firewalld: portas do pmog (descoberta na LAN, servidor do jogo e página do celular). -->
+<service>
+  <short>pmog</short>
+  <description>pmog: descoberta na LAN, servidor do jogo e página do celular.</description>
+  <port protocol="udp" port="47777"/>
+  <port protocol="tcp" port="47790-47799"/>
+  <port protocol="tcp" port="47800-47809"/>
+</service>

@@ -1,0 +1,4 @@
+[pmog]
+title=pmog
+description=Descoberta na LAN, servidor do jogo e página do celular
+ports=47777/udp|47790:47799/tcp|47800:47809/tcp

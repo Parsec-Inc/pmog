@@ -1,0 +1,4 @@
+#!/bin/sh
+# deb: abre as portas do pmog depois de instalar.
+[ "$1" = configure ] && sh /usr/share/pmog/firewall open
+exit 0
