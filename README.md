@@ -19,20 +19,45 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 
 |  |  |
 |---|---|
-| **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro. | **18 minigames de duelo**: 6 sorteados por partida (ou cada um escolhe 3, se os dois quiserem), de encarada e digitação a fit check, fotogenia e mog reverso. |
-| **52 itens na loja** em 6 categorias (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. | **15 ranks, de Sub-5 a Transcendente** (tecla P lista todos), com nome que brilha, pega fogo, vira arco-íris e mais. **66 conquistas**, algumas secretas. |
+| **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro, e o streak multiplica tudo. | **18 minigames de duelo** em 6 rodadas sorteadas, de encarada e digitação a fit check, fotogenia e mog reverso. Se os dois quiserem, cada um escolhe 3. |
+| **59 itens na loja** em 6 abas (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. Os 10 consumíveis ficam nas teclas `1`–`0`. | **Buffs à vista**: escudo, colônia, combo 6-7, aura farmada e afins aparecem numa faixa ⚡ BUFFADO enquanto valem. |
+| **15 ranks**, de Sub-5 a Transcendente, cada um com um efeito no nome (brilho, fogo, arco-íris, estrelas, 6-7 piscando). Os 7 ranks acima do Ascendido liberam um item exclusivo cada. | **66 conquistas** em 7 grupos, com progresso (37/100) e 4 secretas. |
 | **Chat, grupos e clãs**, com tag ao lado do nome e sem fogo amigo. | **Atualização automática** pela rede, só com builds assinadas. |
 
 <table>
   <tr>
     <td><img src="docs/screenshots/duelo.svg" alt="Duelo: Olhar de Caçador"></td>
+    <td><img src="docs/screenshots/mog-reverso.svg" alt="Duelo: Mog Reverso"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/aposta.svg" alt="Desafio: aposta e minigames sorteados ou escolhidos"></td>
+    <td><img src="docs/screenshots/draft.svg" alt="Escolha alternada dos minigames"></td>
+  </tr>
+  <tr>
     <td><img src="docs/screenshots/loja.svg" alt="Loja com pixel art"></td>
+    <td><img src="docs/screenshots/loja-67.svg" alt="Loja: aba Brainrot e 67 com o Troféu 6-7"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/ranks.svg" alt="Lista de ranks com o visual de cada nome"></td>
+    <td><img src="docs/screenshots/conquistas.svg" alt="Conquistas agrupadas com progresso"></td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/digitacao.svg" alt="Duelo: Batalha de Digitação"></td>
     <td><img src="docs/screenshots/lobby.svg" alt="Tela inicial com servidores na rede"></td>
   </tr>
 </table>
+
+### Ranks e itens exclusivos
+
+| Rank | MP Total | Item exclusivo |
+|---|---|---|
+| Σ Sigma | 750 mil | Capuz do Lobo Solitário |
+| ◈ Lorde da Aura | 2 milhões | Cetro da Aura |
+| 67 Six Seven | 6,7 milhões | Troféu 6-7 |
+| ✧ Mítico | 15 milhões | Pena de Fênix |
+| Ω Deus Grego | 40 milhões | Busto de Mármore |
+| ✶ Mog Cósmico | 100 milhões | Meteoro de Bolso |
+| ∞ Transcendente | 300 milhões | Terceiro Olho |
 
 ## Jogar
 
@@ -48,7 +73,8 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 | `M` | mewar | `G` | clã |
 | `L` | loja | `1`–`9`, `0` | consumíveis |
 | `C` | conquistas | `S` | painel do servidor |
-| `?` | ajuda | `Q` | sair |
+| `P` | lista de ranks | `?` | ajuda |
+| `Q` | sair |  |  |
 
 ## Rede
 
@@ -85,7 +111,7 @@ cargo run --example screenshots     # refaz as imagens deste README
 <summary><b>Duelos e jogo limpo</b></summary>
 
 - `D` desafia, `F` entra na fila (até 1 rank de distância; depois de 10 s, qualquer um). Aposta de amistoso a tudo do MP do mais pobre; as duas ficam presas no servidor e o vencedor leva. Empate ou servidor desligado devolve; sair no meio é desistência.
-- 6 rodadas com minigames sorteados. Opcional: na linha Minigames do seletor de aposta, marque Escolher e cada um pega 3, alternando (na fila, só se os dois marcarem). Acaba antes se a vantagem não puder mais ser tirada; 3 x 3 vai para morte súbita com um minigame que ainda não saiu.
+- 6 rodadas com minigames sorteados, sem repetir. Opcional: no seletor de aposta, desça (`↓`) para a linha Minigames e marque Escolher; cada um pega 3, alternando, com 12 s por escolha (na fila, só se os dois marcarem). Acaba antes se a vantagem não puder mais ser tirada; 3 x 3 vai para morte súbita com um minigame que ainda não saiu.
 - 5 s de explicação antes de cada rodada e 3,5 s de pausa entre elas.
 - Lag não conta: o servidor mede o ping e aceita o horário em que você apertou, dentro da janela que o ping permite.
 - Mog entre jogadores só troca MP de mão. Bater em quem está 2 ranks abaixo rende 25%; 3 ou mais, nada.

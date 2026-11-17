@@ -10,7 +10,7 @@
 <text x="16.0" y="77.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│</text>
 <text x="32.8" y="77.5" fill="#eec448" font-weight="bold" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">[SIGMA] </text>
 <text x="100.0" y="77.5" fill="#ffd750" font-weight="bold" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">✦ </text>
-<text x="116.8" y="77.5" fill="#e1ab20" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">C</text>
+<text x="116.8" y="77.5" fill="#e2ad26" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">C</text>
 <text x="125.2" y="77.5" fill="#e1aa1e" font-weight="bold" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">hadoso</text>
 <text x="184.0" y="77.5" fill="#d264dc" font-weight="bold" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">[Chad]</text>
 <text x="234.4" y="77.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   MP </text>
@@ -51,7 +51,7 @@
 <text x="1150.0" y="131.5" fill="#d264dc" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║───╯</text>
 <text x="16.0" y="149.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">┌ No</text>
 <text x="49.6" y="149.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="149.5" fill="#eec448" font-weight="bold" textLength="722.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Item                        Nível   Custo      Requer     Efeito                    </text>
+<text x="58.0" y="149.5" fill="#eec448" font-weight="bold" textLength="722.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Item                     Nível   Custo      Requer     Efeito                       </text>
 <text x="780.4" y="149.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="149.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="149.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">───┐</text>
@@ -66,10 +66,10 @@
 <text x="16.0" y="167.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="41.2" y="167.5" fill="#686478" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">N</text>
 <text x="49.6" y="167.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="167.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Tutorial de Mewing          14/50   </text>
-<text x="377.2" y="167.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">11,6k     </text>
-<text x="469.6" y="167.5" fill="#b0aebc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Sub-5     </text>
-<text x="553.6" y="167.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +0,5 MP/s passivo, +0,25 M</text>
+<text x="58.0" y="167.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Tutorial de Mewing       14/50   </text>
+<text x="352.0" y="167.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">11,6k     </text>
+<text x="444.4" y="167.5" fill="#b0aebc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Sub-5     </text>
+<text x="528.4" y="167.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +0,5 MP/s passivo, +0,25 MP p</text>
 <text x="780.4" y="167.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="167.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="167.5" fill="#b0aebc" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">do:</text>
@@ -99,10 +99,10 @@
 <rect x="1024.0" y="181.0" width="8.7" height="9.3" fill="#14141c"/>
 <text x="16.0" y="185.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="49.6" y="185.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="185.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Protetor Solar FPS 70       0/20    </text>
-<text x="377.2" y="185.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">45        </text>
-<text x="469.6" y="185.5" fill="#b0aebc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Sub-5     </text>
-<text x="553.6" y="185.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +2 de defesa, +0,25 MP/s p</text>
+<text x="58.0" y="185.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Protetor Solar FPS 70    0/20    </text>
+<text x="352.0" y="185.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">45        </text>
+<text x="444.4" y="185.5" fill="#b0aebc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Sub-5     </text>
+<text x="528.4" y="185.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +2 de defesa, +0,25 MP/s pass</text>
 <text x="780.4" y="185.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="185.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="185.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
@@ -138,10 +138,10 @@
 <text x="16.0" y="203.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│▶ </text>
 <text x="41.2" y="203.5" fill="#eec448" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">[</text>
 <text x="49.6" y="203.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="203.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Gua Sha                     12/50   </text>
-<text x="377.2" y="203.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">5,8k      </text>
-<text x="469.6" y="203.5" fill="#b0aebc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Sub-5     </text>
-<text x="553.6" y="203.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +4 de defesa              </text>
+<text x="58.0" y="203.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Gua Sha                  12/50   </text>
+<text x="352.0" y="203.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">5,8k      </text>
+<text x="444.4" y="203.5" fill="#b0aebc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Sub-5     </text>
+<text x="528.4" y="203.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +4 de defesa                 </text>
 <text x="780.4" y="203.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="203.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="203.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
@@ -168,10 +168,10 @@
 <rect x="1007.2" y="208.0" width="8.7" height="9.3" fill="#14141c"/>
 <text x="16.0" y="221.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="49.6" y="221.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="221.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Skincare Coreana            6/50    </text>
-<text x="377.2" y="221.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">6,9k      </text>
-<text x="469.6" y="221.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">MTN       </text>
-<text x="553.6" y="221.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +8 de defesa, +1 MP/s pass</text>
+<text x="58.0" y="221.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Skincare Coreana         6/50    </text>
+<text x="352.0" y="221.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">6,9k      </text>
+<text x="444.4" y="221.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">MTN       </text>
+<text x="528.4" y="221.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +8 de defesa, +1 MP/s passivo</text>
 <text x="780.4" y="221.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="221.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="221.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
@@ -188,10 +188,10 @@
 <text x="16.0" y="239.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="41.2" y="239.5" fill="#eec448" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">[</text>
 <text x="49.6" y="239.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="239.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Lentes de Porcelana         0/10    </text>
-<text x="377.2" y="239.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3,0k      </text>
-<text x="469.6" y="239.5" fill="#50c4d2" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">HTN       </text>
-<text x="553.6" y="239.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +8 de poder, +3% de poder </text>
+<text x="58.0" y="239.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Lentes de Porcelana      0/10    </text>
+<text x="352.0" y="239.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3,0k      </text>
+<text x="444.4" y="239.5" fill="#50c4d2" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">HTN       </text>
+<text x="528.4" y="239.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +8 de poder, +3% de poder por</text>
 <text x="780.4" y="239.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="239.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="239.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
@@ -285,29 +285,29 @@
 <rect x="973.6" y="244.0" width="8.7" height="9.3" fill="#14141c"/>
 <text x="16.0" y="257.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="49.6" y="257.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="257.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▶ Maxilar de Diamante         0/50    </text>
-<text x="377.2" y="257.5" fill="#de4c56" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">20,0k     </text>
-<text x="469.6" y="257.5" fill="#d264dc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Chad      </text>
-<text x="553.6" y="257.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +30 de poder, +30 de defes</text>
+<text x="58.0" y="257.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▶ Maxilar de Diamante      0/50    </text>
+<text x="352.0" y="257.5" fill="#de4c56" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">20,0k     </text>
+<text x="444.4" y="257.5" fill="#d264dc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Chad      </text>
+<text x="528.4" y="257.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +30 de poder, +30 de defesa  </text>
 <text x="780.4" y="257.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="257.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="257.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
 <text x="16.0" y="275.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="41.2" y="275.5" fill="#eec448" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">[</text>
 <text x="49.6" y="275.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="275.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Fita de Canthal Tilt        0/10    </text>
-<text x="377.2" y="275.5" fill="#de4c56" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">25,0k     </text>
-<text x="469.6" y="275.5" fill="#d264dc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Chad      </text>
-<text x="553.6" y="275.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +1 s de imunidade, -3% de </text>
+<text x="58.0" y="275.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Fita de Canthal Tilt     0/10    </text>
+<text x="352.0" y="275.5" fill="#de4c56" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">25,0k     </text>
+<text x="444.4" y="275.5" fill="#d264dc" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Chad      </text>
+<text x="528.4" y="275.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +1 s de imunidade, -3% de MP </text>
 <text x="780.4" y="275.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="275.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="275.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
 <text x="16.0" y="293.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="49.6" y="293.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="293.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Minoxidil na Barba          0/20    </text>
-<text x="377.2" y="293.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">700       </text>
-<text x="469.6" y="293.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">MTN       </text>
-<text x="553.6" y="293.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +6 de defesa, +4 de poder </text>
+<text x="58.0" y="293.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Minoxidil na Barba       0/20    </text>
+<text x="352.0" y="293.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">700       </text>
+<text x="444.4" y="293.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">MTN       </text>
+<text x="528.4" y="293.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +6 de defesa, +4 de poder    </text>
 <text x="780.4" y="293.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="293.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="293.5" fill="#de4c56" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> de</text>
@@ -315,19 +315,19 @@
 <text x="16.0" y="311.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="41.2" y="311.5" fill="#6ee678" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">B</text>
 <text x="49.6" y="311.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="311.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Dermaroller                 0/10    </text>
-<text x="377.2" y="311.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2,8k      </text>
-<text x="469.6" y="311.5" fill="#50c4d2" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">HTN       </text>
-<text x="553.6" y="311.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +15 de defesa, -2% de MP p</text>
+<text x="58.0" y="311.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Dermaroller              0/10    </text>
+<text x="352.0" y="311.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2,8k      </text>
+<text x="444.4" y="311.5" fill="#50c4d2" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">HTN       </text>
+<text x="528.4" y="311.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +15 de defesa, -2% de MP perd</text>
 <text x="780.4" y="311.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="1150.0" y="311.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
 <text x="1158.4" y="311.5" fill="#e4e2ec" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">   │</text>
 <text x="16.0" y="329.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="49.6" y="329.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
-<text x="58.0" y="329.5" fill="#e4e2ec" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Gel Fox Eyes                0/10    </text>
-<text x="377.2" y="329.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">7,0k      </text>
-<text x="469.6" y="329.5" fill="#5484e6" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Chadlite  </text>
-<text x="553.6" y="329.5" fill="#e4e2ec" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +10 de poder, +3% de poder</text>
+<text x="58.0" y="329.5" fill="#e4e2ec" textLength="294.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Gel Fox Eyes             0/10    </text>
+<text x="352.0" y="329.5" fill="#5cc878" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">7,0k      </text>
+<text x="444.4" y="329.5" fill="#5484e6" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Chadlite  </text>
+<text x="528.4" y="329.5" fill="#e4e2ec" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +10 de poder, +3% de poder po</text>
 <text x="780.4" y="329.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="898.0" y="329.5" fill="#eec448" font-weight="bold" textLength="159.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Maxilar de Diamante</text>
 <text x="1150.0" y="329.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
@@ -336,6 +336,9 @@
 <text x="16.0" y="347.5" fill="#e4e2ec" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">│  </text>
 <text x="41.2" y="347.5" fill="#f5f5fa" font-weight="bold" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">N</text>
 <text x="49.6" y="347.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
+<text x="58.0" y="347.5" fill="#686478" textLength="386.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  Busto de Mármore         0/5     bloqueado  </text>
+<text x="444.4" y="347.5" fill="#ffd75a" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Deus Grego</text>
+<text x="528.4" y="347.5" fill="#686478" textLength="252.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> +300 de poder, +300 de defesa</text>
 <text x="780.4" y="347.5" fill="#d264dc" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║║</text>
 <text x="872.8" y="347.5" fill="#b0aebc" textLength="201.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Corta vidro. Corta egos.</text>
 <text x="1150.0" y="347.5" fill="#d264dc" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">║</text>
@@ -480,27 +483,28 @@
 <rect x="511.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="520.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="528.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="620.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="629.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="637.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="595.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="604.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="612.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="704.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="713.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="721.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="730.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="788.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="797.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="805.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="864.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="814.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="872.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="881.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="931.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="940.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="889.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="948.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="956.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="965.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1015.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1024.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1032.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1099.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1108.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1116.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="1183.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <text x="16.0" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ESPAÇO </text>
 <text x="83.2" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> mogar </text>
 <text x="142.0" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ↑↓ </text>
@@ -511,21 +515,21 @@
 <text x="335.2" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> loja </text>
 <text x="385.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> C </text>
 <text x="410.8" y="761.5" fill="#e4e2ec" textLength="100.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> conquistas </text>
-<text x="511.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> S </text>
-<text x="536.8" y="761.5" fill="#e4e2ec" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> servidor </text>
-<text x="620.8" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> D </text>
-<text x="646.0" y="761.5" fill="#e4e2ec" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> duelar </text>
-<text x="713.2" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> F </text>
-<text x="738.4" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> fila </text>
-<text x="788.8" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> T </text>
-<text x="814.0" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> chat </text>
-<text x="864.4" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> G </text>
-<text x="889.6" y="761.5" fill="#e4e2ec" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> clã </text>
-<text x="931.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ? </text>
-<text x="956.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ajuda </text>
-<text x="1015.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> Q </text>
-<text x="1040.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> sair  </text>
-<text x="1099.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> 1 </text>
-<text x="1124.8" y="761.5" fill="#e4e2ec" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> Energét</text>
+<text x="511.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> P </text>
+<text x="536.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ranks </text>
+<text x="595.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> S </text>
+<text x="620.8" y="761.5" fill="#e4e2ec" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> servidor </text>
+<text x="704.8" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> D </text>
+<text x="730.0" y="761.5" fill="#e4e2ec" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> duelar </text>
+<text x="797.2" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> F </text>
+<text x="822.4" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> fila </text>
+<text x="872.8" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> T </text>
+<text x="898.0" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> chat </text>
+<text x="948.4" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> G </text>
+<text x="973.6" y="761.5" fill="#e4e2ec" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> clã </text>
+<text x="1015.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ? </text>
+<text x="1040.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ajuda </text>
+<text x="1099.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> Q </text>
+<text x="1124.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> sair  </text>
 </g>
 </svg>

@@ -645,27 +645,28 @@
 <rect x="511.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="520.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="528.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="620.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="629.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="637.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="595.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="604.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="612.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="704.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="713.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="721.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="730.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="788.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="797.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="805.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="864.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="814.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="872.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="881.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="931.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
-<rect x="940.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="889.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="948.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="956.8" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="965.2" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1015.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1024.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1032.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1099.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1108.0" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <rect x="1116.4" y="748.0" width="8.7" height="18.3" fill="#686478"/>
+<rect x="1183.6" y="748.0" width="8.7" height="18.3" fill="#686478"/>
 <text x="16.0" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ESPAÇO </text>
 <text x="83.2" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> mogar </text>
 <text x="142.0" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ↑↓ </text>
@@ -676,21 +677,21 @@
 <text x="335.2" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> loja </text>
 <text x="385.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> C </text>
 <text x="410.8" y="761.5" fill="#e4e2ec" textLength="100.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> conquistas </text>
-<text x="511.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> S </text>
-<text x="536.8" y="761.5" fill="#e4e2ec" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> servidor </text>
-<text x="620.8" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> D </text>
-<text x="646.0" y="761.5" fill="#e4e2ec" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> duelar </text>
-<text x="713.2" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> F </text>
-<text x="738.4" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> fila </text>
-<text x="788.8" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> T </text>
-<text x="814.0" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> chat </text>
-<text x="864.4" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> G </text>
-<text x="889.6" y="761.5" fill="#e4e2ec" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> clã </text>
-<text x="931.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ? </text>
-<text x="956.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ajuda </text>
-<text x="1015.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> Q </text>
-<text x="1040.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> sair  </text>
-<text x="1099.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> 1 </text>
-<text x="1124.8" y="761.5" fill="#e4e2ec" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> Energét</text>
+<text x="511.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> P </text>
+<text x="536.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ranks </text>
+<text x="595.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> S </text>
+<text x="620.8" y="761.5" fill="#e4e2ec" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> servidor </text>
+<text x="704.8" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> D </text>
+<text x="730.0" y="761.5" fill="#e4e2ec" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> duelar </text>
+<text x="797.2" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> F </text>
+<text x="822.4" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> fila </text>
+<text x="872.8" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> T </text>
+<text x="898.0" y="761.5" fill="#e4e2ec" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> chat </text>
+<text x="948.4" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> G </text>
+<text x="973.6" y="761.5" fill="#e4e2ec" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> clã </text>
+<text x="1015.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ? </text>
+<text x="1040.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> ajuda </text>
+<text x="1099.6" y="761.5" fill="#f5f5fa" font-weight="bold" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> Q </text>
+<text x="1124.8" y="761.5" fill="#e4e2ec" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> sair  </text>
 </g>
 </svg>

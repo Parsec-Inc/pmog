@@ -589,7 +589,7 @@ fn draw_ranks(f: &mut Frame, g: &Game, now: Instant) {
         let mut details = vec![rank.desc().to_string()];
         let unlocks = CATALOG.iter().filter(|d| d.min_rank == rank).count();
         if unlocks > 0 {
-            details.push(format!("libera {unlocks} itens"));
+            details.push(if unlocks == 1 { "libera 1 item".to_string() } else { format!("libera {unlocks} itens") });
         }
         let here: Vec<&str> =
             g.peers.iter().filter(|peer| !peer.is_npc() && Rank::from_lifetime(peer.lifetime) == rank).map(|peer| peer.name.as_str()).collect();

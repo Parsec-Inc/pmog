@@ -59,6 +59,13 @@ pub enum ItemId {
     BananaMonkey,
     ComboSixSeven,
     AuraFarm,
+    WolfHood,
+    AuraScepter,
+    Trophy67,
+    PhoenixFeather,
+    MarbleBust,
+    PocketMeteor,
+    ThirdEye,
 }
 
 /// Shop tab an item belongs to.
@@ -158,11 +165,16 @@ impl ItemDef {
             return Category::Consumable;
         }
         match self.id {
-            Mewing | Sunscreen | GuaSha | Skincare | Veneers | CanthalTape | DiamondJaw | Minoxidil | Dermaroller | FoxEyes => Category::Face,
+            Mewing | Sunscreen | GuaSha | Skincare | Veneers | CanthalTape | DiamondJaw | Minoxidil | Dermaroller | FoxEyes | MarbleBust => {
+                Category::Face
+            }
             WaterBottle | Creatine | MasticGum | GymPlan | Insoles | ShoulderPads | SleepKit | Whey => Category::Body,
-            MidFade | RingLight | NichePerfume | Sunglasses | Photographer | LuxuryWatch | PrivateJet | Mansion | MogCrown => Category::Drip,
-            Therapy | PhonkTrack | Meditation | InfiniteAura | BlessedGenes | BoatDance | DoorLean | Jestermaxxing => Category::Aura,
-            SixSeven | SixSevenHeight | Capoeira | SharkSneakers | SahurBat | CrocBomber | BananaMonkey => Category::Brainrot,
+            MidFade | RingLight | NichePerfume | Sunglasses | Photographer | LuxuryWatch | PrivateJet | Mansion | MogCrown | WolfHood | PocketMeteor => {
+                Category::Drip
+            }
+            Therapy | PhonkTrack | Meditation | InfiniteAura | BlessedGenes | BoatDance | DoorLean | Jestermaxxing | AuraScepter | PhoenixFeather
+            | ThirdEye => Category::Aura,
+            SixSeven | SixSevenHeight | Capoeira | SharkSneakers | SahurBat | CrocBomber | BananaMonkey | Trophy67 => Category::Brainrot,
             EnergyDrink | SigmaShield | AngleShot | PreWorkout | PocketMirror | JawTape | Cologne | IcePack | ComboSixSeven | AuraFarm => {
                 Category::Consumable
             }
@@ -243,7 +255,7 @@ const fn consumable(
     ItemDef { id, name, flavor, min_rank, base_cost, max_level: 99, effects: &[], usage: Some((key, text)) }
 }
 
-pub const CATALOG: [ItemDef; 52] = [
+pub const CATALOG: [ItemDef; 59] = [
     permanent(ItemId::Mewing, "Tutorial de Mewing", "Língua no céu da boca, 24 horas por dia.", Rank::Sub5, 25.0, 50,
         &[Effect::Passive(0.5), Effect::MewGain(0.25)]),
     permanent(ItemId::Sunscreen, "Protetor Solar FPS 70", "Envelhecer é para quem foi moggado.", Rank::Sub5, 45.0, 20,
@@ -348,4 +360,18 @@ pub const CATALOG: [ItemDef; 52] = [
         "o próximo mog que acertar rende +67% de MP"),
     consumable(ItemId::AuraFarm, "Farmar Aura", "Pose, phonk e câmera lenta por 45 s.", Rank::Htn, 2_000.0, '0',
         "por 45 s, o MP passivo vem em dobro"),
+    permanent(ItemId::WolfHood, "Capuz do Lobo Solitário", "Ninguém vê sua cara. Ninguém precisa ver.", Rank::Sigma, 600_000.0, 5,
+        &[Effect::Defense(150.0), Effect::LossShield(0.05)]),
+    permanent(ItemId::AuraScepter, "Cetro da Aura", "Cada aura farmada vira poder.", Rank::AuraLord, 1_500_000.0, 5,
+        &[Effect::Aura(0.25), Effect::Passive(100.0)]),
+    permanent(ItemId::Trophy67, "Troféu 6-7", "Ninguém sabe por que você ganhou, mas ganhou.", Rank::SixSeven, 6_700_000.0, 7,
+        &[Effect::Attack(67.0), Effect::Defense(67.0), Effect::Passive(167.0)]),
+    permanent(ItemId::PhoenixFeather, "Pena de Fênix", "Moggado hoje, renascido amanhã.", Rank::Mythic, 12_000_000.0, 5,
+        &[Effect::ImmunityBonus(2.0), Effect::LossShield(0.05), Effect::StreakBonus(0.05)]),
+    permanent(ItemId::MarbleBust, "Busto de Mármore", "Proporção áurea esculpida em pedra.", Rank::GreekGod, 35_000_000.0, 5,
+        &[Effect::Attack(300.0), Effect::Defense(300.0)]),
+    permanent(ItemId::PocketMeteor, "Meteoro de Bolso", "Um pedaço do espaço sideral que rende juros.", Rank::Cosmic, 80_000_000.0, 5,
+        &[Effect::Passive(2_000.0), Effect::WinBonus(0.10)]),
+    permanent(ItemId::ThirdEye, "Terceiro Olho", "Vê o mog antes de ele acontecer.", Rank::Transcendent, 250_000_000.0, 3,
+        &[Effect::Aura(0.5), Effect::PerfectZone(0.02), Effect::MeterSlow(0.03)]),
 ];
