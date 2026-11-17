@@ -980,7 +980,7 @@ fn shop_tabs_group_items_and_move_between_them() {
     }
     assert_eq!(a.game.shop_category(), Category::Brainrot);
     let screen = render(&a, 150, 42);
-    assert!(screen.contains("Gesto do 6-7") && screen.contains("Golpe Proibido da Capoeira") && screen.contains("Bastão do Sahur"), "{screen}");
+    assert!(screen.contains("Gesto do 6-7") && screen.contains("Capoeira Proibida") && screen.contains("Tung Tung Tung Sahur"), "{screen}");
     press(&mut a, KeyCode::Enter);
     assert!(render(&a, 150, 42).contains("Confirmar compra"), "buying still asks first");
     for (w, h) in [(40, 12), (80, 24)] {
