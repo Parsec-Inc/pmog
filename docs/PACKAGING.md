@@ -5,20 +5,24 @@ As builds saem de `scripts/build-dist.sh` (Linux e Windows, assinadas) e os paco
 
 ## Como sai uma release
 
-Todo push na `main` roda `.github/workflows/release.yml`:
+Os testes (`tests.yml`: clippy e `cargo test` nativos no Linux, no Windows e no macOS) rodam
+em todo push fora da `main`; um push novo na mesma branch cancela o teste anterior.
 
-1. **tests**: clippy e `cargo test` nativos no Linux e no Windows. O macOS roda os mesmos testes à parte (`macos.yml`), em todo push e PR, sem travar a release.
-2. **bump**: o commitizen calcula a versão pelos commits, atualiza `Cargo.toml`, `Cargo.lock` e
-   `CHANGELOG.md`, cria a tag e dá push. Também fixa o `PMOG_RELEASE` (número do auto-update,
-   `AAAAMMDDHHMM` em UTC) que todas as builds usam.
-3. **linux**: `build-dist.sh` com a chave do secret `PMOG_RELEASE_KEY` gera `pmog-linux` e
+A release roda quando um PR é mergeado na `main` (`.github/workflows/release.yml`):
+
+1. **tests** e **version** começam juntos. O `version` roda o commitizen, que calcula a versão
+   pelos commits e cria localmente o commit do bump (`Cargo.toml`, `Cargo.lock`,
+   `CHANGELOG.md`) e a tag. Os dois vão num git bundle para os outros jobs, sem push ainda.
+   Também fixa o `PMOG_RELEASE` (número do auto-update, `AAAAMMDDHHMM` em UTC).
+2. **linux**: `build-dist.sh` com a chave do secret `PMOG_RELEASE_KEY` gera `pmog-linux` e
    `pmog-windows.exe` com os `.sig`; depois `.deb`, `.rpm`, `.src.rpm` do COPR e PKGBUILD do AUR.
-4. **macos**: binário universal (Apple Silicon + Intel) no runner do Mac, sem a chave.
-5. **macos-sign**: assina o `pmog-macos` no Linux e monta o `.tar.gz` e a fórmula do Homebrew.
-6. **msi**: no runner Windows, empacota o mesmo `.exe` assinado com o WiX 3.
-7. **release**: junta tudo, gera `SHA256SUMS` e cria a release. macOS e MSI podem falhar sem
-   travar a release; o job linux é obrigatório porque o auto-update baixa as builds dele.
-8. **aur**, **copr** e **homebrew**: só rodam com as variáveis ligadas (abaixo).
+3. **macos**: binário universal (Apple Silicon + Intel) no runner do Mac, sem a chave.
+4. **macos-sign**: assina o `pmog-macos` no Linux e monta o `.tar.gz` e a fórmula do Homebrew.
+5. **msi**: no runner Windows, empacota o mesmo `.exe` assinado com o WiX 3.
+6. **release**: só com os testes e o linux verdes. Dá push do commit do bump e da tag na `main`,
+   gera `SHA256SUMS` e cria a release. macOS e MSI podem falhar sem travar a release; o job linux
+   é obrigatório porque o auto-update baixa as builds dele.
+7. **aur**, **copr** e **homebrew**: só rodam com as variáveis ligadas (abaixo).
 
 Os nomes `pmog-linux`, `pmog-windows.exe`, `pmog-macos` e os `.sig` não levam versão: é o que o
 auto-update procura na release.

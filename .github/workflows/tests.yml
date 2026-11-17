@@ -1,26 +1,33 @@
 name: Tests
 
+# Todo push fora da main; um push novo na mesma branch cancela o teste anterior.
+# Na release, o release.yml chama este workflow em paralelo com os builds.
+
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches-ignore: [main]
   workflow_call:
   workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  # Linux e Windows travam a release; o macOS roda à parte (macos.yml) para a fila do Mac não atrasar
   tests:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
           persist-credentials: false
 
       - uses: Swatinem/rust-cache@v2
