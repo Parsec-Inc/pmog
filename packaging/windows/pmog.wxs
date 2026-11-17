@@ -21,6 +21,7 @@
         <File Id="PmogExe" Name="pmog.exe" Source="$(var.Exe)" KeyPath="yes">
           <fw:FirewallException Id="PmogFirewall" Name="pmog" Scope="any" Profile="all" IgnoreFailure="yes" />
         </File>
+        <File Id="PmogSig" Name="pmog.exe.sig" Source="$(var.Exe).sig" />
         <Environment Id="SystemPath" Name="PATH" Value="[INSTALLDIR]" Part="last" Action="set" System="yes" />
       </Component>
     </DirectoryRef>

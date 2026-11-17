@@ -27,6 +27,7 @@ extended-description = "Jogo de terminal multiplayer na rede local. O pacote lib
 maintainer-scripts = "packaging/linux/"
 assets = [
     ["dist/pmog-linux", "usr/bin/pmog", "755"],
+    ["dist/pmog-linux.sig", "usr/bin/pmog.sig", "644"],
     ["packaging/linux/pmog.xml", "usr/lib/firewalld/services/pmog.xml", "644"],
     ["packaging/linux/ufw-pmog", "etc/ufw/applications.d/pmog", "644"],
     ["packaging/linux/firewall", "usr/share/pmog/firewall", "755"],

@@ -7,7 +7,7 @@ class Pmog < Formula
   sha256 "@SHA256@"
 
   def install
-    bin.install "pmog"
+    bin.install "pmog", "pmog.sig"
   end
 
   test do

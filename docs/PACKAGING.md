@@ -44,6 +44,9 @@ auto-update procura na release.
 | Windows | MSI para a máquina em `Program Files\pmog`, `PATH` do sistema, atalho no menu Iniciar e exceção do Firewall do Windows para o `pmog.exe` |
 | macOS | nada: o firewall do macOS pergunta na primeira vez |
 
+Todos os pacotes levam o `.sig` ao lado do executável (`/usr/bin/pmog.sig`, `pmog.exe.sig`,
+`pmog.sig` no Homebrew): é o que deixa uma instalação por pacote servir update na LAN.
+
 ## Atualização
 
 Os dois caminhos convivem: o gerenciador de pacotes (quando o canal estiver ligado) e o

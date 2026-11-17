@@ -28,7 +28,7 @@ rpm() {
   local top
   top=$(mktemp -d)
   mkdir -p "$top/SOURCES" "$top/SPECS"
-  cp "$LINUX_BIN" packaging/linux/* "$top/SOURCES/"
+  cp "$LINUX_BIN" "$LINUX_BIN.sig" packaging/linux/* "$top/SOURCES/"
   sed "s/@VERSION@/$VERSION/" packaging/rpm/pmog.spec > "$top/SPECS/pmog.spec"
   rpmbuild --quiet --define "_topdir $top" --define "dist %{nil}" --target x86_64 -ba "$top/SPECS/pmog.spec"
   find "$top/RPMS" "$top/SRPMS" -name '*.rpm' -exec cp {} dist/ \;
@@ -63,13 +63,13 @@ macos() {
   strip -x "$MACOS_BIN"
 }
 
-# Fórmula do Homebrew e o tarball que ela baixa (o binário já assinado vai junto com o .sig).
+# Fórmula do Homebrew e o tarball que ela baixa: o binário e o .sig, para servir update na LAN.
 brew() {
   built "$MACOS_BIN" "scripts/package.sh macos"
   local work sum
   work=$(mktemp -d)
   cp "$MACOS_BIN" "$work/pmog"
-  [ -f "$MACOS_BIN.sig" ] && cp "$MACOS_BIN.sig" "$work/pmog.sig"
+  cp "$MACOS_BIN.sig" "$work/pmog.sig"
   tar czf "$MACOS_TAR" -C "$work" .
   rm -rf "$work"
   sum=$(sha256sum "$MACOS_TAR" | cut -d' ' -f1)
