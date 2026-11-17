@@ -373,6 +373,8 @@ pub struct Duel {
     draft: Option<Draft>,
     /// Every minigame played so far, so sudden death draws a new one.
     played_games: Vec<Minigame>,
+    /// Each finished round as (minigame, winner side).
+    pub history: Vec<(Minigame, Option<usize>)>,
     /// Counts phase changes; clients use it to tell a new phase from a repeat.
     pub seq: u32,
 }
@@ -432,6 +434,7 @@ impl Duel {
             round: Round::Mewing { count: [0, 0], last: [None, None] },
             draft: None,
             played_games: Vec::new(),
+            history: Vec::new(),
             seq: 0,
         }
     }
@@ -576,6 +579,7 @@ impl Duel {
             self.wins[w] += 1;
         }
         self.played += 1;
+        self.history.push((self.game, winner));
         self.last = Some(RoundResult { winner, text });
         self.set_phase(Phase::RoundOver, DUEL_ROUND_PAUSE, now);
     }

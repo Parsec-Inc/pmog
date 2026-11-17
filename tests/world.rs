@@ -58,8 +58,12 @@ fn rank_thresholds() {
     assert_eq!(Rank::from_lifetime(0.0), Rank::Sub5);
     assert_eq!(Rank::from_lifetime(149.9), Rank::Sub5);
     assert_eq!(Rank::from_lifetime(150.0), Rank::Ltn);
-    assert_eq!(Rank::from_lifetime(1e12), Rank::Ascended);
-    assert_eq!(Rank::Ascended.next(), None);
+    assert_eq!(Rank::from_lifetime(749_999.0), Rank::Ascended);
+    assert_eq!(Rank::from_lifetime(6_700_000.0), Rank::SixSeven);
+    assert_eq!(Rank::from_lifetime(1e12), Rank::Transcendent);
+    assert_eq!(Rank::Ascended.next(), Some(Rank::Sigma));
+    assert_eq!(Rank::Transcendent.next(), None);
+    assert!(Rank::ALL.windows(2).all(|w| w[0] < w[1] && w[0].threshold() < w[1].threshold()), "ranks climb in order");
 }
 
 #[test]
@@ -756,4 +760,27 @@ fn aura_farm_doubles_passive_for_a_while() {
     let before = mp(&w);
     w.tick(later, 1.0);
     assert!(((mp(&w) - before) - normal).abs() < 1e-9, "back to normal after 45 s");
+}
+
+#[test]
+fn new_achievement_counters_add_up() {
+    use pmog::game::Achievement;
+    let now = Instant::now();
+    let mut w = world(1, now);
+    w.slot_mut(1).unwrap().player.mp = 67.4;
+    w.tick(now, 0.0);
+    let p = &w.slot(1).unwrap().player;
+    assert!(p.achievements.contains(&Achievement::Exactly67));
+
+    w.mew(1, now);
+    w.slot_mut(1).unwrap().player.items.insert(ItemId::SigmaShield, 1);
+    w.slot_mut(1).unwrap().player.items.insert(ItemId::JawTape, 1);
+    w.slot_mut(1).unwrap().player.items.insert(ItemId::PocketMirror, 1);
+    for item in [ItemId::SigmaShield, ItemId::JawTape, ItemId::PocketMirror] {
+        w.use_item(1, item, now);
+    }
+    w.tick(now, 0.0);
+    let p = &w.slot(1).unwrap().player;
+    assert_eq!((p.mews, p.items_used), (1, 3));
+    assert!(p.achievements.contains(&Achievement::Arsenal));
 }

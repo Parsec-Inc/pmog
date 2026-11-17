@@ -205,7 +205,8 @@ impl World {
             let rank = slot.player.rank();
             if rank > slot.last_rank {
                 slot.last_rank = rank;
-                news.push((*id, Tone::Epic, format!("Você subiu para {}! Novos itens na loja.", rank.label()), Some(format!("RANK UP: {}", rank.label().to_uppercase()))));
+                let unlocks = if items::CATALOG.iter().any(|d| d.min_rank == rank) { "Novos itens na loja." } else { "Veja todos os ranks com P." };
+                news.push((*id, Tone::Epic, format!("Você subiu para {}! {unlocks}", rank.label()), Some(format!("RANK UP: {}", rank.label().to_uppercase()))));
             }
             for ach in Achievement::ALL {
                 if !slot.player.achievements.contains(&ach) && ach.reached(&slot.player) {
@@ -235,6 +236,7 @@ impl World {
             return;
         }
         slot.mew_window.1 += 1;
+        slot.player.mews += 1;
         slot.player.gain(stats.mew_gain);
         slot.dirty = true;
     }
@@ -328,6 +330,7 @@ impl World {
         match result {
             Ok(text) => {
                 *slot.player.items.entry(item).or_insert(1) -= 1;
+                slot.player.items_used += 1;
                 slot.dirty = true;
                 self.event(id, Tone::Good, format!("Usou {name}. {text}"), None, false);
             }
@@ -874,6 +877,28 @@ impl World {
         }
     }
 
+    /// Updates the duel records behind achievements, for a duel worth MP.
+    fn record_duel(&mut self, i: usize, outcome: Option<usize>) {
+        let duel = &self.active[i];
+        let (players, history, stake, wins, rounds) = (duel.players, duel.history.clone(), duel.stake, duel.wins, duel.rounds);
+        for side in 0..2 {
+            let Some(slot) = self.slots.get_mut(&players[side]) else { continue };
+            let p = &mut slot.player;
+            for (game, _) in history.iter().filter(|(_, w)| *w == Some(side)) {
+                p.duel_rounds_won += 1;
+                if !p.minigames_won.contains(game) {
+                    p.minigames_won.push(*game);
+                }
+            }
+            if outcome == Some(side) && wins[side] > wins[1 - side] {
+                p.flawless_duels += (wins[1 - side] == 0 && wins[side] > DUEL_ROUNDS / 2) as u32;
+                p.sudden_death_wins += (rounds > DUEL_ROUNDS) as u32;
+                p.best_duel_pot = p.best_duel_pot.max(2.0 * stake);
+            }
+            slot.dirty = true;
+        }
+    }
+
     /// Moves the stakes once a duel is decided.
     fn settle(&mut self, i: usize) {
         let Some(outcome) = self.active[i].take_settlement() else { return };
@@ -881,6 +906,9 @@ impl World {
         let (players, names, stake, rounds) = (duel.players, duel.names.clone(), duel.stake, duel.rounds);
         // Friendly duels and walkovers before any round was played never count for records or achievements.
         let ranked = stake > 0.0 && duel.played > 0;
+        if ranked {
+            self.record_duel(i, outcome);
+        }
         let unranked_note = if ranked { "" } else { " Não conta para o placar." };
         let (gain, loss, worth) = if stake > 0.0 {
             let pot = format_mp(stake);

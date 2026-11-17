@@ -56,6 +56,13 @@ pub fn crest(rank: Rank) -> Option<&'static str> {
         Rank::Chad => Some("✦ "),
         Rank::Gigachad => Some("✸ "),
         Rank::Ascended => Some("♛ "),
+        Rank::Sigma => Some("Σ "),
+        Rank::AuraLord => Some("◈ "),
+        Rank::SixSeven => Some("67 "),
+        Rank::Mythic => Some("✧ "),
+        Rank::GreekGod => Some("Ω "),
+        Rank::Cosmic => Some("✶ "),
+        Rank::Transcendent => Some("∞ "),
         _ => None,
     }
 }
@@ -105,10 +112,48 @@ pub fn name_spans(name: &str, rank: Rank, now: Instant) -> Vec<Span<'static>> {
             })
         }
         Rank::Ascended => per_char(&|i| hue(i as f64 * 28.0 - t * 200.0)),
+        Rank::Sigma => per_char(&|i| lerp((140, 160, 185), (240, 248, 255), wave(i as f64 * 0.9 - t * 2.5))),
+        Rank::AuraLord => per_char(&|i| lerp((120, 0, 200), (255, 130, 255), wave(t * 5.0 + i as f64 * 0.35))),
+        Rank::SixSeven => {
+            // The 6-7 hand wobble: letters swap colors in step.
+            let frame = (t * 6.7) as usize;
+            per_char(&|i| if (i + frame).is_multiple_of(2) { Color::Rgb(90, 255, 120) } else { Color::Rgb(255, 225, 50) })
+        }
+        Rank::Mythic => per_char(&|i| lerp((0, 200, 180), (255, 200, 60), wave(i as f64 * 0.5 - t * 3.0))),
+        Rank::GreekGod => {
+            let len = name.chars().count() as f64;
+            let vein = (t * 7.0) % (len + 6.0) - 1.0;
+            per_char(&|i| {
+                let near = 1.0 - ((i as f64 - vein).abs() / 1.5).min(1.0);
+                lerp((235, 232, 220), (255, 190, 30), near)
+            })
+        }
+        Rank::Cosmic => {
+            let frame = (t * 8.0) as u64;
+            per_char(&|i| match flicker(i, frame) {
+                0 => Color::Rgb(100, 60, 220),
+                1 => Color::Rgb(40, 130, 255),
+                _ => Color::Rgb(240, 240, 255),
+            })
+        }
+        Rank::Transcendent => name
+            .chars()
+            .enumerate()
+            .map(|(i, c)| {
+                let h = i as f64 * 28.0 - t * 200.0;
+                Span::styled(c.to_string(), bold.fg(hue(h + 180.0)).bg(hue(h)))
+            })
+            .collect(),
     };
     if let Some(symbol) = crest(rank) {
         let color = match rank {
-            Rank::Ascended => hue(-t * 200.0),
+            Rank::Ascended | Rank::Transcendent => hue(-t * 200.0),
+            Rank::Sigma => Color::Rgb(200, 215, 235),
+            Rank::AuraLord => Color::Rgb(200, 90, 255),
+            Rank::SixSeven => Color::Rgb(90, 255, 120),
+            Rank::Mythic => Color::Rgb(0, 210, 190),
+            Rank::GreekGod => Color::Rgb(255, 200, 60),
+            Rank::Cosmic => Color::Rgb(120, 110, 255),
             Rank::Gigachad => Color::Rgb(255, 120, 0),
             _ => Color::Rgb(255, 215, 80),
         };
@@ -133,7 +178,7 @@ mod tests {
         for rank in [Rank::Sub5, Rank::Ltn, Rank::Mtn] {
             assert_eq!(colors(rank, now), colors(rank, later), "{rank:?} should not move");
         }
-        for rank in [Rank::Htn, Rank::Chadlite, Rank::Chad, Rank::Gigachad, Rank::Ascended] {
+        for rank in Rank::ALL.into_iter().filter(|r| *r >= Rank::Htn) {
             let changed = (1..20).any(|k| colors(rank, now) != colors(rank, now + Duration::from_millis(k * 70)));
             assert!(changed, "{rank:?} should animate");
         }

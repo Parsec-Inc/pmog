@@ -14,12 +14,14 @@ use ratatui::widgets::{
     Table, TableState, Tabs, Wrap,
 };
 
-use crate::constants::{PULSE_MS, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
+use crate::achievements::Group;
+use crate::constants::{PULSE_MS, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
+use crate::duel::Minigame;
 use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
 use crate::sprites::{self, Sprite};
-use crate::utils::{decimal, format_mp, format_wait};
+use crate::utils::{decimal, format_count, format_mp, format_wait};
 
 const BIG_BUTTON: [&str; 6] = [
     "███╗   ███╗ ██████╗  ██████╗  █████╗ ██████╗ ",
@@ -40,6 +42,13 @@ fn rank_color(rank: Rank) -> Color {
         Rank::Chad => Color::Magenta,
         Rank::Gigachad => Color::Yellow,
         Rank::Ascended => Color::Red,
+        Rank::Sigma => Color::Rgb(200, 215, 235),
+        Rank::AuraLord => Color::Rgb(190, 90, 255),
+        Rank::SixSeven => Color::Rgb(120, 255, 120),
+        Rank::Mythic => Color::Rgb(0, 210, 190),
+        Rank::GreekGod => Color::Rgb(255, 215, 90),
+        Rank::Cosmic => Color::Rgb(110, 110, 255),
+        Rank::Transcendent => Color::White,
     }
 }
 
@@ -101,6 +110,7 @@ fn draw_game(f: &mut Frame, app: &App) {
             draw_shop_card(f, g, now);
         }
         Overlay::Achievements => draw_achievements(f, g),
+        Overlay::Ranks => draw_ranks(f, g, now),
         Overlay::Help => draw_help(f, g),
         Overlay::Server => draw_server_panel(f, app),
         Overlay::Stake => duel::draw_stake_picker(f, g),
@@ -413,6 +423,7 @@ fn draw_footer(f: &mut Frame, area: Rect, g: &Game) {
         key("M".into()), " mewar ".into(),
         key("L".into()), " loja ".into(),
         key("C".into()), " conquistas ".into(),
+        key("P".into()), " ranks ".into(),
         key("S".into()), " servidor ".into(),
         key("D".into()), " duelar ".into(),
         key("F".into()), " fila ".into(),
@@ -454,41 +465,143 @@ fn popup_area(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
     center
 }
 
-fn draw_popup(f: &mut Frame, title: &str, text: Text) {
-    let area = popup_area(f.area(), 70, 70);
+/// Popup with a scrolling list; the renderer stores how far it can scroll.
+fn draw_list_popup(f: &mut Frame, g: &Game, title: &str, lines: Vec<Line<'static>>) {
+    let area = popup_area(f.area(), 80, 85);
     f.render_widget(Clear, area);
     let block = Block::bordered()
         .border_type(BorderType::Double)
         .border_style(fg(Color::Magenta))
-        .title(title.to_string());
-    f.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }).block(block), area);
+        .title(Span::styled(title.to_string(), fg(Color::Magenta).bold()));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let [body, hint] = Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+    let max_scroll = (paragraph.line_count(body.width) as u16).saturating_sub(body.height);
+    g.list_max_scroll.set(max_scroll);
+    let scroll = g.list_scroll.min(max_scroll);
+    f.render_widget(paragraph.scroll((scroll, 0)), body);
+    let more = if scroll < max_scroll { "  ↓ tem mais abaixo" } else { "" };
+    f.render_widget(
+        Line::from(vec![Span::styled("↑ ↓ rolar   PgUp PgDn página   Esc fecha", fg(Color::DarkGray)), Span::styled(more, fg(Color::Yellow))]),
+        hint,
+    );
 }
 
 fn draw_achievements(f: &mut Frame, g: &Game) {
     let p = &g.player;
-    let mut lines: Vec<Line> = Achievement::ALL
-        .iter()
-        .map(|a| {
-            let done = p.achievements.contains(a);
-            let (mark, style) = if done { ("[x] ", fg(Color::Yellow).bold()) } else { ("[ ] ", fg(Color::DarkGray)) };
-            Line::styled(format!("{mark}{} · {}", a.name(), a.desc()), style)
-        })
-        .collect();
-    lines.push(Line::raw(""));
-    lines.push(Line::styled(
-        format!(
-            "Mogs {}/{}   Defesas {}/{}   PERFECTs {}   Melhor streak {}",
-            p.mogs_won,
-            p.mogs_won + p.mogs_lost,
-            p.defends_won,
-            p.defends_won + p.defends_lost,
-            p.perfects,
-            p.best_streak
+    let mut lines = vec![
+        Line::styled(
+            format!(
+                "Mogs {}/{}   Defesas {}/{}   PERFECTs {}   Melhor streak {}   Mews {}",
+                p.mogs_won,
+                p.mogs_won + p.mogs_lost,
+                p.defends_won,
+                p.defends_won + p.defends_lost,
+                p.perfects,
+                p.best_streak,
+                p.mews
+            ),
+            fg(Color::Cyan),
         ),
-        fg(Color::Cyan),
-    ));
-    let title = format!(" Conquistas {}/{} · Esc fecha ", p.achievements.len(), Achievement::ALL.len());
-    draw_popup(f, &title, Text::from(lines));
+        Line::styled(
+            format!(
+                "Duelos {}V {}D   Rodadas vencidas {}   Minigames vencidos {}/{}   Consumíveis usados {}",
+                p.duels_won,
+                p.duels_lost,
+                p.duel_rounds_won,
+                p.minigames_won.len(),
+                Minigame::ALL.len(),
+                p.items_used
+            ),
+            fg(Color::Cyan),
+        ),
+    ];
+    for group in Group::ALL {
+        let members: Vec<Achievement> = Achievement::ALL.into_iter().filter(|a| a.group() == group).collect();
+        let done = members.iter().filter(|a| p.achievements.contains(a)).count();
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(format!("── {} ({done}/{}) ──", group.label(), members.len()), fg(Color::Magenta).bold()));
+        for a in members {
+            lines.push(if p.achievements.contains(&a) {
+                Line::styled(format!("[x] {} · {}", a.name(), a.desc()), fg(Color::Yellow).bold())
+            } else if a.secret() {
+                Line::styled("[ ] ??? · Conquista secreta", fg(Color::DarkGray))
+            } else {
+                let mut spans = vec![Span::styled(format!("[ ] {} · {}", a.name(), a.desc()), fg(Color::DarkGray))];
+                if let Some((have, need)) = a.progress(p).filter(|(have, need)| *need > 1 && *have > 0) {
+                    spans.push(Span::styled(format!("  {}/{}", format_count(have), format_count(need)), fg(Color::Gray)));
+                }
+                Line::from(spans)
+            });
+        }
+    }
+    let title = format!(" Conquistas {}/{} ", p.achievements.len(), Achievement::ALL.len());
+    draw_list_popup(f, g, &title, lines);
+}
+
+/// Text bar filled to `ratio`.
+fn progress_bar(ratio: f64, width: usize) -> String {
+    let filled = ((ratio.clamp(0.0, 1.0) * width as f64).round() as usize).min(width);
+    format!("{}{}", "█".repeat(filled), "░".repeat(width - filled))
+}
+
+fn draw_ranks(f: &mut Frame, g: &Game, now: Instant) {
+    let p = &g.player;
+    let current = p.rank();
+    let mut head = vec![Span::raw("Seu rank: ")];
+    head.extend(flair::name_spans(current.label(), current, now));
+    head.push(Span::styled(format!("   MP Total {}", format_mp(p.lifetime)), fg(Color::Cyan)));
+    let mut lines = vec![Line::from(head)];
+    lines.push(match current.next() {
+        Some(next) => {
+            let (from, to) = (current.threshold(), next.threshold());
+            let ratio = (p.lifetime - from) / (to - from);
+            Line::from(vec![
+                Span::styled(progress_bar(ratio, 24), fg(rank_color(next))),
+                Span::styled(
+                    format!(" {:.0}% até {} · faltam {} MP", ratio.clamp(0.0, 1.0) * 100.0, next.label(), format_mp(to - p.lifetime)),
+                    fg(Color::Gray),
+                ),
+            ])
+        }
+        None => Line::styled("Rank máximo. Não sobrou ninguém para moggar.", fg(Color::Yellow).bold()),
+    });
+    lines.push(Line::styled("O rank sobe com o MP Total (tudo o que você já ganhou, mesmo gastando).", fg(Color::DarkGray)));
+    for rank in Rank::ALL {
+        let reached = rank <= current;
+        let (marker, marker_style) = match rank.cmp(&current) {
+            std::cmp::Ordering::Equal => ("▶ ", fg(Color::Magenta).bold()),
+            std::cmp::Ordering::Less => ("✓ ", fg(Color::Green)),
+            std::cmp::Ordering::Greater => ("  ", fg(Color::DarkGray)),
+        };
+        let name = flair::name_spans(rank.label(), rank, now);
+        let width: usize = name.iter().map(|s| s.content.chars().count()).sum();
+        let mut first = vec![Span::styled(marker, marker_style)];
+        first.extend(name);
+        first.push(Span::raw(" ".repeat(RANK_NAME_COLUMN.saturating_sub(width))));
+        first.push(Span::styled(format!("{:>8} MP", format_mp(rank.threshold())), fg(Color::Cyan)));
+        if rank == current {
+            first.push(Span::styled("  ◀ você", fg(Color::Magenta).bold()));
+        } else if !reached {
+            first.push(Span::styled(format!("  faltam {}", format_mp(rank.threshold() - p.lifetime)), fg(Color::DarkGray)));
+        }
+        let mut details = vec![rank.desc().to_string()];
+        let unlocks = CATALOG.iter().filter(|d| d.min_rank == rank).count();
+        if unlocks > 0 {
+            details.push(format!("libera {unlocks} itens"));
+        }
+        let here: Vec<&str> =
+            g.peers.iter().filter(|peer| !peer.is_npc() && Rank::from_lifetime(peer.lifetime) == rank).map(|peer| peer.name.as_str()).collect();
+        if !here.is_empty() {
+            details.push(format!("na rede: {}", here.join(", ")));
+        }
+        lines.push(Line::raw(""));
+        lines.push(Line::from(first));
+        lines.push(Line::styled(format!("    {}", details.join(" · ")), fg(if reached { Color::Gray } else { Color::DarkGray })));
+    }
+    let title = format!(" Ranks {}/{} ", current as usize + 1, Rank::ALL.len());
+    draw_list_popup(f, g, &title, lines);
 }
 
 fn draw_shop(f: &mut Frame, g: &Game) {

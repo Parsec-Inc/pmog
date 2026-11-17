@@ -634,10 +634,10 @@ fn invitations_can_be_answered() {
 #[test]
 fn names_wear_their_rank() {
     let mut a = playing();
-    a.game.player.lifetime = 1e12;
+    a.game.player.lifetime = 3e5;
     state_with(&mut a, |s| {
-        s.me.lifetime = 1e12;
-        s.players[0].lifetime = 1e12;
+        s.me.lifetime = 3e5;
+        s.players[0].lifetime = 3e5;
         s.players[0].in_duel = true;
     });
     let screen = render(&a, 170, 42);
@@ -1010,4 +1010,38 @@ fn new_buffs_show_up() {
     });
     let screen = render(&a, 150, 42);
     assert!(screen.contains("COMBO 6-7") && screen.contains("FARMANDO AURA"), "{screen}");
+}
+
+#[test]
+fn rank_list_shows_every_rank_and_the_way_up() {
+    let mut a = playing();
+    state_with(&mut a, |s| {
+        s.me.lifetime = 150_000.0;
+        s.players[0].lifetime = 1e6;
+    });
+    press(&mut a, KeyCode::Char('p'));
+    assert_eq!(a.game.overlay, Overlay::Ranks);
+    let screen = render(&a, 150, 60);
+    assert!(screen.contains("Ranks 7/15") && screen.contains("até Ascendido"), "{screen}");
+    assert!(screen.contains("◀ você"), "{screen}");
+    press(&mut a, KeyCode::PageDown);
+    press(&mut a, KeyCode::PageDown);
+    press(&mut a, KeyCode::PageDown);
+    let screen = render(&a, 150, 60);
+    assert!(screen.contains("Transcendente") && screen.contains("na rede: Rival"), "{screen}");
+    press(&mut a, KeyCode::Esc);
+    assert_eq!(a.game.overlay, Overlay::None);
+    press(&mut a, KeyCode::Char('p'));
+    assert_eq!(a.game.list_scroll, 0, "reopening starts at the top");
+}
+
+#[test]
+fn achievements_are_grouped_with_progress_and_secrets() {
+    let mut a = playing();
+    state_with(&mut a, |s| s.me.mogs_won = 37);
+    press(&mut a, KeyCode::Char('c'));
+    let screen = render(&a, 150, 80);
+    assert!(screen.contains("── Mog (") && screen.contains("37/100") && screen.contains("37/1.000"), "{screen}");
+    assert!(screen.contains("??? · Conquista secreta"), "{screen}");
+    assert!(!screen.contains("Sessenta e Sete"), "secrets stay hidden");
 }

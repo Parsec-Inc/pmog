@@ -99,7 +99,7 @@ fn duels() -> Vec<Line<'static>> {
         text("O jogo mede o atraso da sua rede e conta o momento em que você apertou, não quando chegou no servidor. Quem joga no Wi-Fi ruim disputa de igual para igual com quem hospeda. O servidor confere esse horário e não aceita trapaça."),
         gap(),
         title("Nome com estilo"),
-        text("Seu nome muda de cara conforme o rank: estático até MTN, brilho pulsando no HTN, gradiente no Chadlite, reflexo dourado no Chad, fogo no Gigachad e arco-íris com coroa no Ascendido."),
+        text("Seu nome muda de cara conforme o rank: estático até MTN, brilho pulsando no HTN, gradiente no Chadlite, reflexo dourado no Chad, fogo no Gigachad, arco-íris com coroa no Ascendido e um efeito próprio em cada rank acima (veja todos com P)."),
     ]);
     lines
 }
@@ -123,6 +123,7 @@ fn basics() -> Vec<Line<'static>> {
         key("L", "abrir a loja (↑ ↓ escolhe, Enter compra)"),
         key("1 a 9, 0", "usar um consumível"),
         key("C", "conquistas e estatísticas"),
+        key("P", "todos os ranks, com o visual de cada nome"),
         key("S", "painel do servidor"),
         key("D / F", "duelo direto ou fila de duelo (veja a página Duelos)"),
         key("?", "esta ajuda (← → troca de aba, ↑ ↓ rola)"),
@@ -338,15 +339,15 @@ fn ranks(g: &Game) -> Vec<Line<'static>> {
         let marker = if rank == current { "▶ " } else { "  " };
         let style = if rank <= current { Style::new().bold() } else { Style::new().fg(Color::DarkGray) };
         lines.push(Line::from(vec![
-            Span::styled(format!("{marker}{:<10}", rank.label()), style),
+            Span::styled(format!("{marker}{:<14}", rank.label()), style),
             Span::styled(format!("{:>8} MP  ", format_mp(rank.threshold())), Style::new().fg(Color::Cyan)),
             Span::raw(unlocks.join(", ")),
         ]));
     }
     lines.push(gap());
     lines.push(title("Conquistas"));
-    lines.push(text("Marcos que ficam salvos no seu perfil (tecla C para ver as suas):"));
-    for a in Achievement::ALL {
+    lines.push(text("Marcos que ficam salvos no seu perfil (tecla C para ver as suas e o progresso). Algumas são secretas."));
+    for a in Achievement::ALL.into_iter().filter(|a| !a.secret()) {
         lines.push(term(a.name(), a.desc()));
     }
     lines
@@ -410,6 +411,7 @@ fn glossary() -> Vec<Line<'static>> {
         term("Chad", "o arquétipo do cara confiante que mogga sem esforço."),
         term("Gigachad", "o Chad levado ao extremo, o meme do rosto esculpido."),
         term("Ascendido", "quem completou a jornada do looksmaxxing."),
+        term("Lorde da Aura", "quem farmou aura até não caber mais."),
         gap(),
         title("Termos do jogo"),
         term("MP", "Mogging Points, a moeda e o placar."),

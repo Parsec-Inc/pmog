@@ -154,11 +154,7 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
     match game.overlay {
         Overlay::Shop => shop_key(game, code),
         Overlay::Help => help_key(game, code),
-        Overlay::Achievements => {
-            if matches!(code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('c' | '?' | 'h' | 'q')) {
-                game.overlay = Overlay::None;
-            }
-        }
+        Overlay::Achievements | Overlay::Ranks => list_key(game, code),
         Overlay::Chat | Overlay::Clan => {} // handled above with raw keys
         Overlay::Stake => match code {
             KeyCode::Left | KeyCode::Char('h') => game.stake_move(-1),
@@ -187,7 +183,8 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
             KeyCode::Down | KeyCode::Right | KeyCode::Char('j') => game.select_move(1),
             KeyCode::Char('m') => game.mew(),
             KeyCode::Char('l') => game.overlay = Overlay::Shop,
-            KeyCode::Char('c') => game.overlay = Overlay::Achievements,
+            KeyCode::Char('c') => game.open_list(Overlay::Achievements),
+            KeyCode::Char('p') => game.open_list(Overlay::Ranks),
             KeyCode::Char('s') => game.overlay = Overlay::Server,
             KeyCode::Char('d') => game.open_challenge(),
             KeyCode::Char('f') => game.toggle_queue(),
@@ -236,6 +233,17 @@ fn shop_key(game: &mut Game, code: KeyCode) {
         }
         KeyCode::Enter | KeyCode::Char(' ') => game.shop_enter(),
         KeyCode::Esc | KeyCode::Char('l' | 'q') => game.shop_back(),
+        _ => {}
+    }
+}
+
+fn list_key(game: &mut Game, code: KeyCode) {
+    match code {
+        KeyCode::Up | KeyCode::Char('k') => game.list_scroll_by(-1),
+        KeyCode::Down | KeyCode::Char('j') => game.list_scroll_by(1),
+        KeyCode::PageUp => game.list_scroll_by(-HELP_PAGE_STEP),
+        KeyCode::PageDown | KeyCode::Char(' ') => game.list_scroll_by(HELP_PAGE_STEP),
+        KeyCode::Esc | KeyCode::Enter | KeyCode::Char('c' | 'p' | '?' | 'h' | 'q') => game.overlay = Overlay::None,
         _ => {}
     }
 }

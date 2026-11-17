@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::constants::*;
+pub use crate::achievements::Achievement;
 pub use crate::items::{CATALOG, Category, Effect, ItemDef, ItemId};
 use crate::duel::{Board, DuelKey, DuelView, MacrosProgress, Minigame, Phase, TypingProgress, rhythm_fresh, rhythm_len, typing_stats};
 use crate::notify::Notice;
@@ -22,10 +23,17 @@ pub enum Rank {
     Chad,
     Gigachad,
     Ascended,
+    Sigma,
+    AuraLord,
+    SixSeven,
+    Mythic,
+    GreekGod,
+    Cosmic,
+    Transcendent,
 }
 
 impl Rank {
-    pub const ALL: [Rank; 8] = [
+    pub const ALL: [Rank; 15] = [
         Rank::Sub5,
         Rank::Ltn,
         Rank::Mtn,
@@ -34,6 +42,13 @@ impl Rank {
         Rank::Chad,
         Rank::Gigachad,
         Rank::Ascended,
+        Rank::Sigma,
+        Rank::AuraLord,
+        Rank::SixSeven,
+        Rank::Mythic,
+        Rank::GreekGod,
+        Rank::Cosmic,
+        Rank::Transcendent,
     ];
 
     /// Lifetime points needed to reach this rank.
@@ -47,6 +62,13 @@ impl Rank {
             Rank::Chad => 30_000.0,
             Rank::Gigachad => 100_000.0,
             Rank::Ascended => 300_000.0,
+            Rank::Sigma => 750_000.0,
+            Rank::AuraLord => 2_000_000.0,
+            Rank::SixSeven => 6_700_000.0,
+            Rank::Mythic => 15_000_000.0,
+            Rank::GreekGod => 40_000_000.0,
+            Rank::Cosmic => 100_000_000.0,
+            Rank::Transcendent => 300_000_000.0,
         }
     }
 
@@ -72,100 +94,34 @@ impl Rank {
             Rank::Chad => "Chad",
             Rank::Gigachad => "Gigachad",
             Rank::Ascended => "Ascendido",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Achievement {
-    FirstMog,
-    TenMogs,
-    HundredMogs,
-    Streak5,
-    Streak10,
-    FirstPerfect,
-    TwentyPerfects,
-    PunchingBag,
-    Wall,
-    Shopper,
-    ReachChad,
-    Ascend,
-    FirstDuel,
-    Duelist,
-}
-
-impl Achievement {
-    pub const ALL: [Achievement; 14] = [
-        Achievement::FirstMog,
-        Achievement::TenMogs,
-        Achievement::HundredMogs,
-        Achievement::Streak5,
-        Achievement::Streak10,
-        Achievement::FirstPerfect,
-        Achievement::TwentyPerfects,
-        Achievement::PunchingBag,
-        Achievement::Wall,
-        Achievement::Shopper,
-        Achievement::ReachChad,
-        Achievement::Ascend,
-        Achievement::FirstDuel,
-        Achievement::Duelist,
-    ];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Achievement::FirstMog => "Primeiro Mog",
-            Achievement::TenMogs => "Mogger em Série",
-            Achievement::HundredMogs => "Máquina de Mog",
-            Achievement::Streak5 => "Em Chamas",
-            Achievement::Streak10 => "Imparável",
-            Achievement::FirstPerfect => "Ângulo Perfeito",
-            Achievement::TwentyPerfects => "Timing de Sniper",
-            Achievement::PunchingBag => "Saco de Pancada",
-            Achievement::Wall => "Muralha",
-            Achievement::Shopper => "Looksmaxxer",
-            Achievement::ReachChad => "Virou Chad",
-            Achievement::Ascend => "Ascensão",
-            Achievement::FirstDuel => "Primeiro Sangue",
-            Achievement::Duelist => "Duelista",
+            Rank::Sigma => "Sigma",
+            Rank::AuraLord => "Lorde da Aura",
+            Rank::SixSeven => "Six Seven",
+            Rank::Mythic => "Mítico",
+            Rank::GreekGod => "Deus Grego",
+            Rank::Cosmic => "Mog Cósmico",
+            Rank::Transcendent => "Transcendente",
         }
     }
 
+    /// One-line flavor shown in the rank list.
     pub fn desc(self) -> &'static str {
         match self {
-            Achievement::FirstMog => "Moggue alguém pela primeira vez",
-            Achievement::TenMogs => "Vença 10 mogs",
-            Achievement::HundredMogs => "Vença 100 mogs",
-            Achievement::Streak5 => "Streak de 5",
-            Achievement::Streak10 => "Streak de 10",
-            Achievement::FirstPerfect => "Acerte um PERFECT",
-            Achievement::TwentyPerfects => "Acerte 20 PERFECTs",
-            Achievement::PunchingBag => "Seja moggado 10 vezes",
-            Achievement::Wall => "Defenda 10 mogs",
-            Achievement::Shopper => "Compre 10 itens",
-            Achievement::ReachChad => "Chegue ao rank Chad",
-            Achievement::Ascend => "Chegue ao rank Ascendido",
-            Achievement::FirstDuel => "Vença um duelo PvP valendo MP",
-            Achievement::Duelist => "Vença 10 duelos PvP valendo MP",
-        }
-    }
-
-    pub fn reached(self, p: &Player) -> bool {
-        match self {
-            Achievement::FirstMog => p.mogs_won >= 1,
-            Achievement::TenMogs => p.mogs_won >= 10,
-            Achievement::HundredMogs => p.mogs_won >= 100,
-            Achievement::Streak5 => p.best_streak >= 5,
-            Achievement::Streak10 => p.best_streak >= 10,
-            Achievement::FirstPerfect => p.perfects >= 1,
-            Achievement::TwentyPerfects => p.perfects >= 20,
-            Achievement::PunchingBag => p.defends_lost >= 10,
-            Achievement::Wall => p.defends_won >= 10,
-            Achievement::Shopper => p.purchases >= 10,
-            Achievement::ReachChad => p.rank() >= Rank::Chad,
-            Achievement::Ascend => p.rank() >= Rank::Ascended,
-            Achievement::FirstDuel => p.duels_won >= 1,
-            Achievement::Duelist => p.duels_won >= 10,
+            Rank::Sub5 => "Começo de tudo. Ninguém nota quando você entra.",
+            Rank::Ltn => "Low-tier normie: já dá para ver algum esforço.",
+            Rank::Mtn => "Mid-tier normie: na média, mas subindo.",
+            Rank::Htn => "High-tier normie: começa a chamar atenção.",
+            Rank::Chadlite => "Quase Chad. Só falta lapidar.",
+            Rank::Chad => "O padrão que todo mundo reconhece.",
+            Rank::Gigachad => "O meme do rosto esculpido, em pessoa.",
+            Rank::Ascended => "Completou a jornada do looksmaxxing.",
+            Rank::Sigma => "Não precisa de aprovação. Mogga em silêncio.",
+            Rank::AuraLord => "Farmou tanta aura que ela vaza pelo terminal.",
+            Rank::SixSeven => "Six seven. Ninguém sabe o que significa, todo mundo respeita.",
+            Rank::Mythic => "Os novatos acham que você é lenda urbana.",
+            Rank::GreekGod => "Esculpido em mármore, proporção áurea no rosto.",
+            Rank::Cosmic => "O mog atravessa galáxias.",
+            Rank::Transcendent => "Além do mog. Não sobrou ninguém para moggar.",
         }
     }
 }
@@ -203,6 +159,18 @@ pub struct Player {
     pub purchases: u32,
     pub duels_won: u32,
     pub duels_lost: u32,
+    pub mews: u64,
+    /// Consumables used.
+    pub items_used: u32,
+    /// Rounds won in duels worth MP.
+    pub duel_rounds_won: u32,
+    /// Duels worth MP won without losing a round.
+    pub flawless_duels: u32,
+    pub sudden_death_wins: u32,
+    /// Biggest pot taken in a duel.
+    pub best_duel_pot: f64,
+    /// Minigames with at least one round won in a duel worth MP.
+    pub minigames_won: Vec<Minigame>,
     pub shield_armed: bool,
     pub angle_armed: bool,
     pub mirror_armed: bool,
@@ -311,6 +279,8 @@ pub enum Overlay {
     Clan,
     Shop,
     Achievements,
+    /// Every rank, with the look of each name.
+    Ranks,
     Help,
     Server,
     /// Choosing how much to bet before a challenge or the queue.
@@ -437,6 +407,10 @@ pub struct Game {
     pub shop_result: Option<(bool, String, Instant)>,
     pub help_page: usize,
     pub help_scroll: u16,
+    /// Scroll of the achievements and ranks lists.
+    pub list_scroll: u16,
+    /// Last list scroll limit computed by the renderer.
+    pub list_max_scroll: Cell<u16>,
     /// Last scroll limit computed by the renderer.
     pub help_max_scroll: Cell<u16>,
     /// Start of the timing meter, aligned with the server clock.
@@ -558,6 +532,8 @@ impl Game {
             shop_result: None,
             help_page: 0,
             help_scroll: 0,
+            list_scroll: 0,
+            list_max_scroll: Cell::new(0),
             help_max_scroll: Cell::new(0),
             started: now,
             outbox: Vec::new(),
@@ -653,6 +629,17 @@ impl Game {
         let len = crate::help::PAGES.len() as isize;
         self.help_page = (self.help_page as isize + delta).rem_euclid(len) as usize;
         self.help_scroll = 0;
+    }
+
+    /// Opens a scrolling list (achievements or ranks) from the top.
+    pub fn open_list(&mut self, overlay: Overlay) {
+        self.list_scroll = 0;
+        self.overlay = overlay;
+    }
+
+    pub fn list_scroll_by(&mut self, delta: i32) {
+        let next = (self.list_scroll as i32 + delta).max(0) as u16;
+        self.list_scroll = next.min(self.list_max_scroll.get());
     }
 
     pub fn help_scroll_by(&mut self, delta: i32) {

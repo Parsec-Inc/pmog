@@ -448,6 +448,12 @@ fn a_full_duel_played_through_the_world() {
         None => assert_eq!(mp(&w, 1), 100.0),
         Some(false) => panic!("the idle player can't win"),
     }
+    let p = &w.slot(1).unwrap().player;
+    assert!(p.duel_rounds_won > 0 && !p.minigames_won.is_empty(), "rounds won feed the duel achievements");
+    if d.i_won == Some(Some(true)) {
+        assert_eq!(p.best_duel_pot, 200.0);
+    }
+    assert_eq!(w.slot(2).unwrap().player.duel_rounds_won, 0);
     assert_eq!(w.matches.len(), 1);
 }
 

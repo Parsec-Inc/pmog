@@ -20,7 +20,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 |  |  |
 |---|---|
 | **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro. | **18 minigames de duelo**: 6 sorteados por partida (ou cada um escolhe 3, se os dois quiserem), de encarada e digitação a fit check, fotogenia e mog reverso. |
-| **52 itens na loja** em 6 categorias (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. | **Ranks de Sub-5 a Ascendido**, com nome que brilha, pega fogo e vira arco-íris. |
+| **52 itens na loja** em 6 categorias (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. | **15 ranks, de Sub-5 a Transcendente** (tecla P lista todos), com nome que brilha, pega fogo, vira arco-íris e mais. **66 conquistas**, algumas secretas. |
 | **Chat, grupos e clãs**, com tag ao lado do nome e sem fogo amigo. | **Atualização automática** pela rede, só com builds assinadas. |
 
 <table>
