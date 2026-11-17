@@ -69,3 +69,42 @@ fn unreachable_servers_on_the_network_hint_at_a_firewall() {
     assert_eq!(connect_hint(lan, ErrorKind::InvalidData), None);
     assert_eq!(connect_hint("127.0.0.1:47790".parse().unwrap(), ErrorKind::ConnectionRefused), None, "this computer is never blocked");
 }
+
+#[test]
+fn the_check_finishes_on_this_computer() {
+    let started = std::time::Instant::now();
+    if let Some(warning) = pmog::firewall::check() {
+        assert!(!warning.what.is_empty() && !warning.fix.is_empty(), "{warning:?}");
+    }
+    assert!(started.elapsed() < std::time::Duration::from_secs(30), "the check must not hang");
+}
+
+#[cfg(windows)]
+#[test]
+fn the_windows_block_query_answers_a_count() {
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", pmog::constants::WINDOWS_BLOCK_QUERY])
+        .env("PMOG_EXE", std::env::current_exe().unwrap())
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(text.trim().parse::<u32>().is_ok(), "{text:?}");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn socketfilterfw_answers_in_the_words_the_check_reads() {
+    let ask = |args: &[&str]| {
+        let output = std::process::Command::new(pmog::constants::MACOS_FIREWALL_PROGRAM).args(args).output().unwrap();
+        String::from_utf8_lossy(&output.stdout).to_lowercase()
+    };
+    for args in [["--getglobalstate"].as_slice(), ["--getblockall"].as_slice()] {
+        let text = ask(args);
+        assert!(text.contains("enabled") || text.contains("disabled"), "{args:?}: {text:?}");
+    }
+    // This test binary is not in the firewall's list, so its answer must not read as blocked.
+    let exe = std::env::current_exe().unwrap().display().to_string();
+    let app = ask(&["--getappblocked", &exe]);
+    assert_eq!(macos_warning("firewall is enabled", "block all is disabled", &app, &exe), None, "{app:?}");
+}

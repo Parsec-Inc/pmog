@@ -253,6 +253,14 @@ mod tests {
         assert!(derive("", "SN1").is_err());
     }
 
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn this_computer_has_a_stable_id() {
+        let id = resolve(false).unwrap();
+        assert!(is_valid(&id));
+        assert_eq!(resolve(false).unwrap(), id);
+    }
+
     #[test]
     fn validation_rejects_garbage() {
         assert!(!is_valid(""));

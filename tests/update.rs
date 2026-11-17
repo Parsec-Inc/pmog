@@ -393,3 +393,42 @@ fn the_windows_swap_script_quotes_paths_and_keeps_the_old_exe() {
     let odd = windows_swap_script(&p(r"C:\a%b\x"), &p(r"C:\y.exe"), &p(r"C:\s"), &p(r"C:\y.exe.sig"));
     assert!(odd.contains(r"C:\a%%b\x"), "percent signs are escaped for cmd");
 }
+
+#[cfg(windows)]
+#[test]
+fn a_running_exe_is_moved_aside_and_replaced() {
+    // Windows refuses to overwrite a program that is running, so install has to rename it out of the way.
+    let dir = Dir::new("running");
+    let exe = dir.file("pmog.exe");
+    let ping = PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join(r"System32\PING.EXE");
+    fs::copy(ping, &exe).unwrap();
+    let mut child = std::process::Command::new(&exe).args(["-n", "30", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+    assert!(fs::write(&exe, b"x").is_err(), "a running exe can't be overwritten");
+    let result = install(&exe, &Manifest::sign(&key(1), "windows", 20, b"nova"), b"nova");
+    let _ = child.kill();
+    let _ = child.wait();
+    result.unwrap();
+    assert_eq!(fs::read(&exe).unwrap(), b"nova");
+    assert!(dir.file("pmog.exe.old").exists(), "the running build was kept aside");
+    pmog::update::cleanup(&exe);
+    assert!(!dir.file("pmog.exe.old").exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn the_windows_swap_script_runs_in_cmd() {
+    // Runs the same batch UAC would, as the current user, so no prompt opens.
+    let dir = Dir::new("winswap");
+    let folder = dir.file("Program Files 100%");
+    fs::create_dir_all(&folder).unwrap();
+    let (binary, exe, signature, sig) = (dir.file("staged"), folder.join("pmog.exe"), dir.file("staged.sig"), folder.join("pmog.exe.sig"));
+    fs::write(&binary, b"nova").unwrap();
+    fs::write(&exe, b"velha").unwrap();
+    fs::write(&signature, b"{}").unwrap();
+    let script = dir.file("swap.cmd");
+    fs::write(&script, windows_swap_script(&binary, &exe, &signature, &sig)).unwrap();
+    assert!(std::process::Command::new("cmd").arg("/C").arg(&script).status().unwrap().success());
+    assert_eq!(fs::read(&exe).unwrap(), b"nova");
+    assert_eq!(fs::read(&sig).unwrap(), b"{}");
+    assert_eq!(fs::read(folder.join("pmog.exe.old")).unwrap(), b"velha");
+}
