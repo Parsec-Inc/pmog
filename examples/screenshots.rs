@@ -1,6 +1,7 @@
-//! Renders real game screens to SVG for the README.
+//! Renders real game screens to SVG for the README, or every screen at phone sizes.
 //!
 //! cargo run --example screenshots
+//! cargo run --example screenshots -- celular   (writes target/phone-layouts/<size>/*.svg)
 
 use std::fmt::Write as _;
 use std::fs;
@@ -8,10 +9,10 @@ use std::time::{Duration, Instant};
 
 use pmog::app::{App, Screen};
 use pmog::discovery::Discovery;
-use pmog::duel::{Board, DraftPick, DuelView, HunterProgress, Minigame, Phase, Stance, TypingProgress};
+use pmog::duel::{Board, DraftPick, Duel, DuelView, HunterProgress, Minigame, Phase, Stance, TypingProgress};
 use pmog::game::{Achievement, Overlay, Player, Tone};
 use pmog::items::ItemId;
-use pmog::protocol::{PeerView, ServerMsg, StateView};
+use pmog::protocol::{InviteView, PeerView, ServerMsg, StateView};
 use pmog::server::{Ports, ServerHandle};
 use pmog::ui;
 use ratatui::Terminal;
@@ -140,11 +141,15 @@ fn hide_lan_ip(svg: String) -> String {
 }
 
 fn shot(app: &App, name: &str, title: &str, w: u16, h: u16) {
+    println!("{}", shot_to(OUT, app, name, title, w, h));
+}
+
+fn shot_to(dir: &str, app: &App, name: &str, title: &str, w: u16, h: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
     terminal.draw(|f| ui::draw(f, app)).unwrap();
-    let path = format!("{OUT}/{name}.svg");
+    let path = format!("{dir}/{name}.svg");
     fs::write(&path, hide_lan_ip(svg(terminal.backend().buffer(), title))).unwrap();
-    println!("{path}");
+    path
 }
 
 fn peer(id: i64, name: &str, lifetime: f64, mp: f64, tag: Option<&str>) -> PeerView {
@@ -266,7 +271,82 @@ fn duel_view(game: Minigame, phase_ms: u64, board: Board) -> DuelView {
     }
 }
 
+/// Terminal sizes the phone page ends up with, portrait and landscape.
+const PHONE_SIZES: [(u16, u16); 10] = [(45, 28), (50, 38), (50, 46), (54, 40), (58, 56), (90, 20), (100, 22), (110, 24), (122, 24), (134, 25)];
+
+/// A duel of `game` stepped into `phase`, as player one sees it.
+fn minigame_view(game: Minigame, phase: Phase, after_ms: u64) -> DuelView {
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+    let mut now = Instant::now();
+    let mut duel = Duel::with_games([1, 2], ["Chadoso".into(), "jawline_99".into()], 1_250.0, &[game], now, &mut rng);
+    for _ in 0..20_000 {
+        if duel.phase == phase {
+            break;
+        }
+        now += Duration::from_millis(20);
+        duel.tick(now, &mut rng);
+    }
+    let end = now + Duration::from_millis(after_ms);
+    while now < end {
+        now += Duration::from_millis(20);
+        duel.tick(now, &mut rng);
+    }
+    duel.view(0, 34_000.0, now)
+}
+
+/// Every screen at every phone size, for checking the layouts by eye.
+fn phones() {
+    let mut scenes: Vec<(String, App)> = Vec::new();
+    let mut add = |name: &str, app: App| scenes.push((name.to_string(), app));
+    let mut lobby = App::new("Chadoso".into(), "f".repeat(64), None, None, Ports::default());
+    lobby.release = 202611161821;
+    add("lobby", lobby);
+    add("jogo", playing(None));
+    for (name, overlay) in [("loja", Overlay::Shop), ("ranks", Overlay::Ranks), ("conquistas", Overlay::Achievements), ("ajuda", Overlay::Help), ("servidor", Overlay::Server), ("chat", Overlay::Chat), ("cla", Overlay::Clan)] {
+        let mut app = playing(None);
+        app.game.overlay = overlay;
+        add(name, app);
+    }
+    let mut stake = playing(None);
+    stake.game.overlay = Overlay::Stake;
+    stake.game.stake_target = Some(2);
+    add("aposta", stake);
+    let mut invited = playing(None);
+    let mut view = state(None);
+    view.invites = vec![InviteView { peer: 2, name: "jawline_99".into(), fraction: 0.25, stake: 1_250.0, expires_ms: 20_000, draft: true }];
+    invited.game.apply(ServerMsg::State(Box::new(view)), Instant::now());
+    add("convite", invited);
+    let mut naming = playing(None);
+    naming.editing_name = Some("Chadoso".into());
+    add("nome", naming);
+    let mut confirm = playing(None);
+    confirm.confirm = Some(pmog::app::Confirm::Disconnect);
+    add("confirmar", confirm);
+    for game in Minigame::ALL {
+        let slug = format!("{game:?}").to_lowercase();
+        add(&format!("duelo-{slug}-explica"), playing(Some(minigame_view(game, Phase::Countdown, 500))));
+        add(&format!("duelo-{slug}"), playing(Some(minigame_view(game, Phase::Play, 1_500))));
+    }
+    add("duelo-fim-rodada", playing(Some(minigame_view(Minigame::Staredown, Phase::RoundOver, 300))));
+    let mut draft = minigame_view(Minigame::Staredown, Phase::Play, 0);
+    let pick = |mine, game, random| DraftPick { mine, game, random };
+    draft.board = Board::Draft { picks: vec![pick(false, Minigame::FitCheck, false), pick(true, Minigame::Staredown, false)], my_turn: true };
+    draft.phase = Phase::Draft;
+    add("duelo-draft", playing(Some(draft)));
+    for (w, h) in PHONE_SIZES {
+        let dir = format!("target/phone-layouts/{w}x{h}");
+        fs::create_dir_all(&dir).unwrap();
+        for (name, app) in &scenes {
+            shot_to(&dir, app, name, &format!("{name} · {w}x{h}"), w, h);
+        }
+    }
+}
+
 fn main() {
+    if std::env::args().any(|a| a == "celular") {
+        return phones();
+    }
     fs::create_dir_all(OUT).unwrap();
     let (w, h) = (140, 40);
 

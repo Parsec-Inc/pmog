@@ -5,7 +5,7 @@ use std::time::Instant;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, Confirm, Screen};
-use crate::constants::{HELP_PAGE_STEP, MACROS_INPUT_LEN, MAX_NAME_LEN};
+use crate::constants::{HELP_PAGE_STEP, MACROS_INPUT_LEN, MAX_NAME_LEN, WEB_MAX_PASSWORD};
 use crate::duel::{DuelKey, Minigame, Phase};
 use crate::game::{Game, Overlay};
 use crate::help::PAGES;
@@ -13,6 +13,18 @@ use crate::items::consumable_for_key;
 use crate::protocol::ClientMsg;
 
 /// Applies a key press; returns false once the app should exit.
+/// Keys typed on the PC: while a phone has taken over, only R (take back) and Ctrl+C work.
+pub fn handle_local_key(app: &mut App, key: KeyEvent, now: Instant) -> bool {
+    let ctrl_c = key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c');
+    if app.phone_controls() && !ctrl_c {
+        if matches!(key.code, KeyCode::Char('r' | 'R')) {
+            app.drop_phone("O PC retomou o controle.");
+        }
+        return true;
+    }
+    handle_key(app, key, now)
+}
+
 pub fn handle_key(app: &mut App, key: KeyEvent, now: Instant) -> bool {
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
         app.request_quit();
@@ -25,6 +37,18 @@ pub fn handle_key(app: &mut App, key: KeyEvent, now: Instant) -> bool {
             _ => {}
         }
         return !app.quit;
+    }
+    if let Some(typed) = app.editing_phone_password.as_mut() {
+        match key.code {
+            KeyCode::Enter => app.finish_phone_password_edit(),
+            KeyCode::Esc => app.editing_phone_password = None,
+            KeyCode::Backspace => {
+                typed.pop();
+            }
+            KeyCode::Char(c) if !c.is_control() && typed.chars().count() < WEB_MAX_PASSWORD => typed.push(c),
+            _ => {}
+        }
+        return true;
     }
     if let Some(typed) = app.editing_name.as_mut() {
         match key.code {
@@ -78,6 +102,9 @@ fn lobby_key(app: &mut App, code: KeyCode) {
         KeyCode::Down | KeyCode::Char('j') => app.lobby_move(1),
         KeyCode::Enter | KeyCode::Char(' ') => app.lobby_enter(),
         KeyCode::Char('n') => app.start_name_edit(),
+        KeyCode::Char('c') => app.start_phone_password_edit(),
+        KeyCode::Char('e') => app.toggle_phone_mode(),
+        KeyCode::Char('x') => app.drop_phone("O PC desconectou o celular."),
         KeyCode::Char('u') => app.ask_update(),
         KeyCode::Char('p') if app.host.is_some() => app.confirm = Some(Confirm::StopServer),
         KeyCode::Char('q') | KeyCode::Esc => app.request_quit(),
@@ -173,6 +200,12 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
                 app.start_name_edit();
             }
             KeyCode::Char('b') => app.toggle_notifications(),
+            KeyCode::Char('c') => {
+                game.overlay = Overlay::None;
+                app.start_phone_password_edit();
+            }
+            KeyCode::Char('e') => app.toggle_phone_mode(),
+            KeyCode::Char('x') => app.drop_phone("O PC desconectou o celular."),
             KeyCode::Esc | KeyCode::Enter | KeyCode::Char('s' | 'q') => game.overlay = Overlay::None,
             _ => {}
         },

@@ -55,20 +55,20 @@ impl Rank {
     pub fn threshold(self) -> f64 {
         match self {
             Rank::Sub5 => 0.0,
-            Rank::Ltn => 150.0,
-            Rank::Mtn => 750.0,
-            Rank::Htn => 3_000.0,
-            Rank::Chadlite => 10_000.0,
-            Rank::Chad => 30_000.0,
-            Rank::Gigachad => 100_000.0,
-            Rank::Ascended => 300_000.0,
-            Rank::Sigma => 750_000.0,
-            Rank::AuraLord => 2_000_000.0,
-            Rank::SixSeven => 6_700_000.0,
-            Rank::Mythic => 15_000_000.0,
-            Rank::GreekGod => 40_000_000.0,
-            Rank::Cosmic => 100_000_000.0,
-            Rank::Transcendent => 300_000_000.0,
+            Rank::Ltn => 300.0,
+            Rank::Mtn => 1_500.0,
+            Rank::Htn => 6_000.0,
+            Rank::Chadlite => 20_000.0,
+            Rank::Chad => 60_000.0,
+            Rank::Gigachad => 200_000.0,
+            Rank::Ascended => 600_000.0,
+            Rank::Sigma => 1_500_000.0,
+            Rank::AuraLord => 4_000_000.0,
+            Rank::SixSeven => 13_400_000.0,
+            Rank::Mythic => 30_000_000.0,
+            Rank::GreekGod => 80_000_000.0,
+            Rank::Cosmic => 200_000_000.0,
+            Rank::Transcendent => 600_000_000.0,
         }
     }
 
@@ -383,6 +383,13 @@ pub fn meter_value(elapsed: f64, stats: &Stats, streak: u32) -> f64 {
     (1.0 - (elapsed * meter_speed(stats, streak)).cos()) / 2.0
 }
 
+/// Chance of a critical mog that goes through any defense: proportional to attack against defense, never zero.
+pub fn crit_chance(attack: f64, defense: f64) -> f64 {
+    let total = attack + defense;
+    let share = if total > 0.0 { attack / total } else { 0.5 };
+    (CRIT_CHANCE_SCALE * share).max(CRIT_MIN_CHANCE)
+}
+
 /// Odds that `power` beats a defense of `defense` times a uniform pick from `roll`.
 pub fn beat_chance(power: f64, defense: f64, roll: std::ops::Range<f64>) -> f64 {
     if defense <= 0.0 {
@@ -662,7 +669,12 @@ impl Game {
         let base = stats.attack * streak_mult(self.streak, &stats) * angle;
         let good = TIMING_FLOOR + TIMING_SPAN * (TIMING_GOOD_FROM + stats.perfect_threshold) / 2.0;
         let (defense, roll) = if peer.is_npc() { (stats.attack, NPC_DEFENSE_ROLL) } else { (peer.defense, DEFENSE_ROLL) };
-        (beat_chance(base * good, defense, roll.clone()), beat_chance(base * PERFECT_MULT, defense, roll))
+        let crit = crit_chance(stats.attack, defense);
+        let odds = |power: f64| {
+            let beat = beat_chance(power, defense, roll.clone());
+            beat + (1.0 - beat) * crit
+        };
+        (odds(base * good), odds(base * PERFECT_MULT))
     }
 
     pub fn meter(&self, now: Instant) -> f64 {

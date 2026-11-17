@@ -6,7 +6,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, BorderType, Clear, Gauge, Paragraph, Wrap};
 
 use super::flair::{clock, tagged_spans};
-use super::{fg, small_popup};
+use super::{KeyHint, fg, hint, small_popup};
 use super::minigames;
 use crate::constants::{
     ANGLE_ATTEMPTS, DUEL_ROUNDS, HUNTER_SHOW_MS, MEMORY_FLASH, MEMORY_LEAD, MEMORY_STEPS, RHYTHM_BEATS, RHYTHM_INTERVAL_MS, RHYTHM_PERFECT_MS,
@@ -36,12 +36,14 @@ fn pips(wins: u32) -> String {
     (0..(DUEL_ROUNDS / 2 + 1).max(wins)).map(|i| if i < wins { '●' } else { '○' }).collect()
 }
 
-/// "Rodada 3 de 6", "Desempate" or the draft, for the duel header.
-fn round_label(d: &DuelView) -> String {
-    match (d.phase, d.round) {
-        (Phase::Draft, _) => "Escolha dos minigames".to_string(),
-        (_, r) if r > DUEL_ROUNDS => format!("Desempate (morte súbita) · {}", d.game.name()),
-        (_, r) => format!("Rodada {r} de {DUEL_ROUNDS} · {}", d.game.name()),
+/// "Rodada 3 de 6 · jogo", "Desempate" or the draft for the duel header; `short` drops the minigame.
+fn round_label(d: &DuelView, short: bool) -> String {
+    match (d.phase, d.round, short) {
+        (Phase::Draft, _, _) => "Escolha dos minigames".to_string(),
+        (_, r, true) if r > DUEL_ROUNDS => "Morte súbita".to_string(),
+        (_, r, true) => format!("Rodada {r}/{DUEL_ROUNDS}"),
+        (_, r, false) if r > DUEL_ROUNDS => format!("Desempate (morte súbita) · {}", d.game.name()),
+        (_, r, false) => format!("Rodada {r} de {DUEL_ROUNDS} · {}", d.game.name()),
     }
 }
 
@@ -56,22 +58,26 @@ pub fn draw_duel(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
     let [score, board, timer] =
         Layout::vertical([Constraint::Length(4), Constraint::Min(8), Constraint::Length(3)]).areas(area);
 
-    let me = tagged_spans(g.clan_tag.as_deref(), &g.player.name, g.player.rank(), now);
-    let them = tagged_spans(d.opponent_tag.as_deref(), &d.opponent, Rank::from_lifetime(d.opponent_lifetime), now);
-    let mut line = me;
-    line.push(Span::styled(format!("  {}  ", pips(d.my_wins)), fg(WIN_COLOR).bold()));
-    line.push(Span::styled("VS", fg(Color::Magenta).bold()));
-    line.push(Span::styled(format!("  {}  ", pips(d.their_wins)), fg(LOSS_COLOR).bold()));
-    line.extend(them);
-    let info = Line::styled(
-        match d.stake {
-            0.0 => format!("{} · Amistoso", round_label(d)),
-            stake => format!("{} · Aposta {} MP cada", round_label(d), format_mp(stake)),
-        },
-        fg(Color::Gray),
-    );
+    let room = score.width.saturating_sub(2) as usize;
+    let versus = |tags: bool, gap: &str| {
+        let mut line = tagged_spans(g.clan_tag.as_deref().filter(|_| tags), &g.player.name, g.player.rank(), now);
+        line.push(Span::styled(format!("{gap}{}{gap}", pips(d.my_wins)), fg(WIN_COLOR).bold()));
+        line.push(Span::styled("VS", fg(Color::Magenta).bold()));
+        line.push(Span::styled(format!("{gap}{}{gap}", pips(d.their_wins)), fg(LOSS_COLOR).bold()));
+        line.extend(tagged_spans(d.opponent_tag.as_deref().filter(|_| tags), &d.opponent, Rank::from_lifetime(d.opponent_lifetime), now));
+        Line::from(line)
+    };
+    // Narrow screens drop the clan tags, then the extra spacing, before cutting names.
+    let line = [versus(true, "  "), versus(false, "  "), versus(false, " ")].into_iter().find(|l| l.width() <= room).unwrap_or_else(|| versus(false, " "));
+    let stake = match d.stake {
+        0.0 => "Amistoso".to_string(),
+        stake => format!("Aposta {} MP cada", format_mp(stake)),
+    };
+    let long = format!("{} · {stake}", round_label(d, false));
+    let info = if long.chars().count() <= room { long } else { format!("{} · {stake}", round_label(d, true)) };
+    let info = Line::styled(info, fg(Color::Gray));
     let block = Block::bordered().border_type(BorderType::Double).border_style(fg(Color::Magenta)).title(" ⚔ DUELO ");
-    f.render_widget(Paragraph::new(vec![Line::from(line).centered(), info.centered()]).block(block), score);
+    f.render_widget(Paragraph::new(vec![line.centered(), info.centered()]).block(block), score);
 
     let title = if d.phase == Phase::Draft { " Escolha alternada ".to_string() } else { format!(" {} ", d.game.name()) };
     let block = Block::bordered().border_type(BorderType::Rounded).title(Line::from(title).centered());
@@ -536,30 +542,29 @@ fn angle(target: f64, mine: &[f64], theirs: &[f64], elapsed: f64, width: usize, 
     lines
 }
 
-pub fn duel_footer(d: &DuelView) -> Line<'static> {
-    let key = |k: &'static str| Span::styled(format!(" {k} "), Style::new().bg(Color::DarkGray).fg(Color::White).bold());
-    let mut spans = match (d.phase, d.game) {
-        (Phase::Finished, _) => vec![Span::raw(" O resultado some sozinho em instantes.")],
-        (Phase::Draft, _) => vec![key("↑↓←→"), " escolher ".into(), key("Enter"), " confirmar ".into()],
+pub fn duel_hints(d: &DuelView) -> Vec<KeyHint> {
+    let mut hints = match (d.phase, d.game) {
+        (Phase::Finished, _) => vec![hint("", "O resultado some sozinho em instantes.")],
+        (Phase::Draft, _) => vec![hint("↑↓←→", "escolher"), hint("Enter", "confirmar")],
         (_, Minigame::Staredown | Minigame::Angle | Minigame::Rhythm | Minigame::Hunter | Minigame::FitCheck | Minigame::Photo | Minigame::Brow) => {
-            vec![key("ESPAÇO"), " apertar ".into()]
+            vec![hint("ESPAÇO", "apertar")]
         }
-        (_, Minigame::Macros) => vec![key("0-9"), " resposta ".into(), key("Enter"), " enviar ".into()],
-        (_, Minigame::Skincare) => vec![key("↑↓←→"), " passos da rotina ".into()],
-        (_, Minigame::Memory) => vec![key("1-8"), " passos da rotina ".into()],
-        (_, Minigame::Status) => vec![key("1-5"), " do mais caro ao mais barato ".into()],
-        (_, Minigame::Mewing) => vec![key("← →"), " ou ".into(), key("A D"), " mewar alternando ".into()],
-        (_, Minigame::Typing) => vec![key("letras"), " digitar a frase ".into()],
-        (_, Minigame::Jawline) => vec![key("← →"), " ponto ".into(), key("↑ ↓"), " altura ".into()],
-        (_, Minigame::Posture) => vec![key("← →"), " endireitar ".into()],
-        (_, Minigame::Hydration) => vec![key("↑"), " +5 ".into(), key("→"), " +1 ".into(), key("ESPAÇO"), " fechar ".into()],
-        (_, Minigame::Hair) => vec![key("↑↓←→"), " lado do fio ".into()],
-        (_, Minigame::ReverseMog) => vec![key("←"), " mogar ".into(), key("↓"), " defender ".into(), key("→"), " ignorar ".into()],
+        (_, Minigame::Macros) => vec![hint("0-9", "resposta"), hint("Enter", "enviar")],
+        (_, Minigame::Skincare) => vec![hint("↑↓←→", "passos da rotina")],
+        (_, Minigame::Memory) => vec![hint("1-8", "passos da rotina")],
+        (_, Minigame::Status) => vec![hint("1-5", "do mais caro ao mais barato")],
+        (_, Minigame::Mewing) => vec![hint("← →", "ou"), hint("A D", "mewar alternando")],
+        (_, Minigame::Typing) => vec![hint("letras", "digitar a frase")],
+        (_, Minigame::Jawline) => vec![hint("← →", "ponto"), hint("↑ ↓", "altura")],
+        (_, Minigame::Posture) => vec![hint("← →", "endireitar")],
+        (_, Minigame::Hydration) => vec![hint("↑", "+5"), hint("→", "+1"), hint("ESPAÇO", "fechar")],
+        (_, Minigame::Hair) => vec![hint("↑↓←→", "lado do fio")],
+        (_, Minigame::ReverseMog) => vec![hint("←", "mogar"), hint("↓", "defender"), hint("→", "ignorar")],
     };
     if d.phase != Phase::Finished {
-        spans.extend([key("Esc"), " desistir".into()]);
+        hints.push(hint("Esc", "desistir"));
     }
-    Line::from(spans)
+    hints
 }
 
 /// One choice in a stake picker row; the focused row shows its pick brighter.
@@ -633,8 +638,6 @@ pub fn draw_stake_picker(f: &mut Frame, g: &Game) {
 /// Pending invitation, shown over the game until answered.
 pub fn draw_invite(f: &mut Frame, g: &Game, now: Instant) {
     let Some(invite) = g.invites.first() else { return };
-    let area = small_popup(f.area(), 60, 7);
-    f.render_widget(Clear, area);
     let peer = g.peers.iter().find(|p| p.id == invite.peer);
     let rank = peer.map_or(Rank::Sub5, |p| Rank::from_lifetime(p.lifetime));
     let mut who = tagged_spans(peer.and_then(|p| p.clan_tag.as_deref()), &invite.name, rank, now);
@@ -663,7 +666,11 @@ pub fn draw_invite(f: &mut Frame, g: &Game, now: Instant) {
     ];
     let border = if blink { Color::Yellow } else { Color::Magenta };
     let block = Block::bordered().border_type(BorderType::Double).border_style(fg(border)).title(" ⚔ Desafio ");
-    f.render_widget(Paragraph::new(lines).block(block), area);
+    let text = Paragraph::new(lines).wrap(Wrap { trim: true });
+    let width = f.area().width.min(60);
+    let area = small_popup(f.area(), width, text.line_count(width.saturating_sub(2)) as u16 + 3);
+    f.render_widget(Clear, area);
+    f.render_widget(text.block(block), area);
 }
 
 /// One-line status of a sent challenge or queue wait, if any.

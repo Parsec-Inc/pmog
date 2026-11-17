@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0c0c10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>PMOG</title>
+<style>
+  :root { --bg: #0c0c10; --fg: #d4d4d4; --key: #23202b; --key-on: #3d2a4a; --accent: #d670d6; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; height: 100dvh; font-family: system-ui, sans-serif; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  #term { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  canvas { display: block; }
+  #bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); background: #141219; }
+  #bar button { flex: 1 1 36px; min-width: 0; height: 36px; border: 0; border-radius: 6px; background: var(--key); color: var(--fg); font: 600 15px system-ui, sans-serif; touch-action: none; }
+  #bar button.on, #bar button:active { background: var(--key-on); }
+  #bar button.wide { flex: 2 1 72px; }
+  #bar .row { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; }
+  #letters[hidden] { display: none; }
+  #kb { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; border: 0; padding: 0; resize: none; }
+  #veil { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(12, 12, 16, .92); z-index: 2; }
+  #veil[hidden] { display: none; }
+  .card { width: min(92vw, 360px); padding: 20px; border: 2px solid var(--accent); border-radius: 10px; text-align: center; }
+  .card h1 { margin: 0 0 4px; color: var(--accent); font: 800 28px ui-monospace, monospace; letter-spacing: 4px; }
+  .card p { margin: 8px 0 14px; line-height: 1.4; }
+  .card .error { color: #f14c4c; font-weight: 600; }
+  .card input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid #444; border-radius: 6px; background: #000; color: var(--fg); font-size: 16px; }
+  .card button { width: 100%; height: 44px; margin-top: 10px; border: 0; border-radius: 6px; background: var(--accent); color: #000; font: 700 16px system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="term"><canvas id="screen"></canvas></div>
+<div id="bar">
+  <div class="row" id="letters" hidden>
+    <button data-key="m">M</button><button data-key="l">L</button><button data-key="d">D</button><button data-key="f">F</button><button data-key="t">T</button><button data-key="c">C</button><button data-key="p">P</button><button data-key="s">S</button><button data-key="?">?</button><button data-key="q">Q</button><button id="ctrl">Ctrl</button><button data-key="PageUp">PgUp</button><button data-key="PageDown">PgDn</button>
+  </div>
+  <div class="row">
+    <button id="kbtn" title="Teclado">⌨</button>
+    <button id="abc" title="Atalhos">abc</button>
+    <button data-key="Escape">Esc</button>
+    <button data-key="Tab">Tab</button>
+    <button data-key="ArrowLeft" data-repeat>←</button>
+    <button data-key="ArrowUp" data-repeat>↑</button>
+    <button data-key="ArrowDown" data-repeat>↓</button>
+    <button data-key="ArrowRight" data-repeat>→</button>
+    <button data-key=" " class="wide">Mog</button>
+    <button data-key="Enter">⏎</button>
+    <button id="smaller" title="Letra menor">A−</button>
+    <button id="bigger" title="Letra maior">A+</button>
+  </div>
+</div>
+<textarea id="kb" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+<div id="veil" hidden><div class="card" id="card"></div></div>
+<script>
+(() => {
+  "use strict";
+  const DEFAULT_FG = "#d4d4d4", DEFAULT_BG = "#0c0c10";
+  const BOLD = 1, DIM = 2, ITALIC = 4, UNDERLINE = 8, CROSSED = 16;
+  const FONT = "ui-monospace, 'DejaVu Sans Mono', Menlo, 'Roboto Mono', 'Droid Sans Mono', monospace";
+  const SENTINEL = "_";
+  const REPEAT_DELAY = 350, REPEAT_EVERY = 70, RESIZE_DEBOUNCE = 150;
+  const MIN_FONT = 6, MAX_FONT = 28, FIT_MIN = 8, FIT_MAX = 14, MAX_ZOOM = 10, LINE_HEIGHT = 1.2;
+  const PORTRAIT_COLS = 50, LANDSCAPE_COLS = 100, LANDSCAPE_ROWS = 22;
+
+  const store = {
+    get(k) { try { return localStorage.getItem("pmog-" + k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem("pmog-" + k, v); } catch {} },
+  };
+  const term = document.getElementById("term");
+  const canvas = document.getElementById("screen");
+  const g = canvas.getContext("2d");
+  const kb = document.getElementById("kb");
+  const veil = document.getElementById("veil");
+  const card = document.getElementById("card");
+
+  let token = store.get("id");
+  if (!token || !/^[0-9a-f]{32}$/.test(token)) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    token = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+    store.set("id", token);
+  }
+  let zoomOffset = Number(store.get("zoom")) || 0, fontSize = 12;
+  let cols = 80, rows = 24, cw = 8, ch = 16, dpr = 1;
+  let lines = [];
+  let ws = null, ended = false;
+
+  const segmenter = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter() : null;
+  const graphemes = s => segmenter ? Array.from(segmenter.segment(s), x => x.segment) : Array.from(s);
+
+  // Font that fits ~50 columns upright, or at least 100x22 sideways, plus the player's A−/A+ offset.
+  function fitFont(box) {
+    g.font = `100px ${FONT}`;
+    const ratio = g.measureText("M").width / 100;
+    const fit = box.width > box.height
+      ? Math.min(box.width / (LANDSCAPE_COLS * ratio), box.height / (LANDSCAPE_ROWS * LINE_HEIGHT))
+      : box.width / (PORTRAIT_COLS * ratio);
+    const base = Math.min(FIT_MAX, Math.max(FIT_MIN, Math.floor(fit * 2) / 2));
+    return Math.min(MAX_FONT, Math.max(MIN_FONT, base + zoomOffset));
+  }
+
+  function measure() {
+    dpr = window.devicePixelRatio || 1;
+    const box = term.getBoundingClientRect();
+    fontSize = fitFont(box);
+    g.font = `${fontSize * dpr}px ${FONT}`;
+    cw = Math.max(1, Math.round(g.measureText("M").width));
+    ch = Math.max(1, Math.round(fontSize * LINE_HEIGHT * dpr));
+    cols = Math.max(20, Math.floor(box.width * dpr / cw));
+    rows = Math.max(8, Math.floor(box.height * dpr / ch));
+    canvas.width = cols * cw;
+    canvas.height = rows * ch;
+    canvas.style.width = canvas.width / dpr + "px";
+    canvas.style.height = canvas.height / dpr + "px";
+    redrawAll();
+  }
+
+  function drawRow(y) {
+    const top = y * ch;
+    g.fillStyle = DEFAULT_BG;
+    g.fillRect(0, top, cols * cw, ch);
+    const cells = [];
+    for (const [text, fg, bg, flags] of lines[y] || []) {
+      for (const sym of graphemes(text)) cells.push([sym, fg || DEFAULT_FG, bg, flags]);
+    }
+    cells.forEach(([sym, fg, bg], x) => {
+      if (bg) { g.fillStyle = bg; g.fillRect(x * cw, top, cw, ch); }
+      const half = Math.round(ch / 2);
+      g.fillStyle = fg;
+      if (sym === "▀") g.fillRect(x * cw, top, cw, half);
+      else if (sym === "▄") g.fillRect(x * cw, top + half, cw, ch - half);
+      else if (sym === "█") g.fillRect(x * cw, top, cw, ch);
+      else if (sym === "▌") g.fillRect(x * cw, top, Math.round(cw / 2), ch);
+      else if (sym === "▐") g.fillRect(x * cw + Math.round(cw / 2), top, cw - Math.round(cw / 2), ch);
+    });
+    g.textBaseline = "middle";
+    cells.forEach(([sym, fg, , flags], x) => {
+      if (sym === " " || "▀▄█▌▐".includes(sym)) return;
+      g.font = `${flags & ITALIC ? "italic " : ""}${flags & BOLD ? "700 " : ""}${fontSize * dpr}px ${FONT}`;
+      g.globalAlpha = flags & DIM ? 0.6 : 1;
+      g.fillStyle = fg;
+      g.fillText(sym, x * cw, top + ch / 2);
+      if (flags & (UNDERLINE | CROSSED)) {
+        const at = flags & UNDERLINE ? top + ch - Math.max(1, dpr) : top + ch / 2;
+        g.fillRect(x * cw, at, cw, Math.max(1, Math.round(dpr)));
+      }
+      g.globalAlpha = 1;
+    });
+  }
+
+  function redrawAll() {
+    g.fillStyle = DEFAULT_BG;
+    g.fillRect(0, 0, canvas.width, canvas.height);
+    for (let y = 0; y < rows; y++) drawRow(y);
+  }
+
+  function send(msg) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  }
+  let ctrl = false;
+  const ctrlButton = () => document.getElementById("ctrl");
+  const key = k => {
+    if (ctrl && k.length === 1) { k = "Ctrl+" + k; ctrl = false; ctrlButton().classList.remove("on"); }
+    send({ t: "key", k });
+  };
+
+  function showVeil(html, action) {
+    card.innerHTML = html;
+    veil.hidden = false;
+    const button = card.querySelector("button");
+    if (button) button.onclick = action;
+  }
+
+  function askPassword(error) {
+    showVeil(`<h1>PMOG</h1><p>Digite a senha do celular que foi criada no PC.</p>
+      ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
+      <input id="password" type="password" maxlength="64" autocomplete="current-password" placeholder="senha">
+      <button>Entrar</button>`, () => {
+      const password = card.querySelector("#password").value;
+      if (!password) return;
+      send({ t: "login", password });
+      showVeil(`<h1>PMOG</h1><p>Conferindo a senha...</p>`);
+    });
+    const input = card.querySelector("#password");
+    input.onkeydown = e => { if (e.key === "Enter") card.querySelector("button").click(); };
+    input.focus();
+  }
+
+  function connect() {
+    ended = false;
+    lines = [];
+    redrawAll();
+    ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+    showVeil(`<h1>PMOG</h1><p>Conectando...</p>`);
+    ws.onopen = () => send({ t: "hello", id: token, cols, rows });
+    ws.onmessage = e => {
+      const msg = JSON.parse(e.data);
+      if (msg.t === "frame") {
+        if (msg.rows) lines = new Array(msg.rows).fill(null);
+        for (const [y, runs] of msg.lines) { lines[y] = runs; if (y < rows) drawRow(y); }
+      } else if (msg.t === "auth") {
+        askPassword(msg.error);
+      } else if (msg.t === "ready") {
+        veil.hidden = true;
+      } else if (msg.t === "bye") {
+        ended = true;
+        showVeil(`<h1>PMOG</h1><p>${escapeHtml(msg.reason)}</p><button>Tentar de novo</button>`, connect);
+      }
+    };
+    ws.onclose = () => {
+      if (!ended) showVeil(`<h1>PMOG</h1><p>A conexão com o servidor caiu.</p><button>Reconectar</button>`, connect);
+      ended = true;
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  }
+
+  let resizeTimer = 0;
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { measure(); send({ t: "resize", cols, rows }); }, RESIZE_DEBOUNCE);
+  }
+  window.addEventListener("resize", onResize);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", onResize);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && ended && !veil.hidden) connect();
+  });
+
+  // On-screen keys: fire on press, repeat while held, never steal focus from the keyboard field.
+  document.querySelectorAll("#bar button[data-key]").forEach(button => {
+    let delay = 0, every = 0;
+    const stop = () => { clearTimeout(delay); clearInterval(every); button.classList.remove("on"); };
+    button.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      button.classList.add("on");
+      key(button.dataset.key);
+      if (button.hasAttribute("data-repeat")) delay = setTimeout(() => { every = setInterval(() => key(button.dataset.key), REPEAT_EVERY); }, REPEAT_DELAY);
+    });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(ev => button.addEventListener(ev, stop));
+  });
+  const tap = (id, fn) => document.getElementById(id).addEventListener("pointerdown", e => { e.preventDefault(); fn(); });
+  tap("kbtn", () => {
+    if (document.activeElement === kb) kb.blur();
+    else { reset(); kb.focus(); }
+  });
+  tap("ctrl", () => { ctrl = !ctrl; ctrlButton().classList.toggle("on", ctrl); });
+  tap("abc", () => {
+    const letters = document.getElementById("letters");
+    letters.hidden = !letters.hidden;
+    document.getElementById("abc").classList.toggle("on", !letters.hidden);
+    store.set("letters", letters.hidden ? "0" : "1");
+    onResize();
+  });
+  const zoom = delta => { zoomOffset = Math.min(MAX_ZOOM, Math.max(-MAX_ZOOM, zoomOffset + delta)); store.set("zoom", zoomOffset); onResize(); };
+  tap("smaller", () => zoom(-1));
+  tap("bigger", () => zoom(1));
+  if (store.get("letters") === "1") { document.getElementById("letters").hidden = false; document.getElementById("abc").classList.add("on"); }
+
+  // Phone keyboards: diff the field against a sentinel so letters, IME words, Enter and backspace all come through once.
+  const SPECIAL = { ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Enter: 1, Escape: 1, Tab: 1, Backspace: 1, Delete: 1, PageUp: 1, PageDown: 1, Home: 1, End: 1 };
+  let composing = false, last = SENTINEL;
+  kb.addEventListener("compositionstart", () => { composing = true; });
+  kb.addEventListener("compositionend", () => { composing = false; settle(); });
+  kb.addEventListener("input", () => settle());
+  function settle() {
+    const before = Array.from(last), now = Array.from(kb.value);
+    let same = 0;
+    while (same < before.length && same < now.length && before[same] === now[same]) same++;
+    for (let i = same; i < before.length; i++) key("Backspace");
+    for (const c of now.slice(same)) key(c === "\n" ? "Enter" : c);
+    last = kb.value;
+    if (!composing) reset();
+  }
+  function reset() { kb.value = SENTINEL; last = SENTINEL; }
+  document.addEventListener("keydown", e => {
+    if (!veil.hidden || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    const name = e.key === "Tab" && e.shiftKey ? "ShiftTab" : e.key;
+    const typed = document.activeElement === kb && (e.key === "Enter" || e.key === "Backspace");
+    if (SPECIAL[e.key] && !typed) {
+      e.preventDefault();
+      key(name);
+      if (document.activeElement === kb) reset();
+    } else if (document.activeElement !== kb && name.length === 1) {
+      e.preventDefault();
+      key(name);
+    }
+  });
+  term.addEventListener("pointerdown", () => { if (document.activeElement === kb) kb.blur(); });
+
+  measure();
+  connect();
+})();
+</script>
+</body>
+</html>

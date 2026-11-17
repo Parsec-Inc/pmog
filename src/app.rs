@@ -12,9 +12,10 @@ use crate::game::{Game, Overlay, Player, Tone};
 use crate::notify::{Notice, Notifier};
 use crate::protocol::{ClientMsg, ServerMsg};
 use crate::server::{Ports, ServerHandle};
-use crate::constants::PROTOCOL_VERSION;
+use crate::constants::{PROTOCOL_VERSION, WEB_MIN_PASSWORD};
 use crate::update;
 use crate::utils::clean_name;
+use crate::web::Remote;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -71,6 +72,10 @@ pub struct App {
     update_job: Option<Receiver<Result<u64, String>>>,
     /// Set once a new build is installed; the binary restarts when the UI closes.
     pub restart: bool,
+    /// Phone access to this PMOG; `None` in tests and bots.
+    pub remote: Option<Remote>,
+    /// Phone password being typed, if the editor is open.
+    pub editing_phone_password: Option<String>,
 }
 
 impl App {
@@ -102,6 +107,8 @@ impl App {
             update_declined: 0,
             update_job: None,
             restart: false,
+            remote: None,
+            editing_phone_password: None,
         }
     }
 
@@ -308,6 +315,57 @@ impl App {
         Some(name)
     }
 
+    /// True while a phone runs this PMOG and the PC only watches.
+    pub fn phone_controls(&self) -> bool {
+        self.remote.as_ref().is_some_and(|r| r.controls())
+    }
+
+    pub fn start_phone_password_edit(&mut self) {
+        if self.remote.as_ref().is_some_and(|r| r.port > 0) {
+            self.editing_phone_password = Some(String::new());
+        } else {
+            self.notice = Some((Tone::Bad, "Nenhuma porta livre para o celular (47800 a 47809).".into()));
+        }
+    }
+
+    /// Saves the typed phone password, signing every phone out.
+    pub fn finish_phone_password_edit(&mut self) {
+        let Some(typed) = self.editing_phone_password.take() else { return };
+        let Some(remote) = self.remote.as_mut() else { return };
+        let (tone, text) = if typed.chars().count() < WEB_MIN_PASSWORD {
+            (Tone::Bad, format!("A senha do celular precisa de pelo menos {WEB_MIN_PASSWORD} caracteres."))
+        } else {
+            remote.set_password(&typed);
+            (Tone::Good, "Senha do celular salva. Os celulares precisam digitar ela de novo.".to_string())
+        };
+        self.say(tone, text);
+    }
+
+    pub fn toggle_phone_mode(&mut self) {
+        if let Some(remote) = self.remote.as_mut() {
+            remote.toggle_takeover();
+            let text = if remote.takeover() { "Celular agora assume o jogo: o PC só assiste enquanto ele estiver conectado." } else { "Celular agora espelha o jogo: PC e celular controlam juntos." };
+            self.say(Tone::Info, text.to_string());
+        }
+    }
+
+    /// Disconnects the phone so the PC is in control again.
+    pub fn drop_phone(&mut self, reason: &str) {
+        if let Some(remote) = self.remote.as_mut().filter(|r| r.connected()) {
+            remote.kick(reason);
+            self.say(Tone::Info, "Celular desconectado.".to_string());
+        }
+    }
+
+    /// Shows a message in the feed while playing, or as the lobby notice.
+    fn say(&mut self, tone: Tone, text: String) {
+        if self.screen == Screen::Playing {
+            self.game.log(tone, text);
+        } else {
+            self.notice = Some((tone, text));
+        }
+    }
+
     pub fn toggle_notifications(&mut self) {
         self.notifier.enabled = !self.notifier.enabled;
         self.notifications_changed = true;
@@ -315,6 +373,7 @@ impl App {
 
     /// Network in, actions out; call once per frame.
     pub fn step(&mut self, now: Instant) {
+        crate::web::pump(self, now);
         self.notifier.pump(std::mem::take(&mut self.game.notices), now);
         if let Some(discovery) = self.discovery.as_mut() {
             discovery.refresh(now);
@@ -359,6 +418,7 @@ impl App {
 
     /// Stops hosting (saving everything) before the program ends.
     pub fn shutdown(&mut self) {
+        self.remote = None;
         if let Some(conn) = self.conn.take() {
             conn.close();
         }

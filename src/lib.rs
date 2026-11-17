@@ -23,4 +23,5 @@ pub mod sprites;
 pub mod ui;
 pub mod update;
 pub mod utils;
+pub mod web;
 pub mod world;

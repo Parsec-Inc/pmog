@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 15;
+pub const PROTOCOL_VERSION: u32 = 16;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -49,6 +49,23 @@ pub const HELP_PAGE_STEP: i32 = 10;
 /// Width of the name column in the rank list, crest included.
 pub const RANK_NAME_COLUMN: usize = 20;
 pub const SHOP_PREVIEW_MIN_WIDTH: u16 = 100;
+/// Below this width (phones held upright) the screens stack instead of sitting side by side.
+pub const NARROW_WIDTH: u16 = 80;
+/// Lobby height from which the title gets its padding and mascot.
+pub const LOBBY_TALL: u16 = 30;
+/// Shop width below which the table drops the Requer and Efeito columns and shows them under it.
+pub const SHOP_FULL_TABLE_WIDTH: u16 = 76;
+pub const SHOP_DETAILS_ROWS: u16 = 5;
+/// Below this height popups take the whole screen.
+pub const SHORT_HEIGHT: u16 = 24;
+/// Stacked game body tall enough for the bigger MOGAR button.
+pub const NARROW_ROOMY_BODY: u16 = 34;
+/// Upright screens at least this tall show the full header (combat numbers too).
+pub const NARROW_FULL_HEADER_FROM: u16 = 40;
+/// Feed rows kept under a stacked duel or game.
+pub const NARROW_FEED_ROWS: u16 = 6;
+/// Stacked duel body tall enough to also show the feed.
+pub const NARROW_DUEL_FEED_FROM: u16 = 34;
 
 // Combat
 pub const BASE_ATTACK: f64 = 10.0;
@@ -56,9 +73,9 @@ pub const BASE_DEFENSE: f64 = 10.0;
 pub const BASE_COOLDOWN_SECS: f64 = 4.0;
 pub const MIN_COOLDOWN_SECS: f64 = 1.0;
 pub const IMMUNITY: Duration = Duration::from_secs(5);
-pub const METER_SPEED: f64 = 2.4;
-pub const METER_STREAK_ACCEL: f64 = 0.08;
-pub const PERFECT_THRESHOLD: f64 = 0.9;
+pub const METER_SPEED: f64 = 4.5;
+pub const METER_STREAK_ACCEL: f64 = 0.05;
+pub const PERFECT_THRESHOLD: f64 = 0.97;
 pub const PERFECT_MULT: f64 = 1.6;
 /// Meter position where the OK and GOOD timing tiers start.
 pub const TIMING_OK_FROM: f64 = 0.5;
@@ -72,19 +89,27 @@ pub const TIMING_FLOOR: f64 = 0.6;
 pub const TIMING_SPAN: f64 = 0.6;
 pub const DEFENSE_ROLL: Range<f64> = 0.75..1.25;
 pub const STREAK_CAP: u32 = 10;
-pub const BASE_STREAK_BONUS: f64 = 0.1;
+pub const BASE_STREAK_BONUS: f64 = 0.05;
+/// Extra share of the defender's stake per streak win the attacker breaks.
+pub const STREAK_BOUNTY: f64 = 0.1;
+/// Critical chance at equal attack and defense is half of this.
+pub const CRIT_CHANCE_SCALE: f64 = 0.2;
+/// Critical chance even against a far stronger defense.
+pub const CRIT_MIN_CHANCE: f64 = 0.03;
+/// MP multiplier of a critical mog.
+pub const CRIT_TAKE_MULT: f64 = 1.5;
 
 // Economy
 pub const STAKE_FLAT: f64 = 15.0;
 pub const STAKE_RATIO: f64 = 0.08;
 pub const STAKE_CAP: f64 = 5_000.0;
-pub const LOSS_PENALTY_RATIO: f64 = 0.03;
+pub const LOSS_PENALTY_RATIO: f64 = 0.05;
 pub const LOSS_PENALTY_FLAT: f64 = 2.0;
 pub const COUNTER_BONUS: f64 = 8.0;
 pub const COST_GROWTH: f64 = 1.55;
 pub const MEW_CAP_PER_SEC: u32 = 5;
 pub const MAX_LOSS_SHIELD: f64 = 0.5;
-pub const MIN_METER_FACTOR: f64 = 0.5;
+pub const MIN_METER_FACTOR: f64 = 0.7;
 pub const PREWORKOUT_DURATION: Duration = Duration::from_secs(30);
 pub const PREWORKOUT_FACTOR: f64 = 0.5;
 pub const MIRROR_MULT: f64 = 3.0;
@@ -187,11 +212,13 @@ mod clan;
 mod items;
 mod minigames;
 mod notify;
+mod web;
 pub use chat::*;
 pub use clan::*;
 pub use items::*;
 pub use minigames::*;
 pub use notify::*;
+pub use web::*;
 
 /// Largest build an update may download.
 pub const MAX_UPDATE_BYTES: u64 = 64 * 1024 * 1024;
