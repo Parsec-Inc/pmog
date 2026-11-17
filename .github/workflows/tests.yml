@@ -4,50 +4,30 @@ on:
   pull_request:
     branches: [main]
   workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  # Linux e Windows travam a release; o macOS roda à parte (macos.yml) para a fila do Mac não atrasar
   tests:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Install toolchain
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q gcc-mingw-w64-x86-64
-          rustup show active-toolchain
-
       - uses: Swatinem/rust-cache@v2
 
-      - name: Lint (Linux)
+      - name: Lint
         run: cargo clippy --locked --all-targets -- -D warnings
-
-      - name: Lint (Windows)
-        env:
-          CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
-        run: cargo clippy --locked --all-targets --target x86_64-pc-windows-gnu -- -D warnings
 
       # tape_animates_a_failed_mog é instável (falha às vezes sem relação com a mudança).
       - name: Test
         run: cargo test --locked --release -- --skip tape_animates_a_failed_mog
-
-  # o macOS só compila num Mac; roda nos PRs, sem travar a release do Linux e do Windows
-  macos:
-    if: github.event_name == 'pull_request'
-    runs-on: macos-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Lint (macOS)
-        run: cargo clippy --locked --all-targets -- -D warnings

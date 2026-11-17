@@ -7,7 +7,7 @@ As builds saem de `scripts/build-dist.sh` (Linux e Windows, assinadas) e os paco
 
 Todo push na `main` roda `.github/workflows/release.yml`:
 
-1. **tests**: clippy (Linux e Windows) e `cargo test`. Nos PRs, também clippy no macOS.
+1. **tests**: clippy e `cargo test` nativos no Linux e no Windows. O macOS roda os mesmos testes à parte (`macos.yml`), em todo push e PR, sem travar a release.
 2. **bump**: o commitizen calcula a versão pelos commits, atualiza `Cargo.toml`, `Cargo.lock` e
    `CHANGELOG.md`, cria a tag e dá push. Também fixa o `PMOG_RELEASE` (número do auto-update,
    `AAAAMMDDHHMM` em UTC) que todas as builds usam.

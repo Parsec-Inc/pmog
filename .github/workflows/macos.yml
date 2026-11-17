@@ -1,0 +1,31 @@
+name: macOS
+
+# Lint e testes no Mac em todo push e PR, sem travar a release do Linux e do Windows.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    if: ${{ !startsWith(github.event.head_commit.message, 'bump:') }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked --release -- --skip tape_animates_a_failed_mog
