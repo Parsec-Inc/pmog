@@ -39,17 +39,16 @@ rpm() {
 aur() {
   mkdir -p dist/aur
   sed "s/@VERSION@/$VERSION/" packaging/aur/PKGBUILD > dist/aur/PKGBUILD
-  cp packaging/aur/pmog.install dist/aur/
 }
 
-# MSI com exceção no firewall: precisa do WiX 3 (a extensão de firewall não existe no wixl).
+# MSI para a máquina: precisa do WiX 3.
 msi() {
   need candle "WiX 3 no Windows (choco install wixtoolset)"
   built "$WINDOWS_BIN" scripts/build-dist.sh
   mkdir -p target/wix
-  candle -nologo -arch x64 -ext WixFirewallExtension -dVersion="$VERSION" -dExe="$PWD/$WINDOWS_BIN" \
+  candle -nologo -arch x64 -dVersion="$VERSION" -dExe="$PWD/$WINDOWS_BIN" \
     -out target/wix/pmog.wixobj packaging/windows/pmog.wxs
-  light -nologo -spdb -ext WixFirewallExtension -out "dist/pmog-$VERSION-x86_64.msi" target/wix/pmog.wixobj
+  light -nologo -spdb -out "dist/pmog-$VERSION-x86_64.msi" target/wix/pmog.wixobj
 }
 
 # macOS: binário universal (Apple Silicon + Intel). Só roda num Mac: precisa do SDK da Apple.

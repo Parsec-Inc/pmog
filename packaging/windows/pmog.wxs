@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- MSI para a máquina: Program Files\pmog, PATH do sistema, atalho no menu Iniciar e
-     exceção no Firewall do Windows para o pmog.exe (descoberta, servidor e página do celular). -->
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
-     xmlns:fw="http://schemas.microsoft.com/wix/FirewallExtension">
+<!-- MSI para a máquina: Program Files\pmog, PATH do sistema e atalho no menu Iniciar.
+     O firewall fica com o Windows, que pergunta na primeira vez que o pmog abre uma porta. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" Name="pmog" Language="1033" Version="$(var.Version)" Manufacturer="Parsec-Inc"
            UpgradeCode="01a1eb30-22af-7075-bf5d-4782c8432396">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
@@ -18,9 +17,7 @@
 
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="Main" Guid="01a1eb30-22af-7075-bf5d-4783051edbc4" Win64="yes">
-        <File Id="PmogExe" Name="pmog.exe" Source="$(var.Exe)" KeyPath="yes">
-          <fw:FirewallException Id="PmogFirewall" Name="pmog" Scope="any" Profile="all" IgnoreFailure="yes" />
-        </File>
+        <File Id="PmogExe" Name="pmog.exe" Source="$(var.Exe)" KeyPath="yes" />
         <File Id="PmogSig" Name="pmog.exe.sig" Source="$(var.Exe).sig" />
         <Environment Id="SystemPath" Name="PATH" Value="[INSTALLDIR]" Part="last" Action="set" System="yes" />
       </Component>

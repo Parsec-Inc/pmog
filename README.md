@@ -68,7 +68,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
    | Fedora / openSUSE | `sudo dnf install ./pmog-*.rpm` (ou pelo COPR, quando ligado) |
    | Debian / Ubuntu | `sudo apt install ./pmog_*.deb` |
    | Arch | `yay -S pmog-bin` (quando ligado) |
-   | Windows | `pmog-X.Y.Z-x86_64.msi` (já libera o firewall) |
+   | Windows | `pmog-X.Y.Z-x86_64.msi` |
    | macOS | `brew install Parsec-Inc/tap/pmog` (quando ligado) ou o `.tar.gz` |
    | Qualquer um | `pmog-linux` / `pmog-windows.exe` direto, ou com quem já tem o jogo |
 
@@ -100,13 +100,15 @@ Cada PMOG aberto no PC pode ser jogado de **um** celular por vez, na mesma rede,
 
 ## Rede
 
-Os pacotes `.deb`, `.rpm`, AUR e o MSI já liberam as portas no firewall (firewalld ou ufw no Linux,
-exceção do Firewall do Windows) e fecham ao desinstalar. Sem pacote, quem hospeda libera à mão
-(exemplo no Fedora):
+O pmog não mexe no seu firewall: quem decide é você. Os pacotes de Linux trazem o serviço `pmog`
+do firewalld e o perfil `pmog` do ufw, então liberar é um comando:
 
 ```bash
-sudo firewall-cmd --add-port=47790-47809/tcp --add-port=47777/udp
+sudo firewall-cmd --permanent --add-service=pmog && sudo firewall-cmd --reload   # firewalld
+sudo ufw allow pmog                                                               # ufw
 ```
+
+Sem pacote, libere as portas à mão (ex.: `sudo firewall-cmd --add-port=47790-47809/tcp --add-port=47777/udp`).
 
 A descoberta usa UDP `47777` (multicast `239.77.77.77` e broadcast) e o jogo usa TCP na primeira porta livre entre `47790` e `47799`. Quem só entra precisa receber UDP `47777` para ver a lista. Para jogar pelo celular, cada PC abre também a primeira porta TCP livre entre `47800` e `47809`. No Windows, permita o PMOG quando o firewall perguntar.
 

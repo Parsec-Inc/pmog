@@ -8,18 +8,15 @@ url="https://github.com/Parsec-Inc/pmog"
 license=('LicenseRef-Proprietary')
 provides=('pmog')
 conflicts=('pmog')
-install=pmog.install
 source=("pmog-$pkgver::$url/releases/download/$pkgver/pmog-linux"
         "pmog-$pkgver.sig::$url/releases/download/$pkgver/pmog-linux.sig"
         "pmog.xml::$url/raw/$pkgver/packaging/linux/pmog.xml"
-        "ufw-pmog::$url/raw/$pkgver/packaging/linux/ufw-pmog"
-        "firewall::$url/raw/$pkgver/packaging/linux/firewall")
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+        "ufw-pmog::$url/raw/$pkgver/packaging/linux/ufw-pmog")
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
     install -Dm755 "pmog-$pkgver" "$pkgdir/usr/bin/pmog"
     install -Dm644 "pmog-$pkgver.sig" "$pkgdir/usr/bin/pmog.sig"
     install -Dm644 pmog.xml "$pkgdir/usr/lib/firewalld/services/pmog.xml"
     install -Dm644 ufw-pmog "$pkgdir/etc/ufw/applications.d/pmog"
-    install -Dm755 firewall "$pkgdir/usr/share/pmog/firewall"
 }

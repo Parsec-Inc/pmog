@@ -31,17 +31,19 @@ auto-update procura na release.
 | `scripts/package.sh deb` | `.deb` | `cargo install cargo-deb` |
 | `scripts/package.sh rpm` | `.rpm` e `.src.rpm` (o que vai para o COPR) | `rpm-build` |
 | `scripts/package.sh aur` | `dist/aur/PKGBUILD` | |
-| `scripts/package.sh msi` | `.msi` com exceção no firewall | WiX 3 (só Windows) |
+| `scripts/package.sh msi` | `.msi` | WiX 3 (só Windows) |
 | `scripts/package.sh macos` | `pmog-macos` universal | **só num Mac** |
 | `scripts/package.sh brew` | `.tar.gz` do macOS e `dist/brew/pmog.rb` | `pmog-macos` |
 
-## Permissões que os pacotes configuram
+## Firewall
 
-| Onde | O quê |
+Os pacotes não mexem no firewall: o jogo mostra quando algo bloqueia a comunicação e o próprio
+usuário libera.
+
+| Onde | O que o pacote traz |
 |---|---|
-| Linux | serviço `pmog` do firewalld (`/usr/lib/firewalld/services/pmog.xml`) e perfil do ufw (`/etc/ufw/applications.d/pmog`): UDP 47777, TCP 47790-47799 (jogo) e 47800-47809 (celular) |
-| Linux | ao instalar, `/usr/share/pmog/firewall open` libera no firewall ativo; ao remover, `close` fecha |
-| Windows | MSI para a máquina em `Program Files\pmog`, `PATH` do sistema, atalho no menu Iniciar e exceção do Firewall do Windows para o `pmog.exe` |
+| Linux | serviço `pmog` do firewalld (`/usr/lib/firewalld/services/pmog.xml`) e perfil do ufw (`/etc/ufw/applications.d/pmog`), com UDP 47777, TCP 47790-47799 (jogo) e 47800-47809 (celular). Não ficam ativos sozinhos: `sudo firewall-cmd --permanent --add-service=pmog` ou `sudo ufw allow pmog` |
+| Windows | MSI para a máquina em `Program Files\pmog`, `PATH` do sistema e atalho no menu Iniciar; o Windows pergunta sobre o firewall na primeira vez |
 | macOS | nada: o firewall do macOS pergunta na primeira vez |
 
 Todos os pacotes levam o `.sig` ao lado do executável (`/usr/bin/pmog.sig`, `pmog.exe.sig`,
@@ -71,6 +73,5 @@ versão da release do GitHub.
 ## O que não foi testado
 
 - `.deb`, `.rpm` e o pacote do AUR foram instalados e removidos em containers (Debian, Fedora,
-  Arch); o serviço do firewalld passou no `firewall-offline-cmd`. A abertura de portas com
-  firewalld/ufw rodando de verdade não foi exercitada.
+  Arch); o serviço do firewalld passou no `firewall-offline-cmd`.
 - O MSI, o build do macOS e a fórmula do Homebrew só rodam no CI; o primeiro release é o primeiro teste.

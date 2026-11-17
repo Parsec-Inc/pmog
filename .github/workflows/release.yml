@@ -287,7 +287,6 @@ jobs:
         with:
           pkgname: pmog-bin
           pkgbuild: ./aur/PKGBUILD
-          assets: ./aur/pmog.install
           updpkgsums: true
           commit_username: github-actions[bot]
           commit_email: 41898282+github-actions[bot]@users.noreply.github.com

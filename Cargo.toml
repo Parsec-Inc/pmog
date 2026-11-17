@@ -23,12 +23,10 @@ tungstenite = { version = "0.30.0", default-features = false, features = ["hands
 maintainer = "Parsec-Inc <noreply@github.com>"
 section = "games"
 priority = "optional"
-extended-description = "Jogo de terminal multiplayer na rede local. O pacote libera no firewall (firewalld ou ufw) as portas da descoberta, do servidor e da página do celular."
-maintainer-scripts = "packaging/linux/"
+extended-description = "Jogo de terminal multiplayer na rede local. Traz o serviço pmog do firewalld e o perfil do ufw para liberar as portas, sem aplicar nada sozinho."
 assets = [
     ["dist/pmog-linux", "usr/bin/pmog", "755"],
     ["dist/pmog-linux.sig", "usr/bin/pmog.sig", "644"],
     ["packaging/linux/pmog.xml", "usr/lib/firewalld/services/pmog.xml", "644"],
     ["packaging/linux/ufw-pmog", "etc/ufw/applications.d/pmog", "644"],
-    ["packaging/linux/firewall", "usr/share/pmog/firewall", "755"],
 ]
