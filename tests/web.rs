@@ -57,8 +57,9 @@ struct Phone {
 impl Phone {
     fn open(app: &App, token: &str) -> Phone {
         let stream = TcpStream::connect(addr(app)).unwrap();
-        stream.set_read_timeout(Some(Duration::from_millis(20))).unwrap();
         let (ws, _) = tungstenite::client(format!("ws://{}/ws", addr(app)), stream).unwrap();
+        // timeout curto só depois do handshake: antes, um runner lento interrompe o aperto de mão
+        ws.get_ref().set_read_timeout(Some(Duration::from_millis(20))).unwrap();
         let mut phone = Phone { ws, screen: Vec::new(), seen: Vec::new() };
         phone.send(json!({"t": "hello", "id": token, "cols": 100, "rows": 30}));
         phone
