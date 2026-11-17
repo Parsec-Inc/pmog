@@ -88,11 +88,15 @@ impl RttStats {
 
 /// The game's data folder, moving the one from before the rename into place the first time.
 pub fn data_dir() -> Option<std::path::PathBuf> {
-    let base = dirs::data_dir()?;
+    Some(data_dir_in(&dirs::data_dir()?))
+}
+
+/// The game's folder inside `base`, moving the pre-rename one into place when it is missing.
+pub fn data_dir_in(base: &std::path::Path) -> std::path::PathBuf {
     let dir = base.join(APP_DIR);
     let legacy = base.join(LEGACY_APP_DIR);
     if !dir.exists() && legacy.is_dir() {
         let _ = std::fs::rename(&legacy, &dir);
     }
-    Some(dir)
+    dir
 }

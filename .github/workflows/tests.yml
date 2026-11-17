@@ -30,4 +30,4 @@ jobs:
 
       # tape_animates_a_failed_mog é instável (falha às vezes sem relação com a mudança).
       - name: Test
-        run: cargo test --locked --release -- --skip tape_animates_a_failed_mog
+        run: cargo test --locked --release --no-fail-fast -- --skip tape_animates_a_failed_mog

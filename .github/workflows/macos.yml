@@ -28,4 +28,4 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --locked --release -- --skip tape_animates_a_failed_mog
+        run: cargo test --locked --release --no-fail-fast -- --skip tape_animates_a_failed_mog
