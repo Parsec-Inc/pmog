@@ -19,7 +19,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 
 |  |  |
 |---|---|
-| **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro. | **18 minigames de duelo**: cada um escolhe 3 dos 6 da partida, de encarada e digitação a fit check, fotogenia e mog reverso. |
+| **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro. | **18 minigames de duelo**: 6 sorteados por partida (ou cada um escolhe 3, se os dois quiserem), de encarada e digitação a fit check, fotogenia e mog reverso. |
 | **52 itens na loja** em 6 categorias (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. | **Ranks de Sub-5 a Ascendido**, com nome que brilha, pega fogo e vira arco-íris. |
 | **Chat, grupos e clãs**, com tag ao lado do nome e sem fogo amigo. | **Atualização automática** pela rede, só com builds assinadas. |
 
@@ -85,7 +85,7 @@ cargo run --example screenshots     # refaz as imagens deste README
 <summary><b>Duelos e jogo limpo</b></summary>
 
 - `D` desafia, `F` entra na fila (até 1 rank de distância; depois de 10 s, qualquer um). Aposta de amistoso a tudo do MP do mais pobre; as duas ficam presas no servidor e o vencedor leva. Empate ou servidor desligado devolve; sair no meio é desistência.
-- 6 rodadas: antes de começar, cada um escolhe 3 minigames, alternando (ou pede um aleatório). Acaba antes se a vantagem não puder mais ser tirada; 3 x 3 vai para morte súbita com um minigame que ainda não saiu.
+- 6 rodadas com minigames sorteados. Opcional: na linha Minigames do seletor de aposta, marque Escolher e cada um pega 3, alternando (na fila, só se os dois marcarem). Acaba antes se a vantagem não puder mais ser tirada; 3 x 3 vai para morte súbita com um minigame que ainda não saiu.
 - 5 s de explicação antes de cada rodada e 3,5 s de pausa entre elas.
 - Lag não conta: o servidor mede o ping e aceita o horário em que você apertou, dentro da janela que o ping permite.
 - Mog entre jogadores só troca MP de mão. Bater em quem está 2 ranks abaixo rende 25%; 3 ou mais, nada.

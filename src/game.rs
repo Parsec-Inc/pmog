@@ -453,6 +453,10 @@ pub struct Game {
     pub stake_cursor: usize,
     /// Who the stake picker challenges; `None` means the queue.
     pub stake_target: Option<PlayerId>,
+    /// Focused row of the stake picker: the bet, then the minigame mode.
+    pub stake_row: usize,
+    /// Each side picks the minigames instead of drawing them.
+    pub stake_draft: bool,
     /// Last measured round trip to the server.
     pub rtt: Duration,
     pub chat: crate::chat::ChatClient,
@@ -564,6 +568,8 @@ impl Game {
             queued: None,
             stake_cursor: 1,
             stake_target: None,
+            stake_row: 0,
+            stake_draft: false,
             rtt: Duration::ZERO,
             chat: Default::default(),
             clan: Default::default(),
@@ -740,8 +746,7 @@ impl Game {
             Some(peer) if peer.is_npc() => self.log(Tone::Info, "Escolha um jogador de verdade para duelar (↑↓)."),
             Some(peer) if peer.in_duel => self.log(Tone::Info, format!("{} já está num duelo.", peer.name)),
             Some(peer) => {
-                self.stake_target = Some(peer.id);
-                self.overlay = Overlay::Stake;
+                self.open_stake(Some(peer.id));
             }
             None => {}
         }
@@ -750,24 +755,41 @@ impl Game {
     /// Leaves the queue, or opens the bet picker to join it.
     pub fn toggle_queue(&mut self) {
         if self.queued.is_some() {
-            self.outbox.push(ClientMsg::Queue { fraction: None });
+            self.outbox.push(ClientMsg::Queue { fraction: None, draft: false });
         } else {
-            self.stake_target = None;
-            self.overlay = Overlay::Stake;
+            self.open_stake(None);
         }
     }
 
+    /// Opens the stake picker on the bet row, with drawn minigames.
+    fn open_stake(&mut self, target: Option<PlayerId>) {
+        self.stake_target = target;
+        self.stake_row = 0;
+        self.stake_draft = false;
+        self.overlay = Overlay::Stake;
+    }
+
+    /// Changes the bet, or the minigame mode on the second row.
     pub fn stake_move(&mut self, delta: isize) {
+        if self.stake_row == 1 {
+            self.stake_draft = delta > 0;
+            return;
+        }
         let len = STAKE_FRACTIONS.len() as isize;
         self.stake_cursor = (self.stake_cursor as isize + delta).clamp(0, len - 1) as usize;
+    }
+
+    /// Moves focus between the bet and the minigame mode rows.
+    pub fn stake_row_move(&mut self, delta: isize) {
+        self.stake_row = (self.stake_row as isize + delta).clamp(0, 1) as usize;
     }
 
     /// Sends the challenge or joins the queue with the chosen bet.
     pub fn confirm_stake(&mut self) {
         let fraction = STAKE_FRACTIONS[self.stake_cursor.min(STAKE_FRACTIONS.len() - 1)];
         self.outbox.push(match self.stake_target {
-            Some(target) => ClientMsg::Challenge { target, fraction },
-            None => ClientMsg::Queue { fraction: Some(fraction) },
+            Some(target) => ClientMsg::Challenge { target, fraction, draft: self.stake_draft },
+            None => ClientMsg::Queue { fraction: Some(fraction), draft: self.stake_draft },
         });
         self.overlay = Overlay::None;
     }

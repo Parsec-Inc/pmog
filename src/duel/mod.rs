@@ -378,11 +378,23 @@ pub struct Duel {
 }
 
 impl Duel {
-    /// Duel that starts with the draft; who picks first is drawn.
-    pub fn new(players: [PlayerId; 2], names: [String; 2], stake: f64, now: Instant, rng: &mut impl Rng) -> Duel {
+    /// Duel with drawn minigames, or a draft when `draft`; who picks first is drawn.
+    pub fn new(
+        players: [PlayerId; 2],
+        names: [String; 2],
+        stake: f64,
+        draft: bool,
+        now: Instant,
+        rng: &mut impl Rng,
+    ) -> Duel {
         let mut duel = Duel::blank(players, names, stake, now);
         duel.draft = Some(Draft { picks: Vec::new(), turn: rng.gen_range(0..2) });
         duel.set_phase(Phase::Draft, DRAFT_PICK_TIME, now);
+        if !draft {
+            while let Some(turn) = duel.draft.as_ref().filter(|d| d.picks.len() < DUEL_ROUNDS as usize).map(|d| d.turn) {
+                duel.pick(turn, None, now, rng);
+            }
+        }
         duel
     }
 

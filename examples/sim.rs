@@ -98,15 +98,15 @@ fn handle(world: &mut World, id: PlayerId, msg: ClientMsg, now: Instant, stats: 
         ClientMsg::Buy { item } => world.buy(id, item),
         ClientMsg::Use { item } => world.use_item(id, item, now),
         ClientMsg::Rename { name } => world.rename(id, &name),
-        ClientMsg::Challenge { target, fraction } => {
+        ClientMsg::Challenge { target, fraction, draft } => {
             stats.invites_sent += 1;
-            world.challenge(id, target, fraction, now)
+            world.challenge(id, target, fraction, draft, now)
         }
         ClientMsg::Answer { from, accept } => world.answer(id, from, accept, now),
         ClientMsg::CancelChallenge => world.cancel_challenge(id),
-        ClientMsg::Queue { fraction } => {
+        ClientMsg::Queue { fraction, draft } => {
             stats.queue_joins += fraction.is_some() as u32;
-            world.queue(id, fraction, now)
+            world.queue(id, fraction, draft, now)
         }
         ClientMsg::Duel { key, at_ms } => world.duel_input(id, key, at_ms, 0.0, now),
         ClientMsg::Pong { .. } | ClientMsg::Chat(_) | ClientMsg::Clan(_) => {}

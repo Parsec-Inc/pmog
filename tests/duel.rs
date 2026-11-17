@@ -357,7 +357,7 @@ fn challenge_accept_escrows_both_bets() {
     let now = Instant::now();
     let mut w = world(3, 200.0, now);
     w.slot_mut(2).unwrap().player.mp = 80.0;
-    w.challenge(1, 2, 0.5, now);
+    w.challenge(1, 2, 0.5, false, now);
     let view = w.view(2, now).unwrap();
     assert_eq!(view.invites.len(), 1);
     assert_eq!(view.invites[0].stake, 40.0, "half of the poorer player's MP");
@@ -375,7 +375,7 @@ fn challenge_accept_escrows_both_bets() {
     assert!(texts(&w, 3).iter().any(|t| t.contains("está num duelo")));
     w.mog(1, NPC_TARGET, 0.5, now);
     assert!(texts(&w, 1).iter().any(|t| t.contains("Termine o duelo")));
-    w.challenge(3, 2, 0.1, now);
+    w.challenge(3, 2, 0.1, false, now);
     assert!(texts(&w, 3).iter().any(|t| t.contains("já está num duelo")));
 }
 
@@ -384,7 +384,7 @@ fn winner_takes_the_pot_and_it_is_logged() {
     let now = Instant::now();
     let mut w = world(2, 100.0, now);
     let lifetime_before = w.slot(2).unwrap().player.lifetime;
-    w.challenge(1, 2, 0.25, now);
+    w.challenge(1, 2, 0.25, false, now);
     w.answer(2, 1, true, now);
     w.forfeit(1, now);
     assert_eq!(mp(&w, 1), 75.0);
@@ -410,7 +410,7 @@ fn winner_takes_the_pot_and_it_is_logged() {
 fn a_full_duel_played_through_the_world() {
     let now = Instant::now();
     let mut w = world(2, 100.0, now);
-    w.challenge(1, 2, 1.0, now);
+    w.challenge(1, 2, 1.0, true, now);
     w.answer(2, 1, true, now);
     assert_eq!(mp(&w, 1) + mp(&w, 2), 0.0, "everything is in escrow");
     let mut t = now;
@@ -455,19 +455,19 @@ fn a_full_duel_played_through_the_world() {
 fn decline_cancel_and_expiry() {
     let now = Instant::now();
     let mut w = world(3, 100.0, now);
-    w.challenge(1, 2, 0.1, now);
+    w.challenge(1, 2, 0.1, false, now);
     w.answer(2, 1, false, now);
     assert!(texts(&w, 1).iter().any(|t| t.contains("recusou")));
     assert!(w.view(1, now).unwrap().outgoing.is_none());
 
-    w.challenge(1, 2, 0.1, now);
-    w.challenge(1, 3, 0.1, now);
+    w.challenge(1, 2, 0.1, false, now);
+    w.challenge(1, 3, 0.1, false, now);
     assert!(w.view(2, now).unwrap().invites.is_empty(), "a new challenge replaces the old one");
     assert_eq!(w.view(3, now).unwrap().invites.len(), 1);
     w.cancel_challenge(1);
     assert!(w.view(3, now).unwrap().invites.is_empty());
 
-    w.challenge(1, 2, 0.1, now);
+    w.challenge(1, 2, 0.1, false, now);
     w.tick(now + INVITE_TTL, 0.0);
     assert!(w.view(2, now).unwrap().invites.is_empty());
     assert!(texts(&w, 2).iter().any(|t| t.contains("expirou")));
@@ -479,11 +479,11 @@ fn decline_cancel_and_expiry() {
 fn bad_challenges_are_refused() {
     let now = Instant::now();
     let mut w = world(2, 100.0, now);
-    w.challenge(1, 1, 0.1, now);
-    w.challenge(1, NPC_TARGET, 0.1, now);
-    w.challenge(1, 99, 0.1, now);
-    w.challenge(1, 2, 0.33, now);
-    w.challenge(1, 2, f64::NAN, now);
+    w.challenge(1, 1, 0.1, false, now);
+    w.challenge(1, NPC_TARGET, 0.1, false, now);
+    w.challenge(1, 99, 0.1, false, now);
+    w.challenge(1, 2, 0.33, false, now);
+    w.challenge(1, 2, f64::NAN, false, now);
     assert!(w.view(2, now).unwrap().invites.is_empty());
     assert!(texts(&w, 1).iter().any(|t| t.contains("Aposta inválida")));
 }
@@ -495,16 +495,16 @@ fn queue_pairs_close_ranks_first_then_anyone() {
     w.slot_mut(1).unwrap().player.lifetime = 0.0; // Sub-5
     w.slot_mut(2).unwrap().player.lifetime = 1e9; // Ascendido
     w.slot_mut(3).unwrap().player.lifetime = 200.0; // LTN
-    w.queue(1, Some(0.5), now);
+    w.queue(1, Some(0.5), false, now);
     assert_eq!(w.view(1, now).unwrap().queued, Some(0.5));
-    w.queue(2, Some(0.5), now);
+    w.queue(2, Some(0.5), false, now);
     assert!(!w.in_duel(1) && !w.in_duel(2), "ranks too far apart: keep waiting");
-    w.queue(3, Some(0.25), now);
+    w.queue(3, Some(0.25), false, now);
     assert!(w.in_duel(1) && w.in_duel(3), "one rank apart: paired at once");
     assert!(!w.in_duel(2));
     assert_eq!(mp(&w, 1), 75.0, "the smaller bet is used");
 
-    w.queue(4, Some(0.1), now);
+    w.queue(4, Some(0.1), false, now);
     assert!(!w.in_duel(4));
     w.tick(now + QUEUE_RELAX, 0.0);
     assert!(w.in_duel(2) && w.in_duel(4), "after waiting, anyone will do");
@@ -514,11 +514,11 @@ fn queue_pairs_close_ranks_first_then_anyone() {
 fn leaving_the_queue() {
     let now = Instant::now();
     let mut w = world(2, 100.0, now);
-    w.queue(1, Some(0.1), now);
-    w.queue(1, None, now);
+    w.queue(1, Some(0.1), false, now);
+    w.queue(1, None, false, now);
     assert!(w.view(1, now).unwrap().queued.is_none());
     assert!(texts(&w, 1).iter().any(|t| t.contains("saiu da fila")));
-    w.queue(2, Some(0.1), now);
+    w.queue(2, Some(0.1), false, now);
     assert!(!w.in_duel(2));
 }
 
@@ -526,7 +526,7 @@ fn leaving_the_queue() {
 fn leaving_mid_duel_is_a_forfeit_and_shutdown_refunds() {
     let now = Instant::now();
     let mut w = world(4, 100.0, now);
-    w.challenge(1, 2, 1.0, now);
+    w.challenge(1, 2, 1.0, false, now);
     w.answer(2, 1, true, now);
     let now = play_one_round(&mut w, now);
     let profile = w.leave(1, now).unwrap();
@@ -534,7 +534,7 @@ fn leaving_mid_duel_is_a_forfeit_and_shutdown_refunds() {
     assert_eq!(profile.duels_lost, 1, "a round was played, so leaving is a counted loss");
     assert_eq!(mp(&w, 2), 200.0);
 
-    w.challenge(3, 4, 0.5, now);
+    w.challenge(3, 4, 0.5, false, now);
     w.answer(4, 3, true, now);
     assert_eq!(mp(&w, 3), 50.0);
     let logged = w.matches.len();
@@ -549,13 +549,13 @@ fn leaving_mid_duel_is_a_forfeit_and_shutdown_refunds() {
 fn leaving_cancels_invites_and_queue() {
     let now = Instant::now();
     let mut w = world(3, 100.0, now);
-    w.challenge(1, 2, 0.1, now);
-    w.queue(3, Some(0.1), now);
+    w.challenge(1, 2, 0.1, false, now);
+    w.queue(3, Some(0.1), false, now);
     w.leave(1, now);
     w.leave(3, now);
     assert!(w.view(2, now).unwrap().invites.is_empty());
     assert!(texts(&w, 2).iter().any(|t| t.contains("saiu do servidor")));
-    w.queue(2, Some(0.1), now);
+    w.queue(2, Some(0.1), false, now);
     assert!(!w.in_duel(2), "nobody left in the queue to pair with");
 }
 
@@ -563,7 +563,7 @@ fn leaving_cancels_invites_and_queue() {
 fn friendly_duel_moves_no_mp() {
     let now = Instant::now();
     let mut w = world(2, 100.0, now);
-    w.challenge(1, 2, 0.0, now);
+    w.challenge(1, 2, 0.0, false, now);
     w.answer(2, 1, true, now);
     let now = play_one_round(&mut w, now);
     w.forfeit(2, now);
@@ -585,7 +585,7 @@ fn play_one_round(w: &mut World, mut now: Instant) -> Instant {
 fn ranked_duel_after_a_round_counts() {
     let now = Instant::now();
     let mut w = world(2, 100.0, now);
-    w.challenge(1, 2, 0.25, now);
+    w.challenge(1, 2, 0.25, false, now);
     w.answer(2, 1, true, now);
     let now = play_one_round(&mut w, now);
     w.forfeit(1, now);
@@ -600,7 +600,7 @@ fn ranked_duel_after_a_round_counts() {
 fn friendly_duel_messages_have_no_mp() {
     let now = Instant::now();
     let mut w = world(2, 100.0, now);
-    w.challenge(1, 2, 0.0, now);
+    w.challenge(1, 2, 0.0, false, now);
     w.answer(2, 1, true, now);
     w.outbox.clear();
     w.forfeit(1, now);
@@ -648,7 +648,7 @@ fn angle_tie_falls_to_the_other_attempts() {
 fn friendly_results_are_not_broadcast() {
     let now = Instant::now();
     let mut w = world(3, 100.0, now);
-    w.challenge(1, 2, 0.0, now);
+    w.challenge(1, 2, 0.0, false, now);
     w.answer(2, 1, true, now);
     w.outbox.clear();
     w.forfeit(1, now);
@@ -656,7 +656,7 @@ fn friendly_results_are_not_broadcast() {
     w.tick(now + DUEL_RESULT_SHOW * 2, 0.0);
     w.slot_mut(1).unwrap().player.mp = 1000.0;
     w.slot_mut(2).unwrap().player.mp = 1000.0;
-    w.challenge(1, 2, 0.5, now);
+    w.challenge(1, 2, 0.5, false, now);
     w.answer(2, 1, true, now);
     w.forfeit(1, now);
     assert!(texts(&w, 3).iter().any(|t| t.contains("num duelo valendo")), "big bets are announced");
@@ -903,7 +903,7 @@ fn draft_all(d: &mut Duel, picks: &[Option<Minigame>], now: Instant) {
 #[test]
 fn draft_alternates_and_sets_the_round_order() {
     let now = Instant::now();
-    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 50.0, now, &mut rng());
+    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 50.0, true, now, &mut rng());
     assert_eq!(d.phase, Phase::Draft);
     let first = (0..2).find(|s| matches!(board(&d, *s, now), Board::Draft { my_turn: true, .. })).unwrap();
     d.input(1 - first, DuelKey::Pick(Some(Minigame::Brow)), None, 0.0, now, &mut rng());
@@ -929,7 +929,7 @@ fn draft_alternates_and_sets_the_round_order() {
 #[test]
 fn draft_time_out_picks_for_you() {
     let now = Instant::now();
-    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 0.0, now, &mut rng());
+    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 0.0, true, now, &mut rng());
     let t = run_until(&mut d, now, |d, _| d.phase == Phase::Countdown);
     assert!(t >= now + DRAFT_PICK_TIME * DUEL_ROUNDS);
     let view = d.view(0, 0.0, t);
@@ -939,8 +939,48 @@ fn draft_time_out_picks_for_you() {
 #[test]
 fn every_draft_step_is_a_new_phase_for_clients() {
     let now = Instant::now();
-    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 0.0, now, &mut rng());
+    let mut d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 0.0, true, now, &mut rng());
     let before = d.revision(now);
     draft_all(&mut d, &[None], now);
     assert_ne!(d.revision(now), before);
+}
+
+#[test]
+fn by_default_the_minigames_are_drawn_with_no_draft() {
+    let now = Instant::now();
+    let d = Duel::new([1, 2], ["Alfa".into(), "Beta".into()], 0.0, false, now, &mut rng());
+    assert_eq!(d.phase, Phase::Countdown, "goes straight to the first round");
+    let view = d.view(0, 0.0, now);
+    assert_eq!(view.lineup.len(), DUEL_ROUNDS as usize);
+    assert!(view.lineup.iter().all(|p| p.random));
+    let games: std::collections::HashSet<_> = view.lineup.iter().map(|p| p.game).collect();
+    assert_eq!(games.len(), DUEL_ROUNDS as usize, "no repeats");
+    assert_eq!(d.game, view.lineup[0].game);
+}
+
+#[test]
+fn a_challenge_drafts_only_when_asked() {
+    let now = Instant::now();
+    let mut w = world(4, 100.0, now);
+    w.challenge(1, 2, 0.0, false, now);
+    assert!(!w.view(2, now).unwrap().invites[0].draft);
+    w.answer(2, 1, true, now);
+    assert_ne!(w.view(1, now).unwrap().duel.unwrap().phase, Phase::Draft);
+
+    w.challenge(3, 4, 0.0, true, now);
+    assert!(w.view(4, now).unwrap().invites[0].draft, "the invite tells how the minigames are chosen");
+    w.answer(4, 3, true, now);
+    assert_eq!(w.view(3, now).unwrap().duel.unwrap().phase, Phase::Draft);
+}
+
+#[test]
+fn the_queue_drafts_only_when_both_ask() {
+    let now = Instant::now();
+    let mut w = world(4, 100.0, now);
+    w.queue(1, Some(0.0), true, now);
+    w.queue(2, Some(0.0), false, now);
+    assert_ne!(w.view(1, now).unwrap().duel.unwrap().phase, Phase::Draft);
+    w.queue(3, Some(0.0), true, now);
+    w.queue(4, Some(0.0), true, now);
+    assert_eq!(w.view(3, now).unwrap().duel.unwrap().phase, Phase::Draft);
 }

@@ -62,21 +62,22 @@ fn duels() -> Vec<Line<'static>> {
     use crate::duel::Minigame;
     let mut lines = vec![
         title("Duelo direto"),
-        text(format!("Fora do botão MOGAR, dá para chamar alguém para um duelo de verdade: {DUEL_ROUNDS} rodadas de minigames escolhidos pelos dois.")),
+        text(format!("Fora do botão MOGAR, dá para chamar alguém para um duelo de verdade: {DUEL_ROUNDS} rodadas de minigames sorteados.")),
         gap(),
-        key("D", "desafia o jogador selecionado (escolha a aposta e aperte Enter)"),
+        key("D", "desafia o jogador selecionado (escolha a aposta e aperte Enter; ↓ troca Aleatório por Escolher)"),
         key("F", &format!("entra na fila: junta você com alguém até 1 rank de distância (depois de {} s esperando, com qualquer um)", QUEUE_RELAX.as_secs())),
         key("A / R", "aceita ou recusa um desafio recebido"),
         key("X", "cancela o desafio que você mandou"),
         key("Esc", "dentro do duelo, desiste (perde a aposta)"),
         gap(),
         title("Escolha e rodadas"),
+        bullet("Por padrão os minigames são sorteados. Para escolher, desça para a linha Minigames no seletor de aposta e marque Escolher. Na fila, só vale se os dois marcarem."),
         bullet(format!(
-            "Antes de começar, cada um escolhe {} minigames, alternando (quem começa é sorteado). Use as setas e Enter; o Aleatório sorteia um que ninguém escolheu. Acabou o tempo de {} s, o servidor sorteia por você.",
+            "Escolhendo, antes de começar cada um pega {} minigames, alternando (quem começa é sorteado). Use as setas e Enter; o Aleatório sorteia um que ninguém escolheu. Acabou o tempo de {} s, o servidor sorteia por você.",
             DUEL_ROUNDS / 2,
             DRAFT_PICK_TIME.as_secs()
         )),
-        bullet(format!("As {DUEL_ROUNDS} rodadas seguem a ordem das escolhas. O duelo acaba antes se alguém abrir uma vantagem que não dá mais para tirar.")),
+        bullet(format!("As {DUEL_ROUNDS} rodadas seguem a ordem do sorteio ou das escolhas. O duelo acaba antes se alguém abrir uma vantagem que não dá mais para tirar.")),
         bullet(format!("Empatou depois de {DUEL_ROUNDS}? Morte súbita com um minigame sorteado que ainda não saiu, até alguém vencer uma rodada (no máximo {DUEL_MAX_ROUNDS} rodadas no total).")),
         gap(),
         title("Aposta"),

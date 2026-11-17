@@ -581,11 +581,11 @@ fn challenging_through_the_bet_picker() {
     let screen = render(&a, 120, 30);
     assert!(screen.contains("Desafiar Rival") && screen.contains("Cada um aposta 12 MP"), "{screen}");
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.25 }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.25, draft: false }));
     assert_eq!(a.game.overlay, Overlay::None);
 
     state_with(&mut a, |s| {
-        s.outgoing = Some(InviteView { peer: 2, name: "Rival".into(), fraction: 0.25, stake: 12.0, expires_ms: 9_500 })
+        s.outgoing = Some(InviteView { peer: 2, name: "Rival".into(), fraction: 0.25, stake: 12.0, expires_ms: 9_500, draft: false })
     });
     assert!(render(&a, 150, 42).contains("Desafio para Rival · 12 MP · expira em 10 s"));
     press(&mut a, KeyCode::Char('x'));
@@ -593,21 +593,34 @@ fn challenging_through_the_bet_picker() {
 
     press(&mut a, KeyCode::Char('f'));
     assert_eq!(a.game.overlay, Overlay::Stake);
-    assert!(render(&a, 120, 30).contains("Fila de duelo"));
+    let screen = render(&a, 120, 30);
+    assert!(screen.contains("Fila de duelo") && screen.contains("Aleatório") && screen.contains("sorteados"), "{screen}");
     press(&mut a, KeyCode::Left);
     press(&mut a, KeyCode::Left);
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: Some(0.0) }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: Some(0.0), draft: false }), "random is the default");
+
+    press(&mut a, KeyCode::Char('d'));
+    press(&mut a, KeyCode::Down);
+    press(&mut a, KeyCode::Right);
+    assert!(render(&a, 120, 30).contains("Cada um escolhe 3 minigames"));
+    press(&mut a, KeyCode::Up);
+    press(&mut a, KeyCode::Right);
+    press(&mut a, KeyCode::Enter);
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.1, draft: true }), "second row picks the draft");
+    press(&mut a, KeyCode::Char('d'));
+    assert!(!a.game.stake_draft, "reopening goes back to random");
+    press(&mut a, KeyCode::Esc);
     state_with(&mut a, |s| s.queued = Some(0.0));
     assert!(render(&a, 150, 42).contains("Na fila de duelo"));
     press(&mut a, KeyCode::Char('f'));
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: None }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: None, draft: false }));
 }
 
 #[test]
 fn invitations_can_be_answered() {
     let mut a = playing();
-    let invite = InviteView { peer: 2, name: "Rival".into(), fraction: 0.5, stake: 25.0, expires_ms: 14_000 };
+    let invite = InviteView { peer: 2, name: "Rival".into(), fraction: 0.5, stake: 25.0, expires_ms: 14_000, draft: false };
     state_with(&mut a, |s| s.invites = vec![invite.clone(), InviteView { peer: 3, ..invite.clone() }]);
     let screen = render(&a, 150, 42);
     assert!(screen.contains("te desafiou para um duelo") && screen.contains("25 MP"), "{screen}");
@@ -919,7 +932,7 @@ fn draft_screen_moves_and_picks() {
     use rand::SeedableRng;
     let mut rng = rand::rngs::StdRng::seed_from_u64(1);
     let now = Instant::now();
-    let d = pmog::duel::Duel::new([1, 2], ["Igor".into(), "Rival".into()], 0.0, now, &mut rng);
+    let d = pmog::duel::Duel::new([1, 2], ["Igor".into(), "Rival".into()], 0.0, true, now, &mut rng);
     let side = (0..2).find(|s| matches!(d.view(*s, 0.0, now).board, Board::Draft { my_turn: true, .. })).unwrap();
     let mut a = dueling(d.view(side, 0.0, now));
     let screen = render(&a, 150, 42);

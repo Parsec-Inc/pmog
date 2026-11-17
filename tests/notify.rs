@@ -74,7 +74,7 @@ fn state(invites: Vec<InviteView>) -> ServerMsg {
 }
 
 fn invite(peer: i64, name: &str) -> InviteView {
-    InviteView { peer, name: name.into(), fraction: 0.5, stake: 120.0, expires_ms: 10_000 }
+    InviteView { peer, name: name.into(), fraction: 0.5, stake: 120.0, expires_ms: 10_000, draft: false }
 }
 
 fn offline_app() -> App {

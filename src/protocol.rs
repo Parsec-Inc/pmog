@@ -45,11 +45,21 @@ pub enum ClientMsg {
     Use { item: ItemId },
     Rename { name: String },
     /// Invites `target` to a duel betting `fraction` of the poorer player's MP.
-    Challenge { target: PlayerId, fraction: f64 },
+    /// `draft` asks for each side to pick minigames instead of drawing them.
+    Challenge {
+        target: PlayerId,
+        fraction: f64,
+        #[serde(default)]
+        draft: bool,
+    },
     Answer { from: PlayerId, accept: bool },
     CancelChallenge,
     /// Joins the duel queue, or leaves it with `None`.
-    Queue { fraction: Option<f64> },
+    Queue {
+        fraction: Option<f64>,
+        #[serde(default)]
+        draft: bool,
+    },
     /// `at_ms` is when the key was pressed, in ms since the phase started on this client's aligned clock.
     Duel {
         key: DuelKey,
@@ -91,6 +101,9 @@ pub struct InviteView {
     /// MP each side would bet right now.
     pub stake: f64,
     pub expires_ms: u64,
+    /// Each side picks minigames instead of drawing them.
+    #[serde(default)]
+    pub draft: bool,
 }
 
 /// Everything a client needs to draw its screen.

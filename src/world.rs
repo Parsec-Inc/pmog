@@ -83,13 +83,14 @@ pub struct World {
     active: Vec<Duel>,
     invites: Vec<Invite>,
     /// Players waiting for a duel, with the bet fraction they accept.
-    queue: Vec<(PlayerId, f64, Instant)>,
+    queue: Vec<(PlayerId, f64, bool, Instant)>,
 }
 
 struct Invite {
     from: PlayerId,
     to: PlayerId,
     fraction: f64,
+    draft: bool,
     expires: Instant,
 }
 
@@ -572,10 +573,11 @@ impl World {
             fraction: inv.fraction,
             stake: self.stake_for(inv.from, inv.to, inv.fraction),
             expires_ms: remaining_ms(inv.expires, now),
+            draft: inv.draft,
         };
         let invites = self.invites.iter().filter(|i| i.to == id).map(|i| invite_view(i, i.from)).collect();
         let outgoing = self.invites.iter().find(|i| i.from == id).map(|i| invite_view(i, i.to));
-        let queued = self.queue.iter().find(|(q, ..)| *q == id).map(|(_, f, _)| *f);
+        let queued = self.queue.iter().find(|(q, ..)| *q == id).map(|(_, f, ..)| *f);
         Some(StateView {
             me: slot.player.clone(),
             streak: slot.streak,
@@ -634,7 +636,7 @@ impl World {
         }
     }
 
-    pub fn challenge(&mut self, id: PlayerId, target: PlayerId, fraction: f64, now: Instant) {
+    pub fn challenge(&mut self, id: PlayerId, target: PlayerId, fraction: f64, draft: bool, now: Instant) {
         if !self.slots.contains_key(&id) {
             return;
         }
@@ -656,14 +658,15 @@ impl World {
         }
         self.cancel_challenge(id);
         self.queue.retain(|(q, ..)| *q != id);
-        self.invites.push(Invite { from: id, to: target, fraction, expires: now + INVITE_TTL });
+        self.invites.push(Invite { from: id, to: target, fraction, draft, expires: now + INVITE_TTL });
         let stake = format_mp(self.stake_for(id, target, fraction));
         let (me, them) = (self.name_of(id), self.name_of(target));
-        self.event(id, Tone::Info, format!("Desafio enviado para {them} valendo {stake} MP. Esperando resposta..."), None, false);
+        let mode = if draft { ", escolhendo os minigames" } else { "" };
+        self.event(id, Tone::Info, format!("Desafio enviado para {them} valendo {stake} MP{mode}. Esperando resposta..."), None, false);
         self.event(
             target,
             Tone::Epic,
-            format!("{me} te desafiou para um duelo valendo {stake} MP! A aceita, R recusa."),
+            format!("{me} te desafiou para um duelo valendo {stake} MP{mode}! A aceita, R recusa."),
             Some(format!("DESAFIO DE {}", me.to_uppercase())),
             false,
         );
@@ -699,11 +702,11 @@ impl World {
             self.event(id, Tone::Info, CLAN_BET_REFUSED, None, false);
             return;
         }
-        self.start_duel(from, id, invite.fraction, now);
+        self.start_duel(from, id, invite.fraction, invite.draft, now);
     }
 
-    /// Joins the queue with a bet, or leaves it with `None`.
-    pub fn queue(&mut self, id: PlayerId, fraction: Option<f64>, now: Instant) {
+    /// Joins the queue with a bet, or leaves it with `None`; the draft needs both sides asking for it.
+    pub fn queue(&mut self, id: PlayerId, fraction: Option<f64>, draft: bool, now: Instant) {
         if !self.slots.contains_key(&id) {
             return;
         }
@@ -725,8 +728,8 @@ impl World {
         }
         self.cancel_challenge(id);
         match self.queue.iter_mut().find(|(q, ..)| *q == id) {
-            Some(entry) => entry.1 = fraction,
-            None => self.queue.push((id, fraction, now)),
+            Some(entry) => (entry.1, entry.2) = (fraction, draft),
+            None => self.queue.push((id, fraction, draft, now)),
         }
         self.event(id, Tone::Info, "Na fila de duelo. Esperando outro jogador...", None, false);
         self.matchmake(now);
@@ -741,20 +744,20 @@ impl World {
     fn matchmake(&mut self, now: Instant) {
         'search: loop {
             for i in 0..self.queue.len() {
-                let (a, fa, since_a) = self.queue[i];
+                let (a, fa, da, since_a) = self.queue[i];
                 let best = self
                     .queue
                     .iter()
                     .enumerate()
                     .filter(|(j, (b, ..))| *j != i && !self.same_clan(a, *b))
-                    .map(|(j, &(b, fb, since_b))| (j, b, fb, since_b, self.rank_index(a).abs_diff(self.rank_index(b))))
+                    .map(|(j, &(b, fb, db, since_b))| (j, b, fb, db, since_b, self.rank_index(a).abs_diff(self.rank_index(b))))
                     .min_by_key(|(.., gap)| *gap);
-                let Some((j, b, fb, since_b, gap)) = best else { continue };
+                let Some((j, b, fb, db, since_b, gap)) = best else { continue };
                 let waited = |since: Instant| now.saturating_duration_since(since) >= QUEUE_RELAX;
                 if gap <= QUEUE_RANK_GAP || waited(since_a) || waited(since_b) {
                     let (first, second) = if i < j { (a, b) } else { (b, a) };
                     self.queue.retain(|(q, ..)| *q != a && *q != b);
-                    self.start_duel(first, second, fa.min(fb), now);
+                    self.start_duel(first, second, fa.min(fb), da && db, now);
                     continue 'search;
                 }
             }
@@ -783,7 +786,7 @@ impl World {
     }
 
     /// Takes both bets in escrow and starts the duel.
-    fn start_duel(&mut self, a: PlayerId, b: PlayerId, fraction: f64, now: Instant) {
+    fn start_duel(&mut self, a: PlayerId, b: PlayerId, fraction: f64, draft: bool, now: Instant) {
         let stake = self.stake_for(a, b, fraction);
         for id in [a, b] {
             if let Some(slot) = self.slots.get_mut(&id) {
@@ -795,15 +798,12 @@ impl World {
         self.drop_invites_of(b, "entrou num duelo");
         self.queue.retain(|(q, ..)| *q != a && *q != b);
         let names = [self.name_of(a), self.name_of(b)];
+        let mode = if draft { format!("cada um escolhe {} minigames", DUEL_ROUNDS / 2) } else { "minigames sorteados".into() };
         for (me, other) in [(a, &names[1]), (b, &names[0])] {
-            let text = format!(
-                "Duelo contra {other} valendo {} MP! {DUEL_ROUNDS} rodadas, e cada um escolhe {} minigames.",
-                format_mp(stake),
-                DUEL_ROUNDS / 2
-            );
+            let text = format!("Duelo contra {other} valendo {} MP! {DUEL_ROUNDS} rodadas, {mode}.", format_mp(stake));
             self.event(me, Tone::Epic, text, Some("DUELO!".into()), false);
         }
-        self.active.push(Duel::new([a, b], names, stake, now, &mut rand::thread_rng()));
+        self.active.push(Duel::new([a, b], names, stake, draft, now, &mut rand::thread_rng()));
         self.push.extend([a, b]);
     }
 

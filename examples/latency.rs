@@ -76,7 +76,7 @@ fn run(duels: u32, slow_ms: f64, jitter: f64, compensate: bool) -> (Tally, u32) 
         now += STEP;
         world.tick(now, STEP.as_secs_f64());
         if world.duels().is_empty() && world.view(1, now).is_some_and(|v| v.outgoing.is_none()) {
-            world.challenge(1, 2, 0.0, now);
+            world.challenge(1, 2, 0.0, false, now);
             world.answer(2, 1, true, now);
         }
         for s in sides.iter_mut() {

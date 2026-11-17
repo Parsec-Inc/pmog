@@ -161,8 +161,10 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
         }
         Overlay::Chat | Overlay::Clan => {} // handled above with raw keys
         Overlay::Stake => match code {
-            KeyCode::Left | KeyCode::Up | KeyCode::Char('h' | 'k') => game.stake_move(-1),
-            KeyCode::Right | KeyCode::Down | KeyCode::Char('l' | 'j') => game.stake_move(1),
+            KeyCode::Left | KeyCode::Char('h') => game.stake_move(-1),
+            KeyCode::Right | KeyCode::Char('l') => game.stake_move(1),
+            KeyCode::Up | KeyCode::Char('k') => game.stake_row_move(-1),
+            KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') => game.stake_row_move(1),
             KeyCode::Enter | KeyCode::Char(' ') => game.confirm_stake(),
             KeyCode::Esc | KeyCode::Char('q') => game.overlay = Overlay::None,
             _ => {}
