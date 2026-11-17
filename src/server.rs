@@ -18,6 +18,7 @@ use crate::update::{self, Shelf};
 use crate::utils::{RttStats, clean_name};
 use crate::chat::{ChatCtx, ChatHub};
 use crate::clan::{ClanCtx, ClanHub};
+use crate::web::{self, WebCtx};
 use crate::world::World;
 
 /// Ports a server uses; tests pick their own to stay isolated.
@@ -99,7 +100,7 @@ impl ServerHandle {
 
         let offers = shelf.offers();
         let threads = vec![
-            spawn_acceptor(listener, tx, stop.clone(), Arc::new(shelf)),
+            spawn_acceptor(listener, tx, WebCtx::new(port, stop.clone()), Arc::new(shelf)),
             spawn_world(db, rx, stop.clone(), status.clone(), name.clone()),
             spawn_beacon(ports.discovery, name.clone(), port, offers, stop.clone(), status.clone())?,
         ];
@@ -142,17 +143,17 @@ fn bind_listener(start: u16) -> io::Result<TcpListener> {
     Err(io::Error::new(io::ErrorKind::AddrInUse, "nenhuma porta livre para o servidor"))
 }
 
-fn spawn_acceptor(listener: TcpListener, tx: Sender<Inbound>, stop: Arc<AtomicBool>, shelf: Arc<Shelf>) -> JoinHandle<()> {
+fn spawn_acceptor(listener: TcpListener, tx: Sender<Inbound>, web: WebCtx, shelf: Arc<Shelf>) -> JoinHandle<()> {
     thread::spawn(move || {
         let mut next_id: ConnId = 0;
-        while !stop.load(Ordering::SeqCst) {
+        while !web.stop.load(Ordering::SeqCst) {
             match listener.accept() {
                 Ok((stream, _)) => {
                     let _ = stream.set_nonblocking(false);
                     let _ = stream.set_nodelay(true);
                     let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
                     next_id += 1;
-                    spawn_reader(next_id, stream, tx.clone(), shelf.clone());
+                    spawn_reader(next_id, stream, tx.clone(), shelf.clone(), web.clone());
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => thread::sleep(ACCEPT_POLL),
                 Err(_) => thread::sleep(ACCEPT_POLL),
@@ -161,8 +162,8 @@ fn spawn_acceptor(listener: TcpListener, tx: Sender<Inbound>, stop: Arc<AtomicBo
     })
 }
 
-/// Reads one connection; a first line asking for an update is answered here and never reaches the world.
-fn spawn_reader(id: ConnId, stream: TcpStream, tx: Sender<Inbound>, shelf: Arc<Shelf>) {
+/// Reads one connection; update requests and phone pages are answered here and never reach the world.
+fn spawn_reader(id: ConnId, stream: TcpStream, tx: Sender<Inbound>, shelf: Arc<Shelf>, web: WebCtx) {
     thread::spawn(move || {
         let Ok(reader_stream) = stream.try_clone() else { return };
         let mut reader = BufReader::new(reader_stream);
@@ -171,6 +172,9 @@ fn spawn_reader(id: ConnId, stream: TcpStream, tx: Sender<Inbound>, shelf: Arc<S
             Ok(Some(line)) => line,
             _ => return,
         };
+        if web::is_http(&first) {
+            return web::serve(&first, reader, stream, &web);
+        }
         let _ = stream.set_read_timeout(None);
         if let Some(query) = update::as_request(&first) {
             let mut out = stream;

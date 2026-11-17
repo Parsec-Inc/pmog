@@ -38,6 +38,8 @@ pub enum Confirm {
 pub enum LobbyRow {
     /// The server this computer is hosting.
     Own,
+    /// The only server of a phone session.
+    Home,
     Server(ServerEntry),
     Host,
 }
@@ -71,6 +73,8 @@ pub struct App {
     update_job: Option<Receiver<Result<u64, String>>>,
     /// Set once a new build is installed; the binary restarts when the UI closes.
     pub restart: bool,
+    /// Set on phone sessions: the lobby offers only this server and never hosting.
+    pub home: Option<SocketAddr>,
 }
 
 impl App {
@@ -102,11 +106,15 @@ impl App {
             update_declined: 0,
             update_job: None,
             restart: false,
+            home: None,
         }
     }
 
     /// Servers found plus the "host here" option (only when not hosting).
     pub fn lobby_rows(&self) -> Vec<LobbyRow> {
+        if self.home.is_some() {
+            return vec![LobbyRow::Home];
+        }
         let own = self.host.as_ref().map(|h| (h.port, h.name.clone()));
         let mut rows: Vec<LobbyRow> = own.iter().map(|_| LobbyRow::Own).collect();
         if let Some(d) = self.discovery.as_ref() {
@@ -134,6 +142,11 @@ impl App {
         match self.lobby_rows().get(self.lobby_cursor).cloned() {
             Some(LobbyRow::Own) => {
                 if let Some(addr) = self.host.as_ref().map(|h| h.local_addr()) {
+                    self.connect(addr);
+                }
+            }
+            Some(LobbyRow::Home) => {
+                if let Some(addr) = self.home {
                     self.connect(addr);
                 }
             }

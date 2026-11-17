@@ -18,7 +18,7 @@ use ratatui::widgets::{
 };
 
 use crate::achievements::Group;
-use crate::constants::{PULSE_MS, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
+use crate::constants::{PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
 use crate::duel::Minigame;
 use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
@@ -1010,6 +1010,10 @@ fn draw_lobby(f: &mut Frame, app: &App) {
                     ),
                 ])
             }
+            LobbyRow::Home => ListItem::new(vec![
+                Line::styled("Servidor deste computador", Style::new().bold()),
+                Line::styled("   Enter para entrar de novo · Q para sair", fg(Color::DarkGray)),
+            ]),
             LobbyRow::Server(entry) => {
                 let mut title = vec![Span::styled(entry.name.clone(), Style::new().bold())];
                 if entry.update.is_some_and(|r| app.release > 0 && r > app.release) {
@@ -1042,14 +1046,18 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     let info = vec![
         Line::styled("VOCÊ", fg(Color::Magenta).bold()),
         Line::from(vec![Span::raw("Nome: "), Span::styled(app.name.clone(), Style::new().bold())]),
-        Line::styled(format!("Computador: {}", &app.machine_id[..8.min(app.machine_id.len())]), fg(Color::Gray)),
+        Line::styled(format!("{}: {}", if app.home.is_some() { "Celular" } else { "Computador" }, &app.machine_id[..8.min(app.machine_id.len())]), fg(Color::Gray)),
         Line::styled(
             if app.release > 0 { format!("Versão: {}", crate::update::release_label(app.release)) } else { "Versão: desenvolvimento".into() },
             fg(Color::Gray),
         ),
         Line::raw(""),
         Line::styled("COMO FUNCIONA", fg(Color::Magenta).bold()),
-        Line::raw("Seu progresso fica salvo no servidor em que você joga, ligado a este computador."),
+        Line::raw(if app.home.is_some() {
+            "Seu progresso fica salvo no servidor, ligado a este navegador do celular."
+        } else {
+            "Seu progresso fica salvo no servidor em que você joga, ligado a este computador."
+        }),
         Line::raw(""),
         Line::raw("Para jogar com amigos, um de vocês hospeda e os outros entram pela lista, na mesma rede."),
     ];
@@ -1070,8 +1078,46 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     f.render_widget(Line::from(keys), footer);
 }
 
+/// Page a phone opens to play on the server this client is in; none on phones themselves.
+fn phone_url(app: &App) -> Option<String> {
+    if app.home.is_some() {
+        return None;
+    }
+    let addr = match (&app.host, &app.conn) {
+        (Some(host), _) => std::net::SocketAddr::new(crate::utils::lan_ip()?, host.port),
+        (None, Some(conn)) if !conn.addr.ip().is_loopback() => conn.addr,
+        _ => return None,
+    };
+    Some(crate::web::page_url(addr.ip(), addr.port()))
+}
+
+/// QR code of `text` drawn with half blocks, two modules per line, quiet zone included.
+fn qr_lines(text: &str) -> Vec<Line<'static>> {
+    let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else { return Vec::new() };
+    let width = code.width();
+    let colors = code.to_colors();
+    let quiet = QR_QUIET_ZONE;
+    let side = width + 2 * quiet;
+    let dark = |x: usize, y: usize| {
+        x >= quiet && y >= quiet && x < quiet + width && y < quiet + width && colors[(y - quiet) * width + (x - quiet)] == qrcode::Color::Dark
+    };
+    let shade = |on: bool| if on { Color::Rgb(0, 0, 0) } else { Color::Rgb(255, 255, 255) };
+    (0..side.div_ceil(2))
+        .map(|row| {
+            let spans: Vec<Span> = (0..side)
+                .map(|x| Span::styled("▀", Style::new().fg(shade(dark(x, row * 2))).bg(shade(dark(x, row * 2 + 1)))))
+                .collect();
+            Line::from(spans)
+        })
+        .collect()
+}
+
 fn draw_server_panel(f: &mut Frame, app: &App) {
-    let area = popup_area(f.area(), 60, 70);
+    let phone = phone_url(app);
+    let qr = phone.as_deref().map(qr_lines).unwrap_or_default();
+    let qr_width = qr.first().map_or(0, |l| l.width() as u16);
+    let wide = !qr.is_empty() && f.area().width >= QR_PANEL_MIN_WIDTH && f.area().height >= qr.len() as u16 + 4;
+    let area = if wide { popup_area(f.area(), 85, 80) } else { popup_area(f.area(), 60, 70) };
     f.render_widget(Clear, area);
     let heading = |t: &str| Line::styled(t.to_string(), fg(Color::Magenta).bold());
     let mut lines = Vec::new();
@@ -1096,6 +1142,15 @@ fn draw_server_panel(f: &mut Frame, app: &App) {
         }
         lines.push(Line::raw(""));
     }
+    if let Some(url) = &phone {
+        lines.push(heading("JOGAR NO CELULAR"));
+        lines.push(Line::raw(" Na mesma rede, abra no navegador do celular:"));
+        lines.push(Line::styled(format!(" {url}"), fg(Color::LightGreen).bold()));
+        if wide {
+            lines.push(Line::styled(" ou aponte a câmera para o QR code ao lado.", fg(Color::Gray)));
+        }
+        lines.push(Line::raw(""));
+    }
     lines.push(heading("AÇÕES"));
     lines.push(Line::raw(" D  desconectar e voltar para a tela inicial"));
     if app.host.is_some() {
@@ -1109,7 +1164,16 @@ fn draw_server_panel(f: &mut Frame, app: &App) {
         .border_type(BorderType::Double)
         .border_style(fg(Color::Magenta))
         .title(" Servidor ");
-    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).block(block), area);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    let text_area = if wide {
+        let [text, code] = Layout::horizontal([Constraint::Min(0), Constraint::Length(qr_width + 1)]).areas(inner);
+        f.render_widget(Paragraph::new(qr), code);
+        text
+    } else {
+        inner
+    };
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), text_area);
 }
 
 fn small_popup(area: Rect, width: u16, height: u16) -> Rect {

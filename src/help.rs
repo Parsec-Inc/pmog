@@ -107,7 +107,7 @@ fn duels() -> Vec<Line<'static>> {
 fn basics() -> Vec<Line<'static>> {
     vec![
         title("Objetivo"),
-        text("Juntar Mogging Points (MP) moggando quem está com o PMOG aberto na sua rede, comprar itens e subir de rank até Ascendido."),
+        text("Juntar Mogging Points (MP) moggando quem está com o PMOG aberto na sua rede, comprar itens e subir de rank até Transcendente."),
         gap(),
         title("A tela"),
         bullet("Topo: seu nome, rank, MP, streak, seus números de combate e a barra até o próximo rank."),
@@ -138,7 +138,8 @@ fn basics() -> Vec<Line<'static>> {
         bullet("O servidor decide tudo: duelos, compras e MP. Ninguém consegue inventar números."),
         bullet("Os dados ficam num banco SQLite no computador de quem hospeda (~/.local/share/pmog/server.db)."),
         bullet("Se quem hospeda fechar o jogo, o servidor desliga para todos, mas o progresso fica salvo."),
-        bullet("Tecla S, durante o jogo: painel do servidor (quem está online, desconectar, parar servidor)."),
+        bullet("Tecla S, durante o jogo: painel do servidor (quem está online, endereço para o celular, desconectar, parar servidor)."),
+        bullet("Celular: na mesma rede, abra no navegador o endereço do painel S (http://ip:porta) ou leia o QR code. É o mesmo jogo, servido por quem hospeda e sempre na mesma versão, com botões de setas, Esc, Enter e atalhos na tela."),
         bullet("Firewall: libere a porta UDP 47777 e as portas TCP 47790 a 47799."),
         gap(),
         title("Seu computador"),

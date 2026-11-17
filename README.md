@@ -22,7 +22,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 | **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro, e o streak multiplica tudo. | **18 minigames de duelo** em 6 rodadas sorteadas, de encarada e digitação a fit check, fotogenia e mog reverso. Se os dois quiserem, cada um escolhe 3. |
 | **59 itens na loja** em 6 abas (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. Os 10 consumíveis ficam nas teclas `1`–`0`. | **Buffs à vista**: escudo, colônia, combo 6-7, aura farmada e afins aparecem numa faixa ⚡ BUFFADO enquanto valem. |
 | **15 ranks**, de Sub-5 a Transcendente, cada um com um efeito no nome (brilho, fogo, arco-íris, estrelas, 6-7 piscando). Os 7 ranks acima do Ascendido liberam um item exclusivo cada. | **66 conquistas** em 7 grupos, com progresso (37/100) e 4 secretas. |
-| **Chat, grupos e clãs**, com tag ao lado do nome e sem fogo amigo. | **Atualização automática** pela rede, só com builds assinadas. |
+| **Chat, grupos e clãs**, com tag ao lado do nome e sem fogo amigo. **Atualização automática** pela rede, só com builds assinadas. | **Jogue no celular** pelo navegador: abra o endereço do painel `S` ou leia o QR code. É o mesmo jogo, servido por quem hospeda, com botões na tela. |
 
 <table>
   <tr>
@@ -66,6 +66,12 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 3. Escolha **Hospedar servidor** ou entre num servidor da lista.
 4. Aperte `?` dentro do jogo para ver todas as regras.
 
+### No celular
+
+Com alguém hospedando na mesma rede, abra no navegador do celular o endereço que aparece no painel do servidor (`S`), algo como `http://192.168.0.10:47790`, ou aponte a câmera para o QR code do painel. Não instala nada: o servidor entrega a página e roda a mesma interface do terminal para o celular, então ela está sempre na versão de quem hospeda. Tem botões para setas, `Esc`, `Tab`, `Enter` e mog; `abc` mostra os atalhos e `⌨` abre o teclado (para chat e nome). De lado fica melhor.
+
+<img src="docs/screenshots/celular.png" alt="PMOG no navegador do celular, deitado" width="700">
+
 | Tecla | Ação | Tecla | Ação |
 |---|---|---|---|
 | `ESPAÇO` | mogar | `D` / `F` | duelo direto / fila |
@@ -102,6 +108,7 @@ cargo run --example screenshots     # refaz as imagens deste README
 - **Servidor autoritativo**: quem hospeda roda o servidor dentro do próprio jogo. Ele decide duelos, compras, cooldowns e o medidor; o cliente só manda ações.
 - **Progresso no servidor**: SQLite em `~/.local/share/pmog/server.db` de quem hospeda. Trocar de servidor é começar outro progresso.
 - **Identidade é o computador**: hash do UUID de hardware e do serial da placa (no Linux, pede a senha uma vez via `pkexec`; no Windows, PowerShell ou o MachineGuid do registro). Só o hash fica guardado. Trocar de nome mantém o progresso.
+- **Celular**: a porta TCP do jogo também responde HTTP. `/` entrega uma página (canvas + botões) e `/ws` abre um WebSocket; para cada celular o servidor roda um cliente completo, igual ao do terminal, conectado nele mesmo, e manda só as linhas da tela que mudaram. O celular é identificado por um token aleatório guardado no navegador.
 - **Mesma máquina, duas janelas**: a mais nova assume. Para testar com vários jogadores num PC só, use os bots.
 - **Vindo do Mogger**: a pasta antiga `~/.local/share/mogger` é movida para `~/.local/share/pmog` na primeira vez.
 
