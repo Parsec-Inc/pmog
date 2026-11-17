@@ -89,6 +89,19 @@ fn every_overlay_renders() {
 }
 
 #[test]
+fn the_lobby_shows_a_blocking_firewall_and_its_fix() {
+    let mut app = offline_app();
+    app.firewall = pmog::firewall::firewalld_warning("ssh", "", true);
+    let text = render(&app, 160, 40);
+    for needle in ["FIREWALL", "O firewalld está bloqueando o PMOG", "sudo firewall-cmd --permanent"] {
+        assert!(text.contains(needle), "missing {needle:?}:\n{text}");
+    }
+    for (w, h) in [(50, 45), (100, 22), (80, 24), (20, 8)] {
+        render(&app, w, h);
+    }
+}
+
+#[test]
 fn renders_at_any_size_without_panicking() {
     let mut a = playing();
     a.game.player.lifetime = 1e12;

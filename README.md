@@ -112,6 +112,8 @@ Sem pacote, libere as portas à mão (ex.: `sudo firewall-cmd --add-port=47790-4
 
 A descoberta usa UDP `47777` (multicast `239.77.77.77` e broadcast) e o jogo usa TCP na primeira porta livre entre `47790` e `47799`. Quem só entra precisa receber UDP `47777` para ver a lista. Para jogar pelo celular, cada PC abre também a primeira porta TCP livre entre `47800` e `47809`. No Windows, permita o PMOG quando o firewall perguntar.
 
+Ao abrir, o pmog confere o firewall (firewalld, ufw, Firewall do Windows ou do macOS) e, se achar algo bloqueando, mostra na tela inicial o comando para liberar. Quando um servidor aparece na lista mas não responde, o aviso lembra que o firewall de um dos lados pode ser o motivo.
+
 ## Desenvolver
 
 ```bash

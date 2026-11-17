@@ -1240,7 +1240,8 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     let mut state = ListState::default().with_selected(Some(app.lobby_cursor.min(rows.len().saturating_sub(1))));
     f.render_stateful_widget(list, list_area, &mut state);
 
-    let mut info = vec![
+    let mut info = firewall_lines(app);
+    info.extend([
         Line::styled("VOCÊ", fg(Color::Magenta).bold()),
         Line::from(vec![Span::raw("Nome: "), Span::styled(app.name.clone(), Style::new().bold())]),
         Line::styled(format!("Computador: {}", &app.machine_id[..8.min(app.machine_id.len())]), fg(Color::Gray)),
@@ -1249,7 +1250,7 @@ fn draw_lobby(f: &mut Frame, app: &App) {
             fg(Color::Gray),
         ),
         Line::raw(""),
-    ];
+    ]);
     let phone_info = phone_lines(app, false);
     if !phone_info.is_empty() {
         info.push(Line::styled("CELULAR", fg(Color::Magenta).bold()));
@@ -1269,6 +1270,19 @@ fn draw_lobby(f: &mut Frame, app: &App) {
         f.render_widget(Paragraph::new(line).centered().wrap(Wrap { trim: true }).block(Block::bordered()), notice);
     }
     f.render_widget(Paragraph::new(footer_lines), footer);
+}
+
+/// Firewall warning and the command that opens it, for the lobby.
+fn firewall_lines(app: &App) -> Vec<Line<'static>> {
+    let Some(warning) = &app.firewall else { return Vec::new() };
+    let color = if warning.sure { Color::Red } else { Color::Yellow };
+    vec![
+        Line::styled("FIREWALL", fg(color).bold()),
+        Line::styled(warning.what.clone(), fg(color)),
+        Line::raw("Os outros computadores podem não te achar. Para liberar, rode:"),
+        Line::styled(warning.fix.clone(), fg(Color::LightCyan).bold()),
+        Line::raw(""),
+    ]
 }
 
 /// Page a phone opens to reach this PMOG, once a password exists.

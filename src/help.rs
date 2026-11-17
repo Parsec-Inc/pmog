@@ -140,7 +140,7 @@ fn basics() -> Vec<Line<'static>> {
         bullet("Cada mundo é um banco SQLite no computador de quem hospeda (~/.local/share/pmog/worlds/). Os apagados ficam em ~/.local/share/pmog/lixeira/."),
         bullet("Se quem hospeda fechar o jogo, os mundos desligam para todos, mas o progresso fica salvo."),
         bullet("Tecla S, durante o jogo: painel do servidor (quem está online, endereço para o celular, desconectar, parar servidor)."),
-        bullet("Firewall: libere a porta UDP 47777 e as portas TCP 47790 a 47799 (e 47800 a 47809 para o celular)."),
+        bullet("Firewall: libere a porta UDP 47777 e as portas TCP 47790 a 47799 (e 47800 a 47809 para o celular). Se o firewall estiver no caminho, a tela inicial avisa e mostra o comando para liberar."),
         gap(),
         title("Celular"),
         bullet("Cada PMOG aberto pode ser jogado de um celular, um por vez, na mesma rede. Aperte C (tela inicial ou painel S) para criar a senha; aí aparecem o endereço (http://ip:porta) e o QR code."),

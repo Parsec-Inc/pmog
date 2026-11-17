@@ -10,6 +10,7 @@ pub mod constants;
 pub mod db;
 pub mod discovery;
 pub mod duel;
+pub mod firewall;
 pub mod game;
 pub mod help;
 pub mod input;

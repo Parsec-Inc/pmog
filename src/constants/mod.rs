@@ -209,6 +209,7 @@ pub const BOT_TYPING_CPS: Range<f64> = 3.5..7.0;
 // Each social feature keeps its tunables in its own file.
 mod chat;
 mod clan;
+mod firewall;
 mod items;
 mod minigames;
 mod notify;
@@ -216,6 +217,7 @@ mod web;
 mod worlds;
 pub use chat::*;
 pub use clan::*;
+pub use firewall::*;
 pub use items::*;
 pub use minigames::*;
 pub use notify::*;

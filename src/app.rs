@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use crate::connection::{Connection, Incoming, Liveness};
 use crate::discovery::{Discovery, ServerEntry};
+use crate::firewall;
 use crate::game::{Game, Overlay, Player, Tone};
 use crate::notify::{Notice, Notifier};
 use crate::protocol::{ClientMsg, ServerMsg};
@@ -109,6 +110,9 @@ pub struct App {
     web_offer: Option<update::WebOffer>,
     /// GitHub check in flight; the flag says the player asked for it with U.
     web_check: Option<(Receiver<Option<update::WebOffer>>, bool)>,
+    /// Firewall found in the way of other computers.
+    pub firewall: Option<firewall::Warning>,
+    firewall_check: Option<Receiver<Option<firewall::Warning>>>,
     /// Set once a new build is installed; the binary restarts when the UI closes.
     pub restart: bool,
     /// Phone access to this PMOG; `None` in tests and bots.
@@ -149,6 +153,8 @@ impl App {
             update_job: None,
             web_offer: None,
             web_check: None,
+            firewall: None,
+            firewall_check: None,
             restart: false,
             remote: None,
             editing_phone_password: None,
@@ -465,6 +471,28 @@ impl App {
         self.notice = Some((Tone::Info, format!("Baixando a versão nova de {label}...")));
     }
 
+    /// Looks at the local firewall in the background.
+    pub fn check_firewall(&mut self) {
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = tx.send(firewall::check());
+        });
+        self.firewall_check = Some(rx);
+    }
+
+    /// Takes the result of a finished firewall check.
+    fn step_firewall_check(&mut self) {
+        let Some(rx) = &self.firewall_check else { return };
+        match rx.try_recv() {
+            Ok(warning) => {
+                self.firewall = warning;
+                self.firewall_check = None;
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+            Err(mpsc::TryRecvError::Disconnected) => self.firewall_check = None,
+        }
+    }
+
     /// Takes the result of a finished GitHub check.
     fn step_web_check(&mut self) {
         let Some((rx, asked)) = &self.web_check else { return };
@@ -603,6 +631,7 @@ impl App {
             self.lobby_cursor = rows.saturating_sub(1);
         }
         self.step_update();
+        self.step_firewall_check();
 
         let Some(conn) = self.conn.as_mut() else { return };
         let mut lost = None;

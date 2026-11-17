@@ -27,7 +27,10 @@ impl Connection {
     /// Connects and identifies this computer; errors are ready to show to the player.
     pub fn open(addr: SocketAddr, machine_id: &str, name: &str) -> Result<Connection, String> {
         let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT)
-            .map_err(|e| format!("Não consegui conectar em {addr}: {e}"))?;
+            .map_err(|e| match crate::firewall::connect_hint(addr, e.kind()) {
+                Some(hint) => format!("Não consegui conectar em {addr}: {e}. {hint}"),
+                None => format!("Não consegui conectar em {addr}: {e}"),
+            })?;
         let _ = stream.set_nodelay(true);
         let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
         let hello = ClientMsg::Hello { v: PROTOCOL_VERSION, machine_id: machine_id.into(), name: name.into(), release: crate::update::release() };
