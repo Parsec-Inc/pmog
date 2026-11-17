@@ -25,3 +25,4 @@ pub mod update;
 pub mod utils;
 pub mod web;
 pub mod world;
+pub mod worlds;

@@ -313,7 +313,7 @@ fn fast_esc_then_key_closes_overlay_first() {
 fn lobby_renders_and_edits_the_name() {
     let mut a = offline_app();
     let screen = render(&a, 120, 30);
-    for needle in ["Servidores na rede", "Hospedar servidor", "Igor", "Computador:", "Não consegui escutar"] {
+    for needle in ["Mundos e servidores", "Criar mundo novo", "Igor", "Computador:", "Não consegui escutar"] {
         assert!(screen.contains(needle), "missing {needle:?}\n{screen}");
     }
     press(&mut a, KeyCode::Char('n'));
@@ -343,8 +343,10 @@ fn hosting_and_joining_through_the_interface() {
     let mut host = App::new("Host".into(), machine_id::for_bot("host"), Discovery::start(p.discovery).ok(), None, p);
     assert_eq!(host.lobby_rows(), vec![LobbyRow::Host]);
     press(&mut host, KeyCode::Enter);
+    assert!(render(&host, 120, 30).contains("Nome do mundo novo"), "Enter asks for the world name");
+    press(&mut host, KeyCode::Enter);
     assert_eq!(host.screen, Screen::Playing, "{:?}", host.notice);
-    assert!(host.host.is_some());
+    assert_eq!(host.hosts.len(), 1);
 
     let mut guest = App::new("Convidado".into(), machine_id::for_bot("guest"), Discovery::start(p.discovery).ok(), None, p);
     let start = Instant::now();
@@ -373,12 +375,12 @@ fn hosting_and_joining_through_the_interface() {
         format!(
             "host: screen {:?} notice {:?} peers {} feed {:?}\nguest: screen {:?} notice {:?} peers {} feed {:?}\nonline {:?}",
             h.screen, h.notice, h.game.peers.len(), feed(h), g.screen, g.notice, g.game.peers.len(), feed(g),
-            h.host.as_ref().map(|s| s.status().online)
+            h.hosts.first().map(|s| s.status().online)
         )
     };
     assert!(both(&mut host, &mut guest, &|h, g| h.game.peers.len() == 2 && g.game.peers.len() == 2), "{}", state(&host, &guest));
-    assert!(both(&mut host, &mut guest, &|h, _| h.host.as_ref().unwrap().status().online.len() == 2), "{}", state(&host, &guest));
-    assert_eq!(host.lobby_rows().first(), Some(&LobbyRow::Own), "own server first, not duplicated");
+    assert!(both(&mut host, &mut guest, &|h, _| h.hosts[0].status().online.len() == 2), "{}", state(&host, &guest));
+    assert!(matches!(host.lobby_rows().first(), Some(LobbyRow::Own(_))), "own server first, not duplicated");
 
     // Server panel shows hosting details.
     press(&mut host, KeyCode::Char('s'));
@@ -406,9 +408,9 @@ fn hosting_and_joining_through_the_interface() {
     assert!(!host.quit);
     press(&mut host, KeyCode::Char('s'));
     press(&mut host, KeyCode::Char('p'));
-    assert_eq!(host.confirm, Some(Confirm::StopServer));
+    assert_eq!(host.confirm, Some(Confirm::StopServer(host.hosts[0].port)));
     press(&mut host, KeyCode::Char('s'));
-    assert!(host.host.is_none() && host.screen == Screen::Lobby);
+    assert!(host.hosts.is_empty() && host.screen == Screen::Lobby);
     assert!(both(&mut host, &mut guest, &|_, g| g.screen == Screen::Lobby));
     assert!(guest.notice.as_ref().is_some_and(|(_, t)| t.contains("desligado")), "{:?}", guest.notice);
 }
@@ -417,14 +419,14 @@ fn hosting_and_joining_through_the_interface() {
 fn disconnect_keeps_hosting() {
     let p = ports(13);
     let mut host = App::new("Solo".into(), machine_id::for_bot("solo"), None, None, p);
-    host.start_hosting();
+    host.host_new_world("Servidor de Solo");
     assert_eq!(host.screen, Screen::Playing);
     press(&mut host, KeyCode::Char('s'));
     press(&mut host, KeyCode::Char('d'));
     press(&mut host, KeyCode::Enter);
     assert_eq!(host.screen, Screen::Lobby);
-    assert!(host.host.is_some(), "server keeps running for the others");
-    assert_eq!(host.lobby_rows()[0], LobbyRow::Own);
+    assert_eq!(host.hosts.len(), 1, "server keeps running for the others");
+    assert!(matches!(host.lobby_rows()[0], LobbyRow::Own(_)));
     press(&mut host, KeyCode::Enter);
     assert_eq!(host.screen, Screen::Playing, "rejoins its own server");
     assert!(!press(&mut host, KeyCode::Char('q')), "alone on the server: quits without asking");

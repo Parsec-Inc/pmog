@@ -1,7 +1,6 @@
 //! Top-level client state: lobby, hosting, connection and the game screen.
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Instant;
@@ -16,6 +15,7 @@ use crate::constants::{PROTOCOL_VERSION, WEB_MIN_PASSWORD};
 use crate::update;
 use crate::utils::clean_name;
 use crate::web::Remote;
+use crate::worlds::{WorldSave, WorldStore};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -27,7 +27,10 @@ pub enum Screen {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Confirm {
     QuitWhileHosting,
-    StopServer,
+    /// Stop the world hosted on this port.
+    StopServer(u16),
+    /// Send this saved world to the trash.
+    DeleteWorld(u64),
     Disconnect,
     Forfeit,
     QuitWhileDueling,
@@ -37,10 +40,20 @@ pub enum Confirm {
 /// One row of the lobby list.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LobbyRow {
-    /// The server this computer is hosting.
-    Own,
+    /// A world this computer is hosting, by port.
+    Own(u16),
     Server(ServerEntry),
+    /// A saved world that is not running.
+    World(u64),
+    /// Create a new world and host it.
     Host,
+}
+
+/// World name being typed: a new world, or renaming the saved one with this id.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorldEdit {
+    pub id: Option<u64>,
+    pub typed: String,
 }
 
 pub struct App {
@@ -55,9 +68,14 @@ pub struct App {
     pub confirm: Option<Confirm>,
     pub conn: Option<Connection>,
     liveness: Liveness,
-    pub host: Option<ServerHandle>,
+    /// Worlds this computer is hosting right now.
+    pub hosts: Vec<ServerHandle>,
     pub discovery: Option<Discovery>,
-    pub db_path: Option<PathBuf>,
+    /// Where worlds are saved; `None` keeps new worlds in memory.
+    pub store: Option<WorldStore>,
+    /// Saved worlds, refreshed after each change.
+    pub worlds: Vec<WorldSave>,
+    pub editing_world: Option<WorldEdit>,
     pub ports: Ports,
     pub quit: bool,
     /// Set when the name changed and should be written to the local config.
@@ -79,7 +97,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(name: String, machine_id: String, discovery: Option<Discovery>, db_path: Option<PathBuf>, ports: Ports) -> App {
+    pub fn new(name: String, machine_id: String, discovery: Option<Discovery>, store: Option<WorldStore>, ports: Ports) -> App {
         let now = Instant::now();
         let notice = discovery.is_none().then(|| {
             (Tone::Bad, "Não consegui escutar a rede: só dá para hospedar ou conectar por aqui mesmo.".to_string())
@@ -95,9 +113,11 @@ impl App {
             confirm: None,
             conn: None,
             liveness: Liveness::new(now),
-            host: None,
+            hosts: Vec::new(),
             discovery,
-            db_path,
+            worlds: store.as_ref().map(WorldStore::list).unwrap_or_default(),
+            store,
+            editing_world: None,
             ports,
             quit: false,
             name_changed: false,
@@ -112,23 +132,44 @@ impl App {
         }
     }
 
-    /// Servers found plus the "host here" option (only when not hosting).
+    /// Hosted worlds, servers found on the network, saved worlds and the "new world" option.
     pub fn lobby_rows(&self) -> Vec<LobbyRow> {
-        let own = self.host.as_ref().map(|h| (h.port, h.name.clone()));
-        let mut rows: Vec<LobbyRow> = own.iter().map(|_| LobbyRow::Own).collect();
+        let mut rows: Vec<LobbyRow> = self.hosts.iter().map(|h| LobbyRow::Own(h.port)).collect();
         if let Some(d) = self.discovery.as_ref() {
             rows.extend(
                 d.servers()
                     .iter()
-                    .filter(|s| own.as_ref().is_none_or(|(port, name)| !(s.addr.port() == *port && &s.name == name)))
+                    .filter(|s| !self.hosts.iter().any(|h| s.addr.port() == h.port && s.name == h.name))
                     .cloned()
                     .map(LobbyRow::Server),
             );
         }
-        if self.host.is_none() {
-            rows.push(LobbyRow::Host);
-        }
+        rows.extend(self.worlds.iter().filter(|w| self.hosted_world(w).is_none()).map(|w| LobbyRow::World(w.id)));
+        rows.push(LobbyRow::Host);
         rows
+    }
+
+    pub fn host_on(&self, port: u16) -> Option<&ServerHandle> {
+        self.hosts.iter().find(|h| h.port == port)
+    }
+
+    /// The running server of a saved world, if it is hosted.
+    pub fn hosted_world(&self, world: &WorldSave) -> Option<&ServerHandle> {
+        self.hosts.iter().find(|h| h.db_path.as_ref() == Some(&world.path))
+    }
+
+    pub fn world(&self, id: u64) -> Option<&WorldSave> {
+        self.worlds.iter().find(|w| w.id == id)
+    }
+
+    /// The hosted world this client is playing in, if any.
+    pub fn current_host(&self) -> Option<&ServerHandle> {
+        let addr = self.conn.as_ref()?.addr;
+        self.hosts.iter().find(|h| addr.ip().is_loopback() && addr.port() == h.port)
+    }
+
+    pub fn selected_row(&self) -> Option<LobbyRow> {
+        self.lobby_rows().get(self.lobby_cursor).cloned()
     }
 
     pub fn lobby_move(&mut self, delta: isize) {
@@ -139,9 +180,14 @@ impl App {
     /// Acts on the selected lobby row.
     pub fn lobby_enter(&mut self) {
         match self.lobby_rows().get(self.lobby_cursor).cloned() {
-            Some(LobbyRow::Own) => {
-                if let Some(addr) = self.host.as_ref().map(|h| h.local_addr()) {
+            Some(LobbyRow::Own(port)) => {
+                if let Some(addr) = self.host_on(port).map(|h| h.local_addr()) {
                     self.connect(addr);
+                }
+            }
+            Some(LobbyRow::World(id)) => {
+                if let Some(world) = self.world(id).cloned() {
+                    self.host_world(&world);
                 }
             }
             Some(LobbyRow::Server(entry)) if !entry.compatible && self.offered(&entry).is_some() => {
@@ -154,20 +200,105 @@ impl App {
                 self.notice = Some((Tone::Bad, text.into()));
             }
             Some(LobbyRow::Server(entry)) => self.connect(entry.addr),
-            Some(LobbyRow::Host) => self.start_hosting(),
+            Some(LobbyRow::Host) => self.editing_world = Some(WorldEdit { id: None, typed: format!("Servidor de {}", self.name) }),
             None => {}
         }
     }
 
-    pub fn start_hosting(&mut self) {
-        let server_name = format!("Servidor de {}", self.name);
-        match ServerHandle::start(&server_name, self.db_path.clone(), self.ports) {
+    /// Starts a server for `name` saved at `path` (in memory without one) and joins it.
+    fn host(&mut self, name: &str, path: Option<std::path::PathBuf>) {
+        match ServerHandle::start(name, path, self.ports) {
             Ok(handle) => {
                 let addr = handle.local_addr();
-                self.host = Some(handle);
+                self.hosts.push(handle);
                 self.connect(addr);
             }
             Err(e) => self.notice = Some((Tone::Bad, format!("Não consegui hospedar: {e}"))),
+        }
+    }
+
+    pub fn host_world(&mut self, world: &WorldSave) {
+        self.host(&world.name, Some(world.path.clone()));
+    }
+
+    /// Creates a world called `name`, saved when there is a store, and hosts it.
+    pub fn host_new_world(&mut self, name: &str) {
+        let Some(store) = self.store.clone() else {
+            self.host(name, None);
+            return;
+        };
+        match store.create(name) {
+            Ok(world) => {
+                self.refresh_worlds();
+                self.host_world(&world);
+            }
+            Err(e) => self.notice = Some((Tone::Bad, format!("Não consegui criar o mundo: {e}"))),
+        }
+    }
+
+    pub fn refresh_worlds(&mut self) {
+        self.worlds = self.store.as_ref().map(WorldStore::list).unwrap_or_default();
+    }
+
+    /// Opens the name editor to rename the selected saved world.
+    pub fn start_world_rename(&mut self) {
+        match self.selected_row() {
+            Some(LobbyRow::World(id)) => {
+                let typed = self.world(id).map_or(String::new(), |w| w.name.clone());
+                self.editing_world = Some(WorldEdit { id: Some(id), typed });
+            }
+            Some(LobbyRow::Own(_)) => self.notice = Some((Tone::Info, "Pare o mundo (P) para renomear.".into())),
+            _ => {}
+        }
+    }
+
+    /// Creates or renames a world with the typed name.
+    pub fn finish_world_edit(&mut self) {
+        let Some(edit) = self.editing_world.take() else { return };
+        let name = clean_name(edit.typed.trim());
+        if name.is_empty() {
+            return;
+        }
+        let Some(id) = edit.id else {
+            self.host_new_world(&name);
+            return;
+        };
+        let result = match (self.store.as_ref(), self.world(id)) {
+            (Some(store), Some(world)) => store.rename(world, &name),
+            _ => return,
+        };
+        if let Err(e) = result {
+            self.notice = Some((Tone::Bad, format!("Não consegui renomear: {e}")));
+        }
+        self.refresh_worlds();
+    }
+
+    /// Asks before sending the selected saved world to the trash.
+    pub fn ask_delete_world(&mut self) {
+        match self.selected_row() {
+            Some(LobbyRow::World(id)) => self.confirm = Some(Confirm::DeleteWorld(id)),
+            Some(LobbyRow::Own(_)) => self.notice = Some((Tone::Info, "Pare o mundo (P) antes de apagar.".into())),
+            _ => {}
+        }
+    }
+
+    fn delete_world(&mut self, id: u64) {
+        let result = match (self.store.as_ref(), self.world(id)) {
+            (Some(store), Some(world)) => store.trash(world).map(|()| (world.name.clone(), store.trash.display().to_string())),
+            _ => return,
+        };
+        self.notice = Some(match result {
+            Ok((name, trash)) => (Tone::Info, format!("{name} foi para a lixeira do PMOG ({trash}).")),
+            Err(e) => (Tone::Bad, format!("Não consegui apagar: {e}")),
+        });
+        self.refresh_worlds();
+        self.lobby_cursor = self.lobby_cursor.min(self.lobby_rows().len().saturating_sub(1));
+    }
+
+    /// Asks before stopping the selected hosted world.
+    pub fn ask_stop_selected(&mut self) {
+        if let Some(LobbyRow::Own(port)) = self.selected_row() {
+            self.confirm = Some(Confirm::StopServer(port));
         }
     }
 
@@ -197,11 +328,24 @@ impl App {
         self.notice = notice;
     }
 
-    pub fn stop_hosting(&mut self) {
-        self.disconnect(Some((Tone::Info, "Servidor parado. O progresso de todos ficou salvo.".into())));
-        if let Some(host) = self.host.take() {
-            host.stop();
+    /// Stops the world hosted on `port`, leaving it first when playing there.
+    pub fn stop_hosting(&mut self, port: u16) {
+        let notice = Some((Tone::Info, "Servidor parado. O progresso de todos ficou salvo.".into()));
+        if self.current_host().is_some_and(|h| h.port == port) {
+            self.disconnect(notice);
+        } else {
+            self.notice = notice;
         }
+        if let Some(i) = self.hosts.iter().position(|h| h.port == port) {
+            self.hosts.remove(i).stop();
+        }
+        self.lobby_cursor = self.lobby_cursor.min(self.lobby_rows().len().saturating_sub(1));
+    }
+
+    /// Players other than this one online across every hosted world.
+    pub fn hosted_others(&self) -> usize {
+        let mine = usize::from(self.current_host().is_some());
+        self.hosts.iter().map(|h| h.status().online.len()).sum::<usize>().saturating_sub(mine)
     }
 
     /// Asks before anything that would kick other players.
@@ -210,8 +354,7 @@ impl App {
             self.confirm = Some(Confirm::QuitWhileDueling);
             return;
         }
-        let others = self.host.as_ref().map_or(0, |h| h.status().online.len().saturating_sub(1));
-        if self.host.is_some() && others > 0 {
+        if self.hosted_others() > 0 {
             self.confirm = Some(Confirm::QuitWhileHosting);
         } else {
             self.quit = true;
@@ -230,7 +373,8 @@ impl App {
         match question {
             Confirm::QuitWhileHosting | Confirm::QuitWhileDueling => self.quit = true,
             Confirm::Forfeit => self.game.outbox.push(ClientMsg::Forfeit),
-            Confirm::StopServer => self.stop_hosting(),
+            Confirm::StopServer(port) => self.stop_hosting(port),
+            Confirm::DeleteWorld(id) => self.delete_world(id),
             Confirm::Disconnect => self.disconnect(None),
             Confirm::Update => self.start_update(),
         }
@@ -285,7 +429,7 @@ impl App {
             return;
         }
         let pending = self.update_offer().filter(|(_, r)| *r > self.update_declined);
-        if pending.is_some() && self.screen == Screen::Lobby && self.confirm.is_none() && self.editing_name.is_none() {
+        if pending.is_some() && self.screen == Screen::Lobby && self.confirm.is_none() && self.editing_name.is_none() && self.editing_world.is_none() {
             self.confirm = Some(Confirm::Update);
         }
     }
@@ -422,7 +566,7 @@ impl App {
         if let Some(conn) = self.conn.take() {
             conn.close();
         }
-        if let Some(host) = self.host.take() {
+        for host in self.hosts.drain(..) {
             host.stop();
         }
     }

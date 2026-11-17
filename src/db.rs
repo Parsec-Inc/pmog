@@ -9,6 +9,10 @@ use crate::game::Player;
 use crate::protocol::PlayerId;
 
 const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS players (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     machine_id  TEXT    NOT NULL UNIQUE,
@@ -93,6 +97,16 @@ impl Db {
             let _ = std::fs::create_dir_all(dir);
         }
         Self::init(Connection::open(path)?)
+    }
+
+    /// A value from the meta table, such as the world name.
+    pub fn meta(&self, key: &str) -> rusqlite::Result<Option<String>> {
+        self.conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| r.get(0)).optional()
+    }
+
+    pub fn set_meta(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.conn.execute("INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2", params![key, value])?;
+        Ok(())
     }
 
     pub fn in_memory() -> rusqlite::Result<Db> {

@@ -213,12 +213,14 @@ mod items;
 mod minigames;
 mod notify;
 mod web;
+mod worlds;
 pub use chat::*;
 pub use clan::*;
 pub use items::*;
 pub use minigames::*;
 pub use notify::*;
 pub use web::*;
+pub use worlds::*;
 
 /// Largest build an update may download.
 pub const MAX_UPDATE_BYTES: u64 = 64 * 1024 * 1024;

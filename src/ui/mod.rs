@@ -103,6 +103,10 @@ pub fn draw(f: &mut Frame, app: &App) {
     if let Some(typed) = &app.editing_name {
         draw_text_editor(f, " Seu nome · Enter salva · Esc cancela ", typed);
     }
+    if let Some(edit) = &app.editing_world {
+        let title = if edit.id.is_some() { " Novo nome do mundo · Enter salva · Esc cancela " } else { " Nome do mundo novo · Enter cria · Esc cancela " };
+        draw_text_editor(f, title, &edit.typed);
+    }
     if let Some(typed) = &app.editing_phone_password {
         draw_text_editor(f, " Senha do celular · Enter salva · Esc cancela ", &"•".repeat(typed.chars().count()));
     }
@@ -1126,7 +1130,7 @@ fn pager_line(label: &str, at: usize, total: usize) -> Line<'static> {
 }
 
 fn server_label(app: &App) -> String {
-    match (&app.conn, &app.host) {
+    match (&app.conn, app.current_host()) {
         (Some(conn), Some(_)) => format!(" {} · você hospeda ", conn.server_name),
         (Some(conn), None) => format!(" {} ", conn.server_name),
         _ => String::new(),
@@ -1142,10 +1146,13 @@ const TITLE: [&str; 3] = [
 fn draw_lobby(f: &mut Frame, app: &App) {
     let full = f.area();
     let narrow = full.width < NARROW_WIDTH;
-    let mut hints = vec![hint("↑↓", "escolher"), hint("Enter", "entrar"), hint("N", "trocar nome"), hint("C", "senha do celular")];
-    if app.host.is_some() {
-        hints.push(hint("P", "parar servidor"));
+    let mut hints = vec![hint("↑↓", "escolher"), hint("Enter", "entrar")];
+    match app.selected_row() {
+        Some(LobbyRow::Own(_)) => hints.push(hint("P", "parar mundo")),
+        Some(LobbyRow::World(_)) => hints.extend([hint("R", "renomear"), hint("A", "apagar")]),
+        _ => {}
     }
+    hints.extend([hint("N", "trocar nome"), hint("C", "senha do celular")]);
     hints.push(hint("Q", "sair"));
     let footer_lines = hint_lines(&hints, full.width);
     let notice_lines = app.notice.as_ref().map(|(tone, text)| Line::styled(text.clone(), fg(tone_color(*tone)).bold()));
@@ -1183,9 +1190,9 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     let items: Vec<ListItem> = rows
         .iter()
         .map(|row| match row {
-            LobbyRow::Own => {
-                let status = app.host.as_ref().map(|h| h.status()).unwrap_or_default();
-                let name = app.host.as_ref().map_or(String::new(), |h| h.name.clone());
+            LobbyRow::Own(port) => {
+                let status = app.host_on(*port).map(|h| h.status()).unwrap_or_default();
+                let name = app.host_on(*port).map_or(String::new(), |h| h.name.clone());
                 ListItem::new(vec![
                     Line::from(vec![
                         Span::styled(name, Style::new().bold()),
@@ -1211,14 +1218,21 @@ fn draw_lobby(f: &mut Frame, app: &App) {
                     Line::styled(format!("   {} · {} jogador(es) online", entry.addr, entry.players), fg(Color::DarkGray)),
                 ])
             }
+            LobbyRow::World(id) => ListItem::new(vec![
+                Line::from(vec![
+                    Span::styled(app.world(*id).map_or(String::new(), |w| w.name.clone()), Style::new().bold()),
+                    Span::styled("  salvo aqui", fg(Color::Gray)),
+                ]),
+                Line::styled("   Enter hospeda · R renomeia · A apaga", fg(Color::DarkGray)),
+            ]),
             LobbyRow::Host => ListItem::new(vec![
-                Line::styled("+ Hospedar servidor neste computador", fg(Color::LightMagenta).bold()),
-                Line::styled("   liga um servidor aqui e já te conecta nele", fg(Color::DarkGray)),
+                Line::styled("+ Criar mundo novo", fg(Color::LightMagenta).bold()),
+                Line::styled("   um save novo, hospedado aqui e já com você dentro", fg(Color::DarkGray)),
             ]),
         })
         .collect();
     let searching = app.discovery.is_some() && rows.iter().all(|r| !matches!(r, LobbyRow::Server(_)));
-    let title = if searching { " Servidores na rede (procurando...) " } else { " Servidores na rede " };
+    let title = if searching { " Mundos e servidores (procurando na rede...) " } else { " Mundos e servidores " };
     let list = List::new(items)
         .block(Block::bordered().border_type(BorderType::Rounded).title(title))
         .highlight_symbol("▶ ")
@@ -1331,7 +1345,7 @@ fn draw_server_panel(f: &mut Frame, app: &App) {
         lines.push(Line::raw(format!(" Você: {} (jogador #{})", app.name, conn.my_id)));
         lines.push(Line::raw(""));
     }
-    if let Some(host) = &app.host {
+    if let Some(host) = app.current_host() {
         let status = host.status();
         lines.push(heading("VOCÊ HOSPEDA ESTE SERVIDOR"));
         let ip = crate::utils::lan_ip().map_or("desconhecido".to_string(), |ip| ip.to_string());
@@ -1353,8 +1367,8 @@ fn draw_server_panel(f: &mut Frame, app: &App) {
     }
     lines.push(heading("AÇÕES"));
     lines.push(Line::raw(" D  desconectar e voltar para a tela inicial"));
-    if app.host.is_some() {
-        lines.push(Line::raw(" P  parar o servidor (todos são desconectados, o progresso fica salvo)"));
+    if app.current_host().is_some() {
+        lines.push(Line::raw(" P  parar este mundo (todos são desconectados, o progresso fica salvo)"));
     }
     lines.push(Line::raw(" N  trocar seu nome (o progresso continua o mesmo)"));
     let state = if app.notifier.enabled { "ligadas" } else { "desligadas" };
@@ -1394,10 +1408,21 @@ fn draw_text_editor(f: &mut Frame, title: &str, typed: &str) {
 }
 
 fn draw_confirm(f: &mut Frame, app: &App, question: Confirm) {
-    let others = app.host.as_ref().map_or(0, |h| h.status().online.len().saturating_sub(1));
     let text = match question {
-        Confirm::QuitWhileHosting => format!("Você está hospedando. Sair desliga o servidor para {others} jogador(es). Sair mesmo?"),
-        Confirm::StopServer => format!("Parar o servidor? {others} jogador(es) serão desconectados. O progresso de todos fica salvo."),
+        Confirm::QuitWhileHosting => {
+            format!("Você está hospedando. Sair desliga os mundos para {} jogador(es). Sair mesmo?", app.hosted_others())
+        }
+        Confirm::StopServer(port) => {
+            let host = app.host_on(port);
+            let mine = usize::from(app.current_host().is_some_and(|h| h.port == port));
+            let others = host.map_or(0, |h| h.status().online.len().saturating_sub(mine));
+            let name = host.map_or(String::new(), |h| h.name.clone());
+            format!("Parar {name}? {others} jogador(es) serão desconectados. O progresso de todos fica salvo.")
+        }
+        Confirm::DeleteWorld(id) => {
+            let name = app.world(id).map_or(String::new(), |w| w.name.clone());
+            format!("Apagar {name}? O save vai para a lixeira do PMOG e ainda dá para recuperar de lá.")
+        }
         Confirm::Disconnect => "Desconectar e voltar para a tela inicial?".to_string(),
         Confirm::Forfeit => {
             let stake = app.game.duel.as_ref().map_or(0.0, |d| d.stake);

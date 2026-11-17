@@ -70,11 +70,6 @@ struct Conn {
     rtt: RttStats,
 }
 
-/// Default database location for a hosted server.
-pub fn default_db_path() -> Option<PathBuf> {
-    crate::utils::data_dir().map(|d| d.join("server.db"))
-}
-
 impl ServerHandle {
     /// Starts every server thread; `db_path` of `None` keeps data in memory.
     pub fn start(name: &str, db_path: Option<PathBuf>, ports: Ports) -> io::Result<ServerHandle> {

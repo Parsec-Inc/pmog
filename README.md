@@ -63,7 +63,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 
 1. Baixe o executável do seu sistema (`pmog-linux` ou `pmog-windows.exe`) com quem já tem o jogo.
 2. Abra no terminal. No Linux: `chmod +x pmog-linux && ./pmog-linux`.
-3. Escolha **Hospedar servidor** ou entre num servidor da lista.
+3. Escolha **Criar mundo novo** (ou um mundo salvo) para hospedar, ou entre num servidor da lista. Dá para hospedar vários mundos ao mesmo tempo.
 4. Aperte `?` dentro do jogo para ver todas as regras.
 
 ### No celular
@@ -112,7 +112,7 @@ cargo run --example screenshots     # refaz as imagens deste README
 <summary><b>Como funciona por dentro</b></summary>
 
 - **Servidor autoritativo**: quem hospeda roda o servidor dentro do próprio jogo. Ele decide duelos, compras, cooldowns e o medidor; o cliente só manda ações.
-- **Progresso no servidor**: SQLite em `~/.local/share/pmog/server.db` de quem hospeda. Trocar de servidor é começar outro progresso.
+- **Progresso no mundo**: cada mundo é um SQLite em `~/.local/share/pmog/worlds/` de quem hospeda, com o nome guardado dentro do próprio banco; cada mundo hospedado é um servidor numa porta própria. Trocar de mundo é começar outro progresso. Apagar manda o arquivo para `~/.local/share/pmog/lixeira/`, e o `server.db` de versões antigas vira o primeiro mundo sozinho.
 - **Identidade é o computador**: hash do UUID de hardware e do serial da placa (no Linux, pede a senha uma vez via `pkexec`; no Windows, PowerShell ou o MachineGuid do registro). Só o hash fica guardado. Trocar de nome mantém o progresso.
 - **Celular**: cada PMOG escuta HTTP numa porta própria. `/` entrega uma página (canvas + botões) e `/ws` abre um WebSocket. A mesma sessão é desenhada uma segunda vez no tamanho da tela do celular e só as linhas que mudaram vão pela rede; as teclas do celular entram como se fossem do PC. A senha fica só como hash com sal na config local, cada navegador guarda um token aleatório que vira confiável depois da senha certa, e 5 erros seguidos fecham a porta por 60 s.
 - **Mesma máquina, duas janelas**: a mais nova assume. Para testar com vários jogadores num PC só, use os bots.

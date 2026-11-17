@@ -357,7 +357,7 @@ fn main() {
         .map(|(name, tcp)| ServerHandle::start(name, None, Ports { discovery: ports.discovery, tcp_start: tcp }).unwrap());
     let discovery = Discovery::start(ports.discovery).ok();
     let mut lobby = App::new("Chadoso".into(), "f".repeat(64), discovery, None, ports);
-    lobby.host = Some(host);
+    lobby.hosts.push(host);
     lobby.release = 202611161821;
     let deadline = Instant::now() + Duration::from_secs(5);
     while lobby.lobby_rows().len() < 3 && Instant::now() < deadline {

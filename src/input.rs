@@ -50,6 +50,18 @@ pub fn handle_key(app: &mut App, key: KeyEvent, now: Instant) -> bool {
         }
         return true;
     }
+    if let Some(edit) = app.editing_world.as_mut() {
+        match key.code {
+            KeyCode::Enter => app.finish_world_edit(),
+            KeyCode::Esc => app.editing_world = None,
+            KeyCode::Backspace => {
+                edit.typed.pop();
+            }
+            KeyCode::Char(c) if !c.is_control() && edit.typed.chars().count() < MAX_NAME_LEN => edit.typed.push(c),
+            _ => {}
+        }
+        return true;
+    }
     if let Some(typed) = app.editing_name.as_mut() {
         match key.code {
             KeyCode::Enter => {
@@ -106,7 +118,9 @@ fn lobby_key(app: &mut App, code: KeyCode) {
         KeyCode::Char('e') => app.toggle_phone_mode(),
         KeyCode::Char('x') => app.drop_phone("O PC desconectou o celular."),
         KeyCode::Char('u') => app.ask_update(),
-        KeyCode::Char('p') if app.host.is_some() => app.confirm = Some(Confirm::StopServer),
+        KeyCode::Char('p') => app.ask_stop_selected(),
+        KeyCode::Char('r') => app.start_world_rename(),
+        KeyCode::Char('a') | KeyCode::Delete => app.ask_delete_world(),
         KeyCode::Char('q') | KeyCode::Esc => app.request_quit(),
         _ => {}
     }
@@ -194,7 +208,11 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
         },
         Overlay::Server => match code {
             KeyCode::Char('d') => app.confirm = Some(Confirm::Disconnect),
-            KeyCode::Char('p') if app.host.is_some() => app.confirm = Some(Confirm::StopServer),
+            KeyCode::Char('p') => {
+                if let Some(port) = app.current_host().map(|h| h.port) {
+                    app.confirm = Some(Confirm::StopServer(port));
+                }
+            }
             KeyCode::Char('n') => {
                 game.overlay = Overlay::None;
                 app.start_name_edit();

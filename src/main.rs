@@ -8,9 +8,10 @@ use pmog::app::App;
 use pmog::constants::{TICK, WEB_PORT_START};
 use pmog::discovery::Discovery;
 use pmog::input::handle_local_key;
-use pmog::server::{self, Ports};
+use pmog::server::Ports;
 use pmog::notify::SystemSink;
 use pmog::web::Remote;
+use pmog::worlds::WorldStore;
 use pmog::{bot, machine_id, save, ui, update, utils};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{self, DisableFocusChange, EnableFocusChange, Event, KeyEventKind};
@@ -64,7 +65,13 @@ fn main() -> io::Result<()> {
     let mut config = save::load();
     let name = args.name.or_else(|| Some(config.name.clone()).filter(|n| !n.is_empty())).unwrap_or_else(default_name);
     let discovery = Discovery::start(ports.discovery).ok();
-    let mut app = App::new(name, machine_id, discovery, server::default_db_path(), ports);
+    let store = WorldStore::in_data_dir();
+    if let (Some(store), Some(base)) = (&store, utils::data_dir())
+        && let Err(e) = store.import_legacy(&base, &format!("Servidor de {name}"))
+    {
+        eprintln!("Não consegui mover o save antigo para a pasta de mundos: {e}");
+    }
+    let mut app = App::new(name, machine_id, discovery, store, ports);
 
     app.notifier.enabled = config.notifications;
     app.notifier.set_sink(Box::new(SystemSink::new()));
