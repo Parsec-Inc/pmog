@@ -1,13 +1,10 @@
 name: Release
 
-# PR mergeado na main: testes e builds em paralelo; a tag e a release só saem se tudo passar.
-# Depois, se ligados, AUR, COPR e Homebrew. Ver docs/PACKAGING.md.
 
 on:
   pull_request:
     types: [closed]
     branches: [main]
-  # manual só a partir da main
   workflow_dispatch:
     inputs:
       increment:
@@ -24,7 +21,6 @@ permissions:
   contents: read
 
 env:
-  # commit da main que o PR gerou (ou o da execução manual)
   BASE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
 jobs:
@@ -32,8 +28,6 @@ jobs:
     if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || github.event.pull_request.merged
     uses: ./.github/workflows/tests.yml
 
-  # Calcula a versão e cria o commit e a tag do bump só localmente; os builds recebem os dois
-  # num git bundle e o push só acontece no job release, depois dos testes.
   version:
     if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || github.event.pull_request.merged
     runs-on: ubuntu-latest
@@ -274,7 +268,6 @@ jobs:
 
   release:
     needs: [version, tests, linux, macos-sign, msi]
-    # só com os testes e o linux (builds do auto-update) verdes; macOS ou MSI com falha ficam de fora
     if: ${{ !cancelled() && needs.tests.result == 'success' && needs.linux.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -291,7 +284,6 @@ jobs:
         with:
           version: ${{ needs.version.outputs.version }}
 
-      # a main recebe o commit do bump só agora, com tudo testado e compilado
       - name: Push version commit and tag
         run: git push --atomic origin "$(git rev-parse "$VERSION^{commit}"):refs/heads/main" "refs/tags/$VERSION"
 
