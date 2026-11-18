@@ -1002,9 +1002,8 @@ fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
     let cost = def.cost(level);
     let heading = |t: &str| Line::styled(t.to_string(), fg(Color::Magenta).bold());
 
-    let mut lines = vec![Line::raw("")];
-    lines.extend(sprite_lines(sprites::sprite_at(def.id, anim_ms()), locked).into_iter().map(Line::centered));
-    lines.push(Line::raw(""));
+    let sprite = sprite_lines(sprites::sprite_at(def.id, anim_ms()), locked);
+    let mut lines: Vec<Line> = (0..sprite.len() + 2).map(|_| Line::raw("")).collect();
     lines.push(Line::styled(def.name, fg(Color::Yellow).bold()).centered());
     lines.push(Line::styled(def.flavor, fg(Color::Gray).italic()).centered());
     lines.push(Line::raw(""));
@@ -1050,7 +1049,9 @@ fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
     }
 
     let block = Block::bordered().border_type(BorderType::Double).border_style(fg(Color::Magenta));
+    let inner = block.inner(area);
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }).block(block), area);
+    f.render_widget(Paragraph::new(sprite.into_iter().map(Line::centered).collect::<Vec<_>>()), Rect { y: inner.y + 1, height: inner.height.saturating_sub(1), ..inner });
 }
 
 type StatRow<'a> = (&'a str, f64, f64, &'a dyn Fn(f64) -> String);
