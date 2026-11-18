@@ -1,3 +1,13 @@
+## 0.7.0 (2026-11-18)
+
+### Feat
+
+- aura loss and ego added
+
+### Fix
+
+- chance mostrada com os status de luta e ajustes de balanceamento
+
 ## 0.6.0 (2026-11-18)
 
 ### Feat
