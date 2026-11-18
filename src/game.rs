@@ -144,6 +144,8 @@ pub struct Stats {
     pub underdog: f64,
     /// Multiplier on the timing meter speed.
     pub meter_factor: f64,
+    /// Share of a bad status's duration that Terapia removes.
+    pub resilience: f64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -213,6 +215,7 @@ impl Player {
             counter_ratio: COUNTER_RATIO,
             underdog: 0.0,
             meter_factor: 1.0,
+            resilience: 0.0,
         };
         let mut aura = 1.0;
         for def in &CATALOG {
@@ -235,6 +238,7 @@ impl Player {
                     Effect::Underdog(v) => s.underdog += v * k,
                     Effect::MeterSlow(v) => s.meter_factor -= v * k,
                     Effect::Aura(v) => aura += v * k,
+                    Effect::Resilience(v) => s.resilience += v * k,
                 }
             }
         }
@@ -246,6 +250,7 @@ impl Player {
         s.loss_shield = s.loss_shield.min(MAX_LOSS_SHIELD);
         s.counter_ratio = s.counter_ratio.min(MAX_COUNTER_RATIO);
         s.meter_factor = s.meter_factor.max(MIN_METER_FACTOR);
+        s.resilience = s.resilience.min(DEBUFF_CUT_CAP);
         s.perfect_threshold = s.perfect_threshold.max(MIN_PERFECT_THRESHOLD);
         s
     }
@@ -522,7 +527,48 @@ pub struct Game {
     pub compensate: bool,
     /// Timed buffs active at the last check, to announce when they wear off.
     timed_buffs: Vec<Buff>,
+    /// Fight statuses and when they end.
+    pub statuses: Vec<(Status, Instant)>,
     logged: usize,
+}
+
+/// Share of power a rank-gap status changes, for a gap of `n` ranks (0 means none).
+pub fn gap_strength(n: u8) -> f64 {
+    usize::from(n).checked_sub(1).map_or(0.0, |i| RANK_GAP_STRENGTH[i.min(RANK_GAP_CAP - 1)])
+}
+
+/// A timed effect earned in a mog fight, good or bad (see `World::afflict`).
+/// The number is the rank gap (1 to `RANK_GAP_CAP`) that sets its strength.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Status {
+    /// Took a critical hit: defense drops.
+    Abalado,
+    /// Lost to a lower rank: power drops.
+    PerdeuAura(u8),
+    /// Beat a higher rank: power rises.
+    EgoProibido(u8),
+}
+
+impl Status {
+    pub fn label(self) -> &'static str {
+        match self {
+            Status::Abalado => "ABALADO",
+            Status::PerdeuAura(_) => "PERDEU AURA",
+            Status::EgoProibido(_) => "EGO PROIBIDO",
+        }
+    }
+
+    pub fn effect(self) -> String {
+        match self {
+            Status::Abalado => format!("defesa -{:.0}%", ABALADO_DEF_CUT * 100.0),
+            Status::PerdeuAura(n) => format!("poder -{:.0}%", gap_strength(n) * 100.0),
+            Status::EgoProibido(n) => format!("poder +{:.0}%", gap_strength(n) * 100.0),
+        }
+    }
+
+    pub fn is_bad(self) -> bool {
+        !matches!(self, Status::EgoProibido(_))
+    }
 }
 
 /// An edge from a consumable that is active right now.
@@ -637,6 +683,7 @@ impl Game {
             draft_cursor: 0,
             compensate: true,
             timed_buffs: Vec::new(),
+            statuses: Vec::new(),
             logged: 0,
         }
     }
@@ -658,6 +705,11 @@ impl Game {
             .filter_map(|(on, b)| on.then_some((b, None)))
             .chain(timed.into_iter().filter_map(|(b, l)| l.map(|l| (b, Some(l)))))
             .collect()
+    }
+
+    /// Fight statuses still running, with the time they have left.
+    pub fn active_statuses(&self, now: Instant) -> Vec<(Status, Duration)> {
+        self.statuses.iter().filter(|(_, until)| now < *until).map(|(st, until)| (*st, *until - now)).collect()
     }
 
     /// Logs timed buffs that just wore off.
@@ -1076,6 +1128,7 @@ impl Game {
         self.preworkout_until = now + ms(view.preworkout_ms);
         self.cologne_until = now + ms(view.cologne_ms);
         self.aura_farm_until = now + ms(view.aura_farm_ms);
+        self.statuses = view.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect();
         self.rtt = Duration::from_secs_f64(view.rtt_ms.max(0.0) / 1000.0);
         // The state left the server half a round trip ago.
         let travel = if self.compensate { self.rtt / 2 } else { Duration::ZERO };

@@ -119,6 +119,7 @@ pub enum Effect {
     MeterSlow(f64),
     Aura(f64),
     Underdog(f64),
+    Resilience(f64),
 }
 
 impl Effect {
@@ -139,6 +140,7 @@ impl Effect {
             Effect::CounterBonus(v) => format!("+{}% do que o atacante perde, quando você segura o mog", pct(v)),
             Effect::MeterSlow(v) => format!("cursor {}% mais lento", pct(v)),
             Effect::Aura(v) => format!("+{}% em poder, defesa e MP", pct(v)),
+            Effect::Resilience(v) => format!("status ruins duram {}% menos", pct(v)),
             Effect::Underdog(v) => format!("+{}% de crítico a cada vez que a defesa do alvo dobra sobre seu poder", pct(v)),
         }
     }
@@ -292,7 +294,7 @@ pub const CATALOG: [ItemDef; 61] = [
     permanent(ItemId::Sunglasses, "Óculos Escuros", "Ninguém vê seus olhos hesitando.", Rank::Htn, 2_000.0, 5,
         &[Effect::PerfectZone(0.006)]),
     permanent(ItemId::Therapy, "Sessão de Terapia", "Ser moggado dói menos quando você se conhece.", Rank::Htn, 2_500.0, 5,
-        &[Effect::LossShield(0.05)]),
+        &[Effect::LossShield(0.05), Effect::Resilience(0.15)]),
     permanent(ItemId::Veneers, "Lentes de Porcelana", "Um sorriso que ofusca de longe.", Rank::Htn, 3_000.0, 10,
         &[Effect::Attack(8.0), Effect::StreakBonus(0.03)]),
     permanent(ItemId::PhonkTrack, "Trilha Phonk", "Toca sozinha quando você entra no ambiente.", Rank::Chadlite, 6_000.0, 10,
@@ -370,17 +372,17 @@ pub const CATALOG: [ItemDef; 61] = [
     consumable(ItemId::AuraFarm, "Farmar Aura", "Pose, phonk e câmera lenta por 45 s.", Rank::Htn, 2_000.0, '0',
         "por 45 s, o MP passivo vem em dobro"),
     permanent(ItemId::WolfHood, "Capuz do Lobo Solitário", "Ninguém vê sua cara. Ninguém precisa ver.", Rank::Sigma, 600_000.0, 5,
-        &[Effect::Defense(300.0), Effect::LossShield(0.05)]),
+        &[Effect::Defense(100.0), Effect::LossShield(0.05)]),
     permanent(ItemId::AuraScepter, "Cetro da Aura", "Cada aura farmada vira poder.", Rank::AuraLord, 1_500_000.0, 5,
-        &[Effect::Aura(0.3), Effect::Passive(200.0)]),
+        &[Effect::Aura(0.3), Effect::Passive(100.0)]),
     permanent(ItemId::Trophy67, "Troféu 6-7", "Ninguém sabe por que você ganhou, mas ganhou.", Rank::SixSeven, 6_700_000.0, 7,
-        &[Effect::Attack(670.0), Effect::Defense(670.0), Effect::Passive(1_670.0)]),
+        &[Effect::Attack(150.0), Effect::Defense(150.0), Effect::Passive(400.0)]),
     permanent(ItemId::PhoenixFeather, "Pena de Fênix", "Moggado hoje, renascido amanhã.", Rank::Mythic, 12_000_000.0, 5,
         &[Effect::ImmunityBonus(3.0), Effect::LossShield(0.08), Effect::StreakBonus(0.10)]),
     permanent(ItemId::MarbleBust, "Busto de Mármore", "Proporção áurea esculpida em pedra.", Rank::GreekGod, 35_000_000.0, 5,
-        &[Effect::Attack(2_000.0), Effect::Defense(2_000.0)]),
+        &[Effect::Attack(400.0), Effect::Defense(400.0)]),
     permanent(ItemId::PocketMeteor, "Meteoro de Bolso", "Um pedaço do espaço sideral que rende juros.", Rank::Cosmic, 80_000_000.0, 5,
-        &[Effect::Passive(10_000.0), Effect::WinBonus(0.10)]),
+        &[Effect::Passive(1_500.0), Effect::WinBonus(0.10)]),
     permanent(ItemId::ThirdEye, "Terceiro Olho", "Vê o mog antes de ele acontecer.", Rank::Transcendent, 250_000_000.0, 3,
         &[Effect::Aura(0.5), Effect::PerfectZone(0.02), Effect::MeterSlow(0.03)]),
     permanent(ItemId::Underdog, "Mentalidade Underdog", "Quanto maior o gigante, mais forte o tapa.", Rank::Htn, 3_000.0, 10,

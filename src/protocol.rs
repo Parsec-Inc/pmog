@@ -119,6 +119,9 @@ pub struct StateView {
     pub cologne_ms: u64,
     #[serde(default)]
     pub aura_farm_ms: u64,
+    /// Fight statuses (Abalado, Perdeu Aura, Ego Proibido) and ms left.
+    #[serde(default)]
+    pub statuses: Vec<(crate::game::Status, u64)>,
     /// Time since this player's timing meter started, on the server clock.
     pub meter_ms: u64,
     pub players: Vec<PeerView>,

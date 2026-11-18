@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 18;
+pub const PROTOCOL_VERSION: u32 = 19;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -190,6 +190,20 @@ pub const PUNCH_DOWN_GAP: usize = 2;
 pub const PUNCH_DOWN_FACTOR: f64 = 0.25;
 /// From this many ranks below, a mog takes nothing at all.
 pub const PUNCH_DOWN_ZERO_GAP: usize = 3;
+/// Rank weight runs from 1 (Sub-5) to 1 + this (top rank), like the Brawlhalla rating divisor.
+/// A mog between players is scaled by the defender's weight over the attacker's, never below 1:
+/// hitting a higher rank pays more, a high rank losing to a lower one hurts more.
+pub const RANK_WEIGHT_SPAN: f64 = 2.0;
+/// Perdeu Aura (lost to a lower rank) takes this share of power, and Ego Proibido (beat a higher rank) adds it,
+/// for a gap of 1, 2 and 3 ranks. A bigger gap counts as 3.
+pub const RANK_GAP_STRENGTH: [f64; 3] = [0.15, 0.25, 0.40];
+pub const RANK_GAP_CAP: usize = RANK_GAP_STRENGTH.len();
+/// Abalado: after a critical hit, defense drops by this share.
+pub const ABALADO_DEF_CUT: f64 = 0.25;
+pub const ABALADO_DURATION: Duration = Duration::from_secs(20);
+pub const UPSET_DURATION: Duration = Duration::from_secs(30);
+/// Each level of Sessão de Terapia shortens debuffs by this share, up to the cap.
+pub const DEBUFF_CUT_CAP: f64 = 0.75;
 /// Each mog suffered in a row multiplies the next immunity by this.
 pub const IMMUNITY_GROWTH: f64 = 3.0;
 pub const IMMUNITY_MAX: Duration = Duration::from_secs(60);

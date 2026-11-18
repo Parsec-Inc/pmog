@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 use std::time::{Duration, Instant};
 
 use pmog::constants::*;
-use pmog::game::{Player, Rank, TimingTier, crit_chance, meter_speed};
+use pmog::game::{Player, Rank, Status, TimingTier, crit_chance, meter_speed};
 use pmog::items::{CATALOG, ItemId};
 use pmog::protocol::{Fx, NPC_TARGET, PlayerId, ServerMsg};
 use pmog::world::World;
@@ -481,6 +481,7 @@ fn every_item_effect_changes_stats() {
                 Effect::ImmunityBonus(_) => after.immunity > before.immunity,
                 Effect::CounterBonus(_) => after.counter_ratio > before.counter_ratio,
                 Effect::Underdog(_) => after.underdog > before.underdog,
+                Effect::Resilience(_) => after.resilience > before.resilience,
                 Effect::MeterSlow(_) => after.meter_factor < before.meter_factor,
                 Effect::Aura(_) => after.attack > before.attack && after.defense > before.defense,
             };
@@ -538,6 +539,70 @@ fn punching_far_down_pays_little_or_nothing() {
         let full = (STAKE_FLAT + 1000.0 * STAKE_RATIO) * REWARD_BAD;
         assert!((1000.0 - player(&w, 2).mp - full * expect_share).abs() < 1e-9, "lifetime {lifetime}");
         assert_eq!(w.slot(1).unwrap().streak, streak, "no streak from punching down");
+    }
+}
+
+#[test]
+fn beating_a_higher_rank_pays_more_and_marks_both_with_a_status() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    give(&mut w, 1, ItemId::DiamondJaw, 50);
+    w.slot_mut(2).unwrap().player.lifetime = 1e12;
+    w.slot_mut(2).unwrap().player.mp = 1000.0;
+    w.mog(1, 2, 0.0, now);
+    let swing = 1.0 + RANK_WEIGHT_SPAN;
+    let expect = (STAKE_FLAT + 1000.0 * STAKE_RATIO) * REWARD_BAD * swing;
+    assert!((1000.0 - player(&w, 2).mp - expect).abs() < 1e-9, "{}", player(&w, 2).mp);
+    let statuses = |id| w.view(id, now).unwrap().statuses.iter().map(|(s, ms)| (*s, *ms)).collect::<Vec<_>>();
+    let ms = UPSET_DURATION.as_millis() as u64;
+    let n = RANK_GAP_CAP as u8;
+    assert_eq!(statuses(1), vec![(Status::EgoProibido(n), ms)], "the gap is capped");
+    assert_eq!(statuses(2), vec![(Status::PerdeuAura(n), ms)]);
+}
+
+#[test]
+fn a_high_rank_failing_against_a_low_one_pays_extra_and_is_shamed() {
+    let now = Instant::now();
+    let mut w = world(2, now);
+    w.slot_mut(1).unwrap().player.lifetime = 1e12;
+    w.slot_mut(1).unwrap().player.mp = 1000.0;
+    give(&mut w, 2, ItemId::DiamondJaw, 50);
+    w.mog(1, 2, 0.0, now);
+    let penalty = 1000.0 * LOSS_PENALTY_RATIO * (1.0 + RANK_WEIGHT_SPAN);
+    assert!((1000.0 - player(&w, 1).mp - penalty).abs() < 1e-9, "{}", player(&w, 1).mp);
+    let status = |id| w.view(id, now).unwrap().statuses.first().map(|(s, _)| *s);
+    assert_eq!(status(1), Some(Status::PerdeuAura(RANK_GAP_CAP as u8)));
+    assert_eq!(status(2), Some(Status::EgoProibido(RANK_GAP_CAP as u8)));
+}
+
+#[test]
+fn rank_status_strength_follows_the_gap() {
+    let now = Instant::now();
+    for gap in 1..=4usize {
+        let mut w = world(2, now);
+        give(&mut w, 1, ItemId::DiamondJaw, 50);
+        w.slot_mut(2).unwrap().player.lifetime = Rank::ALL[gap].threshold();
+        w.slot_mut(2).unwrap().player.mp = 1000.0;
+        w.mog(1, 2, 0.0, now);
+        let n = gap.min(RANK_GAP_CAP) as u8;
+        assert_eq!(w.view(1, now).unwrap().statuses[0].0, Status::EgoProibido(n), "gap {gap}");
+        assert_eq!(w.view(2, now).unwrap().statuses[0].0, Status::PerdeuAura(n), "gap {gap}");
+        assert!((w.slot(1).unwrap().atk_mult(now) - (1.0 + RANK_GAP_STRENGTH[usize::from(n) - 1])).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn a_critical_hit_leaves_abalado_and_terapia_shortens_it() {
+    let now = Instant::now();
+    for (therapy, cut) in [(0, 0.0), (2, 0.3)] {
+        let mut w = world(2, now);
+        w.crit_override = Some(1.0);
+        give(&mut w, 2, ItemId::Therapy, therapy);
+        w.slot_mut(2).unwrap().player.mp = 1000.0;
+        w.mog(1, 2, 0.0, now);
+        let (status, ms) = w.view(2, now).unwrap().statuses[0];
+        assert_eq!(status, Status::Abalado);
+        assert_eq!(ms, (ABALADO_DURATION.as_millis() as f64 * (1.0 - cut)) as u64);
     }
 }
 
@@ -662,6 +727,10 @@ fn shown_odds_match_what_the_server_rolls() {
         w.slot_mut(1).unwrap().cooldown_until = t;
         w.slot_mut(1).unwrap().streak = 0;
         w.slot_mut(2).unwrap().immune_until = t;
+        w.slot_mut(2).unwrap().abalado_until = t; // a crit would leave Abalado and skew the next trial
+        for id in [1, 2] {
+            w.slot_mut(id).unwrap().player.lifetime = 0.0; // gains would change ranks, and a rank gap brings Zebra/Vexame
+        }
         w.slot_mut(2).unwrap().player.mp = 1_000.0;
         w.slot_mut(1).unwrap().player.mp = 1_000.0;
         let before = w.duels.len();

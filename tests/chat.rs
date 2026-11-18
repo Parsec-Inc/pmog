@@ -575,6 +575,7 @@ fn playing() -> App {
         preworkout_ms: 0,
         cologne_ms: 0,
         aura_farm_ms: 0,
+        statuses: vec![],
         meter_ms: 0,
         players: vec![pmog::protocol::PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None }],
         duel: None,
