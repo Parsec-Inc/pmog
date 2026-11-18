@@ -1,3 +1,9 @@
+## 0.6.0 (2026-11-18)
+
+### Feat
+
+- servidor anunciado em todas as redes e conexão por endereço
+
 ## 0.5.0 (2026-11-18)
 
 ### Feat
