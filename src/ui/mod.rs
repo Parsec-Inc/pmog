@@ -515,6 +515,7 @@ fn buff_style(buff: Buff) -> Style {
         Buff::PreWorkout => Color::LightMagenta,
         Buff::Cologne => Color::LightGreen,
         Buff::Combo => Color::LightRed,
+        Buff::Ego => Color::Red,
         Buff::AuraFarm => Color::Rgb(180, 140, 255),
     };
     Style::new().bg(color).fg(Color::Black).bold()
@@ -1059,7 +1060,7 @@ type StatRow<'a> = (&'a str, f64, f64, &'a dyn Fn(f64) -> String);
 fn stat_diffs(before: &Stats, after: &Stats) -> Vec<String> {
     let dec = decimal;
     let pct = |v: f64| format!("{}%", decimal(v * 100.0));
-    let rows: [StatRow; 13] = [
+    let rows: [StatRow; 14] = [
         ("Poder", before.attack, after.attack, &|v| format_mp(v)),
         ("Defesa", before.defense, after.defense, &|v| format_mp(v)),
         ("MP/s passivo", before.passive, after.passive, &|v| dec(v)),
@@ -1071,7 +1072,8 @@ fn stat_diffs(before: &Stats, after: &Stats) -> Vec<String> {
         ("Bônus nas vitórias", before.win_bonus, after.win_bonus, &|v| pct(v)),
         ("Proteção nas perdas", before.loss_shield, after.loss_shield, &|v| pct(v)),
         ("Imunidade", before.immunity.as_secs_f64(), after.immunity.as_secs_f64(), &|v| format!("{} s", dec(v))),
-        ("MP ao segurar mog", before.counter_bonus, after.counter_bonus, &|v| dec(v)),
+        ("Prêmio ao segurar mog", before.counter_ratio, after.counter_ratio, &|v| pct(v)),
+        ("Crítico por dobro de defesa", before.underdog, after.underdog, &|v| pct(v)),
         ("Velocidade do cursor", before.meter_factor, after.meter_factor, &|v| pct(v)),
     ];
     rows.iter()

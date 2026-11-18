@@ -154,6 +154,7 @@ fn every_consumable_has_a_unique_key_and_works() {
     unique.dedup();
     assert_eq!(keys.len(), unique.len());
     w.mog(1, NPC_TARGET, 0.0, now);
+    w.slot_mut(1).unwrap().player.nemesis = Some("rival".into());
     for k in keys {
         let id = consumable_for_key(k).unwrap();
         give(&mut w, 1, id, 1);
@@ -272,7 +273,7 @@ fn duel_defender_holds_and_attacker_pays() {
     assert_eq!(player(&w, 2).defends_won, 1);
     assert_eq!(player(&w, 1).mogs_lost, 1);
     assert!((player(&w, 1).mp - (100.0 - 100.0 * LOSS_PENALTY_RATIO)).abs() < 1e-9);
-    assert!(player(&w, 2).mp > 0.0, "counter bonus");
+    assert!((player(&w, 2).mp - 100.0 * LOSS_PENALTY_RATIO * COUNTER_RATIO).abs() < 1e-9, "a share of what the attacker lost");
     assert_eq!(w.slot(1).unwrap().streak, 0);
 }
 
@@ -370,8 +371,8 @@ fn therapy_and_watch_change_defense_outcomes() {
     w.slot_mut(2).unwrap().player.mp = 1000.0;
     w.mog(1, 2, 0.0, now);
     let take = (STAKE_FLAT + 1000.0 * STAKE_RATIO) * REWARD_BAD;
-    assert!((player(&w, 2).mp - (1000.0 - take * 0.5)).abs() < 1e-9, "therapy halves the loss");
-    assert!((player(&w, 1).mp - take * 0.5).abs() < 1e-9, "and the attacker only gets what was lost");
+    assert!((player(&w, 2).mp - (1000.0 - take * 0.75)).abs() < 1e-9, "maxed therapy cuts a quarter of the loss");
+    assert!((player(&w, 1).mp - take * 0.75).abs() < 1e-9, "and the attacker only gets what was lost");
     assert!(w.slot(2).unwrap().immune_until >= now + IMMUNITY + Duration::from_secs(2));
 }
 
@@ -397,11 +398,11 @@ fn better_timing_pays_more_against_players() {
 fn win_bonus_applies() {
     let now = Instant::now();
     let mut w = world(1, now);
-    give(&mut w, 1, ItemId::RingLight, 10);
+    give(&mut w, 1, ItemId::RingLight, 5);
     let t = perfect(&w, 1);
     w.mog(1, NPC_TARGET, 1.0, t);
     let base = NPC_REWARD_FLAT + BASE_ATTACK * NPC_REWARD_RATIO;
-    assert!((player(&w, 1).mp - base * REWARD_PERFECT * 2.0).abs() < 1e-9);
+    assert!((player(&w, 1).mp - base * REWARD_PERFECT * 1.5).abs() < 1e-9);
 }
 
 #[test]
@@ -476,7 +477,8 @@ fn every_item_effect_changes_stats() {
                 Effect::CooldownCut(_) => after.cooldown < before.cooldown,
                 Effect::StreakBonus(_) => after.streak_bonus > before.streak_bonus,
                 Effect::ImmunityBonus(_) => after.immunity > before.immunity,
-                Effect::CounterBonus(_) => after.counter_bonus > before.counter_bonus,
+                Effect::CounterBonus(_) => after.counter_ratio > before.counter_ratio,
+                Effect::Underdog(_) => after.underdog > before.underdog,
                 Effect::MeterSlow(_) => after.meter_factor < before.meter_factor,
                 Effect::Aura(_) => after.attack > before.attack && after.defense > before.defense,
             };
@@ -494,6 +496,7 @@ fn stat_caps_hold_at_max_levels() {
     let s = p.stats();
     assert!(s.cooldown >= MIN_COOLDOWN_SECS);
     assert!(s.loss_shield <= MAX_LOSS_SHIELD);
+    assert!(s.counter_ratio <= MAX_COUNTER_RATIO);
     assert!(s.meter_factor >= MIN_METER_FACTOR);
     assert!(s.perfect_threshold > 0.5);
 }
@@ -632,7 +635,8 @@ fn every_rank_has_new_things_to_buy() {
     }
     let mut keys: Vec<char> = CATALOG.iter().filter_map(|d| d.usage.map(|(k, _)| k)).collect();
     keys.sort();
-    assert_eq!(keys, ('0'..='9').collect::<Vec<_>>(), "consumable keys are 0 to 9, no repeats");
+    let expected: Vec<char> = ('0'..='9').chain(['e']).collect();
+    assert_eq!(keys, expected, "consumable keys are 0 to 9 and E, no repeats");
 }
 
 #[test]
@@ -647,7 +651,7 @@ fn shown_odds_match_what_the_server_rolls() {
     let power = attack * PERFECT_MULT;
     w.crit_override = None;
     let beat = beat_chance(power, defense, DEFENSE_ROLL);
-    let expected = beat + (1.0 - beat) * crit_chance(attack, defense);
+    let expected = beat + (1.0 - beat) * crit_chance(attack, defense, 0.0);
     assert!(expected > 0.1 && expected < 0.9, "pick stats with a real fight: {expected}");
     let trials = 3_000;
     let mut wins = 0;
@@ -894,10 +898,45 @@ fn critical_goes_through_any_defense_and_pays_more() {
 
 #[test]
 fn critical_chance_follows_attack_against_defense() {
-    assert!((crit_chance(10.0, 10.0) - CRIT_CHANCE_SCALE / 2.0).abs() < 1e-12);
-    assert_eq!(crit_chance(1.0, 1_000.0), CRIT_MIN_CHANCE, "never zero");
-    assert!(crit_chance(40.0, 10.0) > crit_chance(10.0, 10.0));
-    assert!(crit_chance(1e9, 1.0) <= CRIT_CHANCE_SCALE);
+    assert!((crit_chance(10.0, 10.0, 0.0) - CRIT_CHANCE_SCALE / 2.0).abs() < 1e-12);
+    assert_eq!(crit_chance(1.0, 1_000.0, 0.0), CRIT_MIN_CHANCE, "never zero");
+    assert!(crit_chance(40.0, 10.0, 0.0) > crit_chance(10.0, 10.0, 0.0));
+    assert!(crit_chance(1e9, 1.0, 0.0) <= CRIT_CHANCE_SCALE);
+}
+
+#[test]
+fn underdog_crits_grow_with_each_doubling_of_the_gap() {
+    let base = crit_chance(100.0, 400.0, 0.0);
+    assert!((crit_chance(100.0, 400.0, 0.1) - (base + 0.2)).abs() < 1e-12, "two doublings");
+    assert_eq!(crit_chance(400.0, 100.0, 0.1), crit_chance(400.0, 100.0, 0.0), "no help against weaker targets");
+    assert_eq!(crit_chance(100.0, 1e6, 0.4), CRIT_MAX_CHANCE);
+}
+
+#[test]
+fn wounded_ego_crits_only_on_the_last_one_who_mogged_you() {
+    let now = Instant::now();
+    let mut w = world(3, now);
+    give(&mut w, 1, ItemId::WoundedEgo, 2);
+    w.use_item(1, ItemId::WoundedEgo, now);
+    assert!(!player(&w, 1).ego_armed, "nobody to get back at yet");
+    assert_eq!(player(&w, 1).level(ItemId::WoundedEgo), 2);
+
+    w.crit_override = Some(1.0);
+    w.mog(2, 1, 0.0, now);
+    assert_eq!(player(&w, 1).nemesis.as_deref(), Some("p2"));
+    w.crit_override = Some(0.0);
+    w.use_item(1, ItemId::WoundedEgo, now);
+    assert!(player(&w, 1).ego_armed);
+
+    give(&mut w, 2, ItemId::DiamondJaw, 50);
+    give(&mut w, 3, ItemId::DiamondJaw, 50);
+    w.mog(1, 3, 0.0, now);
+    assert_eq!(w.duels.last().unwrap().outcome, "lost");
+    assert!(player(&w, 1).ego_armed, "kept for the nemesis");
+    w.slot_mut(1).unwrap().cooldown_until = now;
+    w.mog(1, 2, 0.0, now);
+    assert_eq!(w.duels.last().unwrap().outcome, "won", "guaranteed crit through a huge defense");
+    assert!(!player(&w, 1).ego_armed);
 }
 
 #[test]

@@ -138,7 +138,10 @@ pub struct Stats {
     pub win_bonus: f64,
     pub loss_shield: f64,
     pub immunity: Duration,
-    pub counter_bonus: f64,
+    /// Share of the attacker's loss the defender gets for holding a mog.
+    pub counter_ratio: f64,
+    /// Extra crit chance for each doubling of the target's defense over this attack.
+    pub underdog: f64,
     /// Multiplier on the timing meter speed.
     pub meter_factor: f64,
 }
@@ -177,6 +180,10 @@ pub struct Player {
     pub tape_armed: bool,
     /// Combo 6-7 waiting for the next mog that lands.
     pub combo_armed: bool,
+    /// Ego Ferido waiting for a mog on `nemesis`.
+    pub ego_armed: bool,
+    /// Last player who mogged this one.
+    pub nemesis: Option<String>,
     pub achievements: Vec<Achievement>,
 }
 
@@ -203,7 +210,8 @@ impl Player {
             win_bonus: 0.0,
             loss_shield: 0.0,
             immunity: IMMUNITY,
-            counter_bonus: COUNTER_BONUS,
+            counter_ratio: COUNTER_RATIO,
+            underdog: 0.0,
             meter_factor: 1.0,
         };
         let mut aura = 1.0;
@@ -223,7 +231,8 @@ impl Player {
                     Effect::CooldownCut(v) => s.cooldown -= v * k,
                     Effect::StreakBonus(v) => s.streak_bonus += v * k,
                     Effect::ImmunityBonus(v) => s.immunity += Duration::from_secs_f64(v * k),
-                    Effect::CounterBonus(v) => s.counter_bonus += v * k,
+                    Effect::CounterBonus(v) => s.counter_ratio += v * k,
+                    Effect::Underdog(v) => s.underdog += v * k,
                     Effect::MeterSlow(v) => s.meter_factor -= v * k,
                     Effect::Aura(v) => aura += v * k,
                 }
@@ -235,6 +244,7 @@ impl Player {
         s.mew_gain *= aura;
         s.cooldown = s.cooldown.max(MIN_COOLDOWN_SECS);
         s.loss_shield = s.loss_shield.min(MAX_LOSS_SHIELD);
+        s.counter_ratio = s.counter_ratio.min(MAX_COUNTER_RATIO);
         s.meter_factor = s.meter_factor.max(MIN_METER_FACTOR);
         s.perfect_threshold = s.perfect_threshold.max(MIN_PERFECT_THRESHOLD);
         s
@@ -384,10 +394,11 @@ pub fn meter_value(elapsed: f64, stats: &Stats, streak: u32) -> f64 {
 }
 
 /// Chance of a critical mog that goes through any defense: proportional to attack against defense, never zero.
-pub fn crit_chance(attack: f64, defense: f64) -> f64 {
+pub fn crit_chance(attack: f64, defense: f64, underdog: f64) -> f64 {
     let total = attack + defense;
     let share = if total > 0.0 { attack / total } else { 0.5 };
-    (CRIT_CHANCE_SCALE * share).max(CRIT_MIN_CHANCE)
+    let doublings = if attack > 0.0 && defense > attack { (defense / attack).log2() } else { 0.0 };
+    ((CRIT_CHANCE_SCALE * share).max(CRIT_MIN_CHANCE) + underdog * doublings).min(CRIT_MAX_CHANCE)
 }
 
 /// Odds that `power` beats a defense of `defense` times a uniform pick from `roll`.
@@ -525,6 +536,7 @@ pub enum Buff {
     Cologne,
     Combo,
     AuraFarm,
+    Ego,
 }
 
 impl Buff {
@@ -537,6 +549,7 @@ impl Buff {
             Buff::PreWorkout => "PRÉ-TREINO",
             Buff::Cologne => "COLÔNIA",
             Buff::Combo => "COMBO 6-7",
+            Buff::Ego => "EGO FERIDO",
             Buff::AuraFarm => "FARMANDO AURA",
         }
     }
@@ -550,6 +563,7 @@ impl Buff {
             Buff::PreWorkout => "cooldown ÷2",
             Buff::Cologne => "+50% MP",
             Buff::Combo => "+67% MP no próximo mog",
+            Buff::Ego => "crítico garantido no troco",
             Buff::AuraFarm => "passivo x2",
         }
     }
@@ -563,6 +577,7 @@ impl Buff {
             Buff::PreWorkout => ItemId::PreWorkout,
             Buff::Cologne => ItemId::Cologne,
             Buff::Combo => ItemId::ComboSixSeven,
+            Buff::Ego => ItemId::WoundedEgo,
             Buff::AuraFarm => ItemId::AuraFarm,
         };
         crate::items::def(id).name
@@ -636,7 +651,7 @@ impl Game {
     pub fn buffs(&self, now: Instant) -> Vec<(Buff, Option<Duration>)> {
         let p = &self.player;
         let left = |until: Instant| (now < until).then(|| until - now);
-        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape), (p.combo_armed, Buff::Combo)];
+        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape), (p.combo_armed, Buff::Combo), (p.ego_armed, Buff::Ego)];
         let timed = [(Buff::PreWorkout, left(self.preworkout_until)), (Buff::Cologne, left(self.cologne_until)), (Buff::AuraFarm, left(self.aura_farm_until))];
         armed
             .into_iter()
@@ -669,7 +684,8 @@ impl Game {
         let base = stats.attack * streak_mult(self.streak, &stats) * angle;
         let good = TIMING_FLOOR + TIMING_SPAN * (TIMING_GOOD_FROM + stats.perfect_threshold) / 2.0;
         let (defense, roll) = if peer.is_npc() { (stats.attack, NPC_DEFENSE_ROLL) } else { (peer.defense, DEFENSE_ROLL) };
-        let crit = crit_chance(stats.attack, defense);
+        let revenge = self.player.ego_armed && self.player.nemesis.as_deref() == Some(peer.name.as_str());
+        let crit = if revenge { 1.0 } else { crit_chance(stats.attack, defense, stats.underdog) };
         let odds = |power: f64| {
             let beat = beat_chance(power, defense, roll.clone());
             beat + (1.0 - beat) * crit

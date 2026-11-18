@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 16;
+pub const PROTOCOL_VERSION: u32 = 17;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -98,6 +98,8 @@ pub const CRIT_CHANCE_SCALE: f64 = 0.2;
 pub const CRIT_MIN_CHANCE: f64 = 0.03;
 /// MP multiplier of a critical mog.
 pub const CRIT_TAKE_MULT: f64 = 1.5;
+/// Ceiling for the critical chance, Mentalidade Underdog included.
+pub const CRIT_MAX_CHANCE: f64 = 0.5;
 
 // Economy
 pub const STAKE_FLAT: f64 = 15.0;
@@ -105,7 +107,9 @@ pub const STAKE_RATIO: f64 = 0.08;
 pub const STAKE_CAP: f64 = 5_000.0;
 pub const LOSS_PENALTY_RATIO: f64 = 0.05;
 pub const LOSS_PENALTY_FLAT: f64 = 2.0;
-pub const COUNTER_BONUS: f64 = 8.0;
+/// Share of the attacker's loss a defender gets for holding a mog.
+pub const COUNTER_RATIO: f64 = 0.25;
+pub const MAX_COUNTER_RATIO: f64 = 1.0;
 pub const COST_GROWTH: f64 = 1.55;
 pub const MEW_CAP_PER_SEC: u32 = 5;
 pub const MAX_LOSS_SHIELD: f64 = 0.5;

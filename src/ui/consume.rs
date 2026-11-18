@@ -17,6 +17,7 @@ fn color(item: ItemId) -> (u8, u8, u8) {
         ItemId::Cologne => (120, 255, 150),
         ItemId::IcePack => (170, 230, 255),
         ItemId::ComboSixSeven => (255, 90, 90),
+        ItemId::WoundedEgo => (220, 30, 50),
         _ => (170, 120, 255), // Aura Farm
     }
 }
@@ -32,6 +33,7 @@ pub fn duration_ms(item: ItemId) -> u64 {
         ItemId::Cologne => 1500,
         ItemId::IcePack => 1300,
         ItemId::ComboSixSeven => 1200,
+        ItemId::WoundedEgo => 1400,
         _ => 1800,
     }
 }
@@ -40,6 +42,7 @@ pub fn duration_ms(item: ItemId) -> u64 {
 pub fn shake_power(item: ItemId) -> f64 {
     match item {
         ItemId::ComboSixSeven => 1.8,
+        ItemId::WoundedEgo => 1.4,
         ItemId::PreWorkout => 1.6,
         ItemId::EnergyDrink => 1.2,
         ItemId::AngleShot => 1.0,
@@ -179,6 +182,24 @@ fn paint(item: ItemId, c: &Cell) -> Option<(&'static str, f64)> {
             let behind = head - c.row as f64;
             (0.0..8.0).contains(&behind).then(|| (if (col + row) % 2 == 0 { "6" } else { "7" }, (1.0 - behind / 8.0) * alpha(0.7)))
         }
+        // Cracks split out from the middle while the screen throbs like a heartbeat.
+        ItemId::WoundedEgo => {
+            let reach = (t * 3.0).min(1.0) * cx.hypot(cy);
+            let angle = dy.atan2(dx);
+            let crack = (0..6u64).any(|i| {
+                let ray = noise(i, 2, 2) * std::f64::consts::TAU + 0.25 * (d * 0.4 + i as f64).sin();
+                let off = (angle - ray + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
+                (off * d).abs() < 0.9 && d < reach
+            });
+            let beat = ((phase / 420.0) * std::f64::consts::TAU).sin().max(0.0).powi(6);
+            if crack {
+                Some(("▓", (0.6 + 0.4 * beat) * alpha(0.6)))
+            } else if beat > 0.4 && d > cx.hypot(cy) * 0.6 {
+                Some(("░", beat * 0.5 * alpha(0.6)))
+            } else {
+                None
+            }
+        }
         // Aura Farm: a slow lavender glow with two lazy waves.
         _ => {
             let r = 10.0 + 14.0 * (t * 2.0).min(1.0);
@@ -251,7 +272,7 @@ mod tests {
     fn every_consumable_animates_and_ends() {
         let area = Rect::new(0, 0, 100, 30);
         let consumables: Vec<_> = CATALOG.iter().filter(|d| d.consumable()).collect();
-        assert_eq!(consumables.len(), 10);
+        assert_eq!(consumables.len(), 11);
         for def in consumables {
             let id = def.id;
             let painted = |age| {

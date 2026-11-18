@@ -175,6 +175,10 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
             pct(CRIT_MIN_CHANCE),
             n(CRIT_TAKE_MULT)
         )),
+        bullet(format!(
+            "Mentalidade Underdog soma chance de crítico a cada vez que a defesa do alvo dobra sobre o seu poder, até {} no total. Ego Ferido garante o crítico no próximo mog em quem te moggou por último.",
+            pct(CRIT_MAX_CHANCE)
+        )),
         bullet("Ao lado do alvo aparece sua chance de vencer com timing BOM e com PERFECT. Escudo e Espelho do alvo não entram na conta, porque ficam escondidos."),
         gap(),
         title("Timing"),
@@ -255,7 +259,7 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
             IMMUNITY_MAX.as_secs(),
             IMMUNITY_RESET.as_secs()
         )),
-        bullet(format!("Segurou: você ganha {} MP.", n(COUNTER_BONUS))),
+        bullet(format!("Segurou: você ganha {} do que o atacante perdeu (itens de contra-ataque aumentam, até {}).", pct(COUNTER_RATIO), pct(MAX_COUNTER_RATIO))),
         bullet("Escudo Sigma bloqueia o ataque inteiro. Espelho de Bolso triplica sua defesa uma vez."),
         gap(),
         title("Cooldown"),
@@ -340,7 +344,8 @@ fn economy(g: &Game) -> Vec<Line<'static>> {
         )),
         bullet(format!("{} MP/s de passivo", n(s.passive))),
         bullet(format!("+{} de MP em cada vitória", pct(s.win_bonus))),
-        bullet(format!("{} MP ao segurar um mog", n(s.counter_bonus))),
+        bullet(format!("{} do que o atacante perde, quando você segura um mog", pct(s.counter_ratio))),
+        bullet(format!("+{} de crítico a cada vez que a defesa do alvo dobra sobre seu poder", pct(s.underdog))),
     ]
 }
 

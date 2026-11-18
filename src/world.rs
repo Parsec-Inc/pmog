@@ -329,6 +329,12 @@ impl World {
                 slot.aura_farm_until = now + AURA_FARM_DURATION;
                 Ok("MP passivo em dobro por 45 s.")
             }
+            ItemId::WoundedEgo if p.ego_armed => Err("O Ego Ferido já está esperando o troco."),
+            ItemId::WoundedEgo if p.nemesis.is_none() => Err("Ninguém te moggou ainda: não tem de quem se vingar."),
+            ItemId::WoundedEgo => {
+                p.ego_armed = true;
+                Ok("Seu próximo mog em quem te moggou por último é crítico garantido.")
+            }
             ItemId::IcePack if slot.immune_until >= now + ICE_PACK_IMMUNITY => Err("Você já está imune por mais tempo que isso."),
             ItemId::IcePack => {
                 slot.immune_until = now + ICE_PACK_IMMUNITY;
@@ -391,11 +397,16 @@ impl World {
         let meter = if (client_meter - server_meter).abs() <= METER_TOLERANCE { client_meter } else { server_meter };
 
         let target_defense = self.slots.get(&target).map(|s| s.player.stats().defense);
+        let target_name = self.slots.get(&target).map(|s| s.player.name.clone());
         let slot = self.slots.get_mut(&id).expect("checked above");
         let stats = slot.player.stats();
         let tier = TimingTier::from_meter(meter, stats.perfect_threshold);
-        let chance = self.crit_override.unwrap_or_else(|| crit_chance(stats.attack, target_defense.unwrap_or(stats.attack)));
-        let crit = rand::thread_rng().gen_bool(chance.clamp(0.0, 1.0));
+        let revenge = slot.player.ego_armed && target_name.is_some() && slot.player.nemesis == target_name;
+        if revenge {
+            slot.player.ego_armed = false;
+        }
+        let chance = self.crit_override.unwrap_or_else(|| crit_chance(stats.attack, target_defense.unwrap_or(stats.attack), stats.underdog));
+        let crit = revenge || rand::thread_rng().gen_bool(chance.clamp(0.0, 1.0));
         let cologne = if now < slot.cologne_until { COLOGNE_MULT } else { 1.0 };
         let combo = if slot.player.combo_armed { COMBO_MULT } else { 1.0 };
         let crit_mult = if crit { CRIT_TAKE_MULT } else { 1.0 };
@@ -463,7 +474,9 @@ impl World {
             }
             Defense::Held { roll } => {
                 let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
-                ("lost", 0.0, self.on_loss(id, &defender_name, &why))
+                let lost = self.on_loss(id, &defender_name, &why);
+                self.on_held(target, &attacker_name, lost);
+                ("lost", 0.0, lost)
             }
             Defense::Blocked => {
                 self.event(id, Tone::Info, format!("{defender_name} bloqueou com o Escudo Sigma."), None, false);
@@ -558,6 +571,7 @@ impl World {
         let roll = stats.defense * mirror * rand::thread_rng().gen_range(DEFENSE_ROLL);
         if crit || power > roll {
             let mp = slot.player.mp.max(0.0);
+            slot.player.nemesis = Some(attacker.to_string());
             let broken = std::mem::take(&mut slot.streak).min(STREAK_CAP);
             let bounty = 1.0 + STREAK_BOUNTY * broken as f64;
             let stake = (STAKE_FLAT + mp * STAKE_RATIO).min(STAKE_CAP) * take_mult * bounty;
@@ -589,14 +603,21 @@ impl World {
             }
             Defense::Won { loss, broken }
         } else {
-            slot.player.gain(stats.counter_bonus);
             slot.player.defends_won += 1;
-            self.event(id, Tone::Good, format!("Você segurou o mog de {attacker}. +{} MP", format_mp(stats.counter_bonus)), None, false);
             if mirrored {
                 self.fx(id, Fx::MirrorHeld);
             }
             Defense::Held { roll }
         }
+    }
+
+    /// Pays a defender who held a mog a share of what the attacker lost.
+    fn on_held(&mut self, id: PlayerId, attacker: &str, attacker_loss: f64) {
+        let Some(slot) = self.slots.get_mut(&id) else { return };
+        let gain = attacker_loss * slot.player.stats().counter_ratio;
+        slot.player.gain(gain);
+        slot.dirty = true;
+        self.event(id, Tone::Good, format!("Você segurou o mog de {attacker}. +{} MP", format_mp(gain)), None, false);
     }
 
     /// Snapshot for one player's screen.

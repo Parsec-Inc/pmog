@@ -92,6 +92,8 @@ fn asset(id: ItemId) -> (&'static [u8], &'static [u8], &'static str) {
         ItemId::MarbleBust => asset!("marble_bust"),
         ItemId::PocketMeteor => asset!("pocket_meteor"),
         ItemId::ThirdEye => asset!("third_eye"),
+        ItemId::Underdog => asset!("underdog"),
+        ItemId::WoundedEgo => asset!("wounded_ego"),
     }
 }
 
