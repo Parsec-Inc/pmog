@@ -11,6 +11,8 @@ pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
 pub const SERVER_PORT_START: u16 = 47_790;
 pub const SERVER_PORT_COUNT: u16 = 10;
+/// Interfaces of local containers and VMs, which no other player can reach.
+pub const VIRTUAL_BRIDGE_PREFIXES: [&str; 4] = ["docker", "br-", "veth", "virbr"];
 pub const MULTICAST_GROUP: Ipv4Addr = Ipv4Addr::new(239, 77, 77, 77);
 pub const BEACON_INTERVAL: Duration = Duration::from_millis(1000);
 /// A server that stops announcing for this long leaves the lobby list.
@@ -40,6 +42,8 @@ pub const TICK: Duration = Duration::from_millis(33);
 /// Longest gap credited as passive income (stops pause/suspend farming).
 pub const MAX_TICK_SECS: f64 = 1.0;
 pub const MAX_NAME_LEN: usize = 20;
+/// Longest server address typed in the lobby (IP, name and port).
+pub const MAX_ADDRESS_LEN: usize = 64;
 pub const FEED_LEN: usize = 100;
 pub const BANNER_DURATION: Duration = Duration::from_millis(1800);
 pub const HIT_FLASH: Duration = Duration::from_millis(700);

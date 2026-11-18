@@ -206,17 +206,13 @@ fn spawn_beacon(
     socket.set_broadcast(true)?;
     socket.set_multicast_loop_v4(true)?;
     Ok(thread::spawn(move || {
-        let targets = [
-            SocketAddrV4::new(MULTICAST_GROUP, discovery_port),
-            SocketAddrV4::new(Ipv4Addr::BROADCAST, discovery_port),
-        ];
         let mut last = Instant::now() - BEACON_INTERVAL;
         while !stop.load(Ordering::SeqCst) {
             if last.elapsed() >= BEACON_INTERVAL {
                 let players = status.lock().map(|s| s.online.len() as u32).unwrap_or(0);
                 let beacon = Beacon { v: PROTOCOL_VERSION, name: name.clone(), port, players, release: update::release(), updates: updates.clone() };
                 if let Ok(bytes) = serde_json::to_vec(&beacon) {
-                    for target in targets {
+                    for target in beacon_targets(discovery_port) {
                         let _ = socket.send_to(&bytes, target);
                     }
                 }
@@ -225,6 +221,13 @@ fn spawn_beacon(
             thread::sleep(ACCEPT_POLL);
         }
     }))
+}
+
+/// Multicast, the global broadcast and each interface's own broadcast, so VPNs like ZeroTier hear it too.
+fn beacon_targets(discovery_port: u16) -> Vec<SocketAddrV4> {
+    let mut targets = vec![SocketAddrV4::new(MULTICAST_GROUP, discovery_port), SocketAddrV4::new(Ipv4Addr::BROADCAST, discovery_port)];
+    targets.extend(crate::utils::local_networks().into_iter().map(|(_, broadcast)| SocketAddrV4::new(broadcast, discovery_port)));
+    targets
 }
 
 struct ServerLoop {

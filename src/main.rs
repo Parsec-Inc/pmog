@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use pmog::app::App;
-use pmog::constants::{TICK, WEB_PORT_START};
+use pmog::constants::{SERVER_PORT_START, TICK, WEB_PORT_START};
 use pmog::discovery::Discovery;
 use pmog::input::handle_local_key;
 use pmog::server::Ports;
@@ -32,7 +32,7 @@ fn parse_args() -> Args {
     Args {
         name: flag_value(&args, &["--name", "-n"]).map(|n| utils::clean_name(&n)).filter(|n| !n.is_empty()),
         bot: args.iter().any(|a| a == "--bot"),
-        server: flag_value(&args, &["--server"]).and_then(|s| s.parse().ok()),
+        server: flag_value(&args, &["--server"]).and_then(|s| utils::parse_server_addr(&s, SERVER_PORT_START)),
     }
 }
 
@@ -78,6 +78,9 @@ fn main() -> io::Result<()> {
     app.remote = Some(Remote::start(WEB_PORT_START, config.phone.clone()));
     app.check_web_update(false);
     app.check_firewall();
+    if let Some(addr) = args.server {
+        app.connect(addr);
+    }
 
     let mut terminal = ratatui::init();
     let _ = execute!(io::stdout(), EnableFocusChange);
