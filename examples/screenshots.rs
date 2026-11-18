@@ -166,6 +166,7 @@ fn peer(id: i64, name: &str, lifetime: f64, mp: f64, tag: Option<&str>) -> PeerV
         immune: false,
         immune_ms: 0,
         clan_tag: tag.map(Into::into),
+        statuses: Vec::new(),
     }
 }
 
@@ -211,6 +212,7 @@ fn state(duel: Option<DuelView>) -> StateView {
         preworkout_ms: 0,
         cologne_ms: 42_000,
         aura_farm_ms: 0,
+        statuses: vec![],
         meter_ms: 610,
         players: vec![
             peer(2, "jawline_99", 34_000.0, 6_800.0, Some("SIGMA")),

@@ -90,6 +90,9 @@ pub struct PeerView {
     /// Tag of the player's clan, shown next to the name.
     #[serde(default)]
     pub clan_tag: Option<String>,
+    /// Fight statuses and ms left, so the odds shown count them.
+    #[serde(default)]
+    pub statuses: Vec<(crate::game::Status, u64)>,
 }
 
 /// A duel invitation; `peer` is the other player.
@@ -119,6 +122,9 @@ pub struct StateView {
     pub cologne_ms: u64,
     #[serde(default)]
     pub aura_farm_ms: u64,
+    /// Fight statuses (Abalado, Perdeu Aura, Ego Proibido) and ms left.
+    #[serde(default)]
+    pub statuses: Vec<(crate::game::Status, u64)>,
     /// Time since this player's timing meter started, on the server clock.
     pub meter_ms: u64,
     pub players: Vec<PeerView>,

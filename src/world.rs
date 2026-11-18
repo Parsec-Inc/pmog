@@ -8,7 +8,7 @@ use rand::Rng;
 use crate::constants::*;
 use crate::db::{DuelRecord, MatchRecord, PurchaseRecord};
 use crate::duel::{Duel, DuelKey, DuelView};
-use crate::game::{Achievement, Player, Rank, TimingTier, Tone, crit_chance, meter_value, streak_mult};
+use crate::game::{Achievement, Player, Rank, Status, TimingTier, Tone, crit_chance, meter_value, status_defense_mult, status_power_mult, streak_mult};
 use crate::items::{self, ItemId};
 use crate::protocol::{Fx, InviteView, NPC_TARGET, PeerView, PlayerId, ServerMsg, StateView};
 use crate::utils::{clean_name, decimal, format_mp, format_wait, sane};
@@ -26,6 +26,10 @@ pub struct Slot {
     pub aura_farm_until: Instant,
     /// Until when the Ice Pack immunity lasts, to tell it from immunity earned by being hit.
     pub ice_until: Instant,
+    abalado_until: Instant,
+    /// Until when, and at which rank gap.
+    perdeu_aura: (Instant, u8),
+    ego_proibido: (Instant, u8),
     pub meter_started: Instant,
     mew_window: (Instant, u32),
     /// Mogs suffered in a row and when the last one landed; each one lengthens the immunity.
@@ -49,6 +53,9 @@ impl Slot {
             cologne_until: now,
             aura_farm_until: now,
             ice_until: now,
+            abalado_until: now,
+            perdeu_aura: (now, 0),
+            ego_proibido: (now, 0),
             meter_started: now,
             mew_window: (now, 0),
             hits_in_row: 0,
@@ -56,6 +63,55 @@ impl Slot {
             last_rank,
             dirty: false,
         }
+    }
+
+    /// Applies `status` unless the running one lasts longer or Perdeu Aura is still in its grace; true when it took.
+    fn set_status(&mut self, status: Status, until: Instant, now: Instant) -> bool {
+        let current = match status {
+            Status::Abalado => self.abalado_until,
+            Status::PerdeuAura(_) if self.perdeu_aura.1 > 0 && now < self.perdeu_aura.0 + PERDEU_AURA_GRACE => return false,
+            Status::PerdeuAura(_) => self.perdeu_aura.0,
+            Status::EgoProibido(_) => self.ego_proibido.0,
+        };
+        if until <= current {
+            return false;
+        }
+        match status {
+            Status::Abalado => self.abalado_until = until,
+            Status::PerdeuAura(n) => self.perdeu_aura = (until, n),
+            Status::EgoProibido(n) => self.ego_proibido = (until, n),
+        }
+        true
+    }
+
+    /// Ends every fight status at `now`, grace included.
+    pub fn clear_statuses(&mut self, now: Instant) {
+        self.abalado_until = now;
+        self.perdeu_aura = (now, 0);
+        self.ego_proibido = (now, 0);
+    }
+
+    /// Statuses running at `now`, with the ms left.
+    fn active_statuses(&self, now: Instant) -> Vec<(Status, u64)> {
+        [
+            (Status::Abalado, self.abalado_until),
+            (Status::PerdeuAura(self.perdeu_aura.1), self.perdeu_aura.0),
+            (Status::EgoProibido(self.ego_proibido.1), self.ego_proibido.0),
+        ]
+        .into_iter()
+        .filter(|(_, until)| now < *until)
+        .map(|(st, until)| (st, remaining_ms(until, now)))
+        .collect()
+    }
+
+    /// Power multiplier from fight statuses.
+    pub fn atk_mult(&self, now: Instant) -> f64 {
+        status_power_mult(self.active_statuses(now).into_iter().map(|(st, _)| st))
+    }
+
+    /// Defense multiplier from fight statuses.
+    fn def_mult(&self, now: Instant) -> f64 {
+        status_defense_mult(self.active_statuses(now).into_iter().map(|(st, _)| st))
     }
 
     pub fn meter(&self, now: Instant) -> f64 {
@@ -412,7 +468,7 @@ impl World {
         let crit_mult = if crit { CRIT_TAKE_MULT } else { 1.0 };
         let take_mult = tier.reward() * (1.0 + stats.win_bonus) * cologne * combo * crit_mult;
         let timing = if tier == TimingTier::Perfect { PERFECT_MULT } else { TIMING_FLOOR + TIMING_SPAN * meter };
-        let mut power = stats.attack * timing * streak_mult(slot.streak, &stats);
+        let mut power = stats.attack * slot.atk_mult(now) * timing * streak_mult(slot.streak, &stats);
         let angle = std::mem::take(&mut slot.player.angle_armed);
         if angle {
             power *= 2.0;
@@ -447,7 +503,7 @@ impl World {
                 ("won", won, 0.0)
             } else {
                 let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
-                ("lost", 0.0, self.on_loss(id, NPC_NAME, &why))
+                ("lost", 0.0, self.on_loss(id, NPC_NAME, &why, 1.0))
             };
             self.duels.push(DuelRecord { attacker: id, defender: None, outcome, tier: tier.label(), power, mp_won: won, mp_lost: lost });
             return;
@@ -455,7 +511,9 @@ impl World {
 
         let defender_name = self.slots[&target].player.name.clone();
         let punch = self.punch_down(id, target);
-        let (outcome, won, lost) = match self.defend(target, &attacker_name, power, take_mult * punch, crit, now) {
+        let (up, down) = (self.rank_index(target).saturating_sub(self.rank_index(id)), self.rank_index(id).saturating_sub(self.rank_index(target)));
+        let upset = self.rank_ratio(target, id);
+        let (outcome, won, lost) = match self.defend(target, &attacker_name, power, take_mult * punch * upset, crit, now) {
             Defense::Won { loss, broken } => {
                 if punch < 1.0 {
                     let text = format!("{defender_name} está muito abaixo do seu rank: o mog rendeu pouco e não conta para o streak.");
@@ -470,12 +528,23 @@ impl World {
                 if cologne > 1.0 {
                     self.fx(id, Fx::CologneHit);
                 }
+                if crit {
+                    self.afflict(target, Status::Abalado, ABALADO_DURATION, now);
+                }
+                if up >= 1 {
+                    self.upset(id, target, up, now);
+                }
                 ("won", won, loss)
             }
             Defense::Held { roll } => {
                 let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
-                let lost = self.on_loss(id, &defender_name, &why);
-                self.on_held(target, &attacker_name, lost);
+                let swing = self.rank_ratio(id, target);
+                let lost = self.on_loss(id, &defender_name, &why, swing);
+                // The holder's prize comes from the plain loss, so the rank swing doesn't pay twice.
+                self.on_held(target, &attacker_name, lost / swing);
+                if down >= 1 {
+                    self.upset(target, id, down, now);
+                }
                 ("lost", 0.0, lost)
             }
             Defense::Blocked => {
@@ -485,6 +554,32 @@ impl World {
             }
         };
         self.duels.push(DuelRecord { attacker: id, defender: Some(target), outcome, tier: tier.label(), power, mp_won: won, mp_lost: lost });
+    }
+
+    /// Weight of `to`'s rank over `from`'s, at least 1: from 1 (same or lower) up to `1 + RANK_WEIGHT_SPAN` over `1`.
+    /// Same shape as the Brawlhalla rating divisor, `3 - (3000 - elo) / 800`, which is linear in the rating.
+    fn rank_ratio(&self, to: PlayerId, from: PlayerId) -> f64 {
+        let weight = |id| 1.0 + RANK_WEIGHT_SPAN * self.rank_index(id) as f64 / (Rank::ALL.len() - 1) as f64;
+        (weight(to) / weight(from)).max(1.0)
+    }
+
+    /// Applies `status` for `base`, shortened by the target's Terapia if it is a bad one.
+    fn afflict(&mut self, id: PlayerId, status: Status, base: Duration, now: Instant) {
+        let Some(slot) = self.slots.get_mut(&id) else { return };
+        let cut = if status.is_bad() { 1.0 - slot.player.stats().resilience } else { 1.0 };
+        if !slot.set_status(status, now + base.mul_f64(cut), now) {
+            return;
+        }
+        slot.dirty = true;
+        let tone = if status.is_bad() { Tone::Bad } else { Tone::Good };
+        self.event(id, tone, format!("{} ({}).", status.label(), status.effect()), None, false);
+    }
+
+    /// A lower rank beat a higher one: Ego Proibido for the winner, Perdeu Aura for the loser, both as strong as the gap (capped).
+    fn upset(&mut self, low: PlayerId, high: PlayerId, gap: usize, now: Instant) {
+        let n = gap.min(RANK_GAP_CAP) as u8;
+        self.afflict(low, Status::EgoProibido(n), UPSET_DURATION, now);
+        self.afflict(high, Status::PerdeuAura(n), UPSET_DURATION, now);
     }
 
     /// Share of the normal take when `attacker` hits someone far below their rank.
@@ -531,7 +626,8 @@ impl World {
     }
 
     /// Charges a failed mog; `why` says what beat it.
-    fn on_loss(&mut self, id: PlayerId, target: &str, why: &str) -> f64 {
+    /// `swing` grows the penalty when a high rank fails against a lower one.
+    fn on_loss(&mut self, id: PlayerId, target: &str, why: &str, swing: f64) -> f64 {
         let slot = self.slots.get_mut(&id).expect("attacker online");
         slot.player.mogs_lost += 1;
         if slot.player.tape_armed {
@@ -542,7 +638,7 @@ impl World {
         }
         let mp = slot.player.mp.max(0.0);
         let shield = 1.0 - slot.player.stats().loss_shield;
-        let penalty = ((mp * LOSS_PENALTY_RATIO).max(LOSS_PENALTY_FLAT) * shield).min(mp);
+        let penalty = ((mp * LOSS_PENALTY_RATIO).max(LOSS_PENALTY_FLAT) * shield * swing).min(mp);
         slot.player.mp -= penalty;
         slot.streak = 0;
         self.event(
@@ -568,7 +664,7 @@ impl World {
         let stats = slot.player.stats();
         let mirrored = std::mem::take(&mut slot.player.mirror_armed);
         let mirror = if mirrored { MIRROR_MULT } else { 1.0 };
-        let roll = stats.defense * mirror * rand::thread_rng().gen_range(DEFENSE_ROLL);
+        let roll = stats.defense * slot.def_mult(now) * mirror * rand::thread_rng().gen_range(DEFENSE_ROLL);
         if crit || power > roll {
             let mp = slot.player.mp.max(0.0);
             slot.player.nemesis = Some(attacker.to_string());
@@ -641,6 +737,7 @@ impl World {
                     immune: now < s.immune_until,
                     immune_ms: remaining_ms(s.immune_until, now),
                     clan_tag: self.clan_of.get(other).map(|(_, tag)| tag.clone()),
+                    statuses: s.active_statuses(now),
                 }
             })
             .collect();
@@ -671,6 +768,7 @@ impl World {
             preworkout_ms: remaining_ms(slot.preworkout_until, now),
             cologne_ms: remaining_ms(slot.cologne_until, now),
             aura_farm_ms: remaining_ms(slot.aura_farm_until, now),
+            statuses: slot.active_statuses(now),
             meter_ms: now.saturating_duration_since(slot.meter_started).as_millis() as u64,
             players,
             duel,

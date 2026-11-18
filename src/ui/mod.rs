@@ -21,7 +21,7 @@ use ratatui::widgets::{
 use crate::achievements::Group;
 use crate::constants::{LOBBY_TALL, NARROW_FULL_HEADER_FROM, SHOP_DETAILS_ROWS, SHOP_FULL_TABLE_WIDTH, NARROW_DUEL_FEED_FROM, NARROW_FEED_ROWS, NARROW_ROOMY_BODY, NARROW_WIDTH, SHORT_HEIGHT, PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
 use crate::duel::Minigame;
-use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, TimingTier, Tone};
+use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, Status, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
 use crate::sprites;
@@ -371,7 +371,7 @@ fn target_paragraph(g: &Game, now: Instant) -> Paragraph<'static> {
             }
             match peer.immune_left(now) {
                 Some(left) => spans.push(Span::styled(format!("  · se recuperando, volta em {}", format_wait(left)), fg(Color::Red).bold())),
-                None => spans.extend(odds_spans(g.mog_odds(peer))),
+                None => spans.extend(odds_spans(g.mog_odds(peer, now))),
             }
             Line::from(spans)
         }
@@ -404,6 +404,7 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant, phone: bool) {
 
     let pulse = ((now - g.started).as_millis() / PULSE_MS).is_multiple_of(2);
     let buffs = g.buffs(now);
+    let statuses = g.active_statuses(now);
     let burst = g.last_mog.filter(|h| (now - h.at).as_millis() < burst::duration_ms(h) as u128);
     let color = match (ready, pulse, buffs.is_empty()) {
         (false, _, _) => Color::DarkGray,
@@ -420,11 +421,15 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant, phone: bool) {
             None => BUFF_GOLD,
         }))
         .title(Line::from(" [ESPAÇO] ").centered());
-    if !buffs.is_empty() && !phone {
+    if (!buffs.is_empty() || !statuses.is_empty()) && !phone {
         let room = button.width.saturating_sub(4) as usize;
         let mut spans = vec![Span::styled(" ⚡ BUFFADO ", Style::new().bg(BUFF_GOLD).fg(Color::Black).bold()), " ".into()];
         for (buff, left) in &buffs {
             spans.push(Span::styled(format!(" {} {}{} ", buff.label(), buff.effect(), buff_left(*left)), buff_style(*buff)));
+            spans.push(" ".into());
+        }
+        for (st, left) in &statuses {
+            spans.push(Span::styled(format!(" {} {}{} ", st.label(), st.effect(), buff_left(Some(*left))), status_style(*st)));
             spans.push(" ".into());
         }
         // Too many to describe on one border: keep only the names.
@@ -435,9 +440,13 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant, phone: bool) {
                 spans.push(Span::styled(format!(" {} ", buff.label()), buff_style(*buff)));
                 spans.push(" ".into());
             }
+            for (st, _) in &statuses {
+                spans.push(Span::styled(format!(" {} ", st.label()), status_style(*st)));
+                spans.push(" ".into());
+            }
         }
         if width(&spans) > room {
-            spans = vec![Span::styled(format!(" ⚡ BUFFADO x{} ", buffs.len()), Style::new().bg(BUFF_GOLD).fg(Color::Black).bold())];
+            spans = vec![Span::styled(format!(" ⚡ BUFFADO x{} ", buffs.len() + statuses.len()), Style::new().bg(BUFF_GOLD).fg(Color::Black).bold())];
         }
         block = block.title_bottom(Line::from(spans).centered());
     }
@@ -509,6 +518,11 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant, phone: bool) {
 const BUFF_GOLD: Color = Color::Rgb(255, 200, 40);
 
 /// Badge style for a buff.
+fn status_style(status: Status) -> Style {
+    let color = if status.is_bad() { Color::Red } else { Color::LightGreen };
+    Style::new().bg(color).fg(Color::Black).bold()
+}
+
 fn buff_style(buff: Buff) -> Style {
     let color = match buff {
         Buff::Shield => Color::Cyan,

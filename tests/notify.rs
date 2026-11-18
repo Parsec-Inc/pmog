@@ -62,6 +62,7 @@ fn state(invites: Vec<InviteView>) -> ServerMsg {
         preworkout_ms: 0,
         cologne_ms: 0,
         aura_farm_ms: 0,
+        statuses: vec![],
         meter_ms: 0,
         players: Vec::new(),
         duel: None,

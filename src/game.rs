@@ -144,6 +144,8 @@ pub struct Stats {
     pub underdog: f64,
     /// Multiplier on the timing meter speed.
     pub meter_factor: f64,
+    /// Share of a bad status's duration that Terapia removes.
+    pub resilience: f64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -213,6 +215,7 @@ impl Player {
             counter_ratio: COUNTER_RATIO,
             underdog: 0.0,
             meter_factor: 1.0,
+            resilience: 0.0,
         };
         let mut aura = 1.0;
         for def in &CATALOG {
@@ -235,6 +238,7 @@ impl Player {
                     Effect::Underdog(v) => s.underdog += v * k,
                     Effect::MeterSlow(v) => s.meter_factor -= v * k,
                     Effect::Aura(v) => aura += v * k,
+                    Effect::Resilience(v) => s.resilience += v * k,
                 }
             }
         }
@@ -246,6 +250,7 @@ impl Player {
         s.loss_shield = s.loss_shield.min(MAX_LOSS_SHIELD);
         s.counter_ratio = s.counter_ratio.min(MAX_COUNTER_RATIO);
         s.meter_factor = s.meter_factor.max(MIN_METER_FACTOR);
+        s.resilience = s.resilience.min(DEBUFF_CUT_CAP);
         s.perfect_threshold = s.perfect_threshold.max(MIN_PERFECT_THRESHOLD);
         s
     }
@@ -426,11 +431,13 @@ pub struct Peer {
     /// When the player can be mogged again; `None` if not immune.
     pub immune_until: Option<Instant>,
     pub clan_tag: Option<String>,
+    /// Fight statuses and when they end.
+    pub statuses: Vec<(Status, Instant)>,
 }
 
 impl Peer {
     pub fn npc() -> Peer {
-        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None }
+        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new() }
     }
 
     pub fn is_npc(&self) -> bool {
@@ -522,7 +529,62 @@ pub struct Game {
     pub compensate: bool,
     /// Timed buffs active at the last check, to announce when they wear off.
     timed_buffs: Vec<Buff>,
+    /// Fight statuses and when they end.
+    pub statuses: Vec<(Status, Instant)>,
     logged: usize,
+}
+
+/// Share of power a rank-gap status changes, for a gap of `n` ranks (0 means none).
+pub fn gap_strength(n: u8) -> f64 {
+    usize::from(n).checked_sub(1).map_or(0.0, |i| RANK_GAP_STRENGTH[i.min(RANK_GAP_CAP - 1)])
+}
+
+/// A timed effect earned in a mog fight, good or bad (see `World::afflict`).
+/// The number is the rank gap (1 to `RANK_GAP_CAP`) that sets its strength.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Status {
+    /// Took a critical hit: defense drops.
+    Abalado,
+    /// Lost to a lower rank: power drops.
+    PerdeuAura(u8),
+    /// Beat a higher rank: power rises.
+    EgoProibido(u8),
+}
+
+impl Status {
+    pub fn label(self) -> &'static str {
+        match self {
+            Status::Abalado => "ABALADO",
+            Status::PerdeuAura(_) => "PERDEU AURA",
+            Status::EgoProibido(_) => "EGO PROIBIDO",
+        }
+    }
+
+    pub fn effect(self) -> String {
+        match self {
+            Status::Abalado => format!("defesa -{:.0}%", ABALADO_DEF_CUT * 100.0),
+            Status::PerdeuAura(n) => format!("poder -{:.0}%", gap_strength(n) * 100.0),
+            Status::EgoProibido(n) => format!("poder +{:.0}%", gap_strength(n) * 100.0),
+        }
+    }
+
+    pub fn is_bad(self) -> bool {
+        !matches!(self, Status::EgoProibido(_))
+    }
+}
+
+/// Power multiplier from the given active statuses.
+pub fn status_power_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
+    statuses.into_iter().fold(1.0, |m, st| match st {
+        Status::PerdeuAura(n) => m * (1.0 - gap_strength(n)),
+        Status::EgoProibido(n) => m * (1.0 + gap_strength(n)),
+        Status::Abalado => m,
+    })
+}
+
+/// Defense multiplier from the given active statuses.
+pub fn status_defense_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
+    if statuses.into_iter().any(|st| st == Status::Abalado) { 1.0 - ABALADO_DEF_CUT } else { 1.0 }
 }
 
 /// An edge from a consumable that is active right now.
@@ -637,6 +699,7 @@ impl Game {
             draft_cursor: 0,
             compensate: true,
             timed_buffs: Vec::new(),
+            statuses: Vec::new(),
             logged: 0,
         }
     }
@@ -660,6 +723,11 @@ impl Game {
             .collect()
     }
 
+    /// Fight statuses still running, with the time they have left.
+    pub fn active_statuses(&self, now: Instant) -> Vec<(Status, Duration)> {
+        self.statuses.iter().filter(|(_, until)| now < *until).map(|(st, until)| (*st, *until - now)).collect()
+    }
+
     /// Logs timed buffs that just wore off.
     pub fn note_expired_buffs(&mut self, now: Instant) {
         let active: Vec<Buff> = self.buffs(now).into_iter().filter_map(|(b, left)| left.map(|_| b)).collect();
@@ -678,16 +746,19 @@ impl Game {
     }
 
     /// Chance of mogging `peer` with a mid GOOD hit and with a PERFECT one; shields and mirrors are not visible.
-    pub fn mog_odds(&self, peer: &Peer) -> (f64, f64) {
+    pub fn mog_odds(&self, peer: &Peer, now: Instant) -> (f64, f64) {
         let stats = self.player.stats();
         let angle = if self.player.angle_armed { 2.0 } else { 1.0 };
-        let base = stats.attack * streak_mult(self.streak, &stats) * angle;
+        let mine = self.active_statuses(now).into_iter().map(|(st, _)| st);
+        let base = stats.attack * status_power_mult(mine) * streak_mult(self.streak, &stats) * angle;
         let good = TIMING_FLOOR + TIMING_SPAN * (TIMING_GOOD_FROM + stats.perfect_threshold) / 2.0;
         let (defense, roll) = if peer.is_npc() { (stats.attack, NPC_DEFENSE_ROLL) } else { (peer.defense, DEFENSE_ROLL) };
+        let theirs = peer.statuses.iter().filter(|(_, until)| now < *until).map(|(st, _)| *st);
+        let rolled_defense = defense * status_defense_mult(theirs);
         let revenge = self.player.ego_armed && self.player.nemesis.as_deref() == Some(peer.name.as_str());
         let crit = if revenge { 1.0 } else { crit_chance(stats.attack, defense, stats.underdog) };
         let odds = |power: f64| {
-            let beat = beat_chance(power, defense, roll.clone());
+            let beat = beat_chance(power, rolled_defense, roll.clone());
             beat + (1.0 - beat) * crit
         };
         (odds(base * good), odds(base * PERFECT_MULT))
@@ -1076,6 +1147,7 @@ impl Game {
         self.preworkout_until = now + ms(view.preworkout_ms);
         self.cologne_until = now + ms(view.cologne_ms);
         self.aura_farm_until = now + ms(view.aura_farm_ms);
+        self.statuses = view.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect();
         self.rtt = Duration::from_secs_f64(view.rtt_ms.max(0.0) / 1000.0);
         // The state left the server half a round trip ago.
         let travel = if self.compensate { self.rtt / 2 } else { Duration::ZERO };
@@ -1120,6 +1192,7 @@ impl Game {
             in_duel: p.in_duel,
             immune_until: p.immune.then(|| now + ms(p.immune_ms.max(1))),
             clan_tag: p.clan_tag,
+            statuses: p.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect(),
         }));
         self.peers = peers;
         self.selected = selected_id
