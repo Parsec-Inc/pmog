@@ -166,6 +166,7 @@ fn peer(id: i64, name: &str, lifetime: f64, mp: f64, tag: Option<&str>) -> PeerV
         immune: false,
         immune_ms: 0,
         clan_tag: tag.map(Into::into),
+        statuses: Vec::new(),
     }
 }
 

@@ -8,7 +8,7 @@ use rand::Rng;
 use crate::constants::*;
 use crate::db::{DuelRecord, MatchRecord, PurchaseRecord};
 use crate::duel::{Duel, DuelKey, DuelView};
-use crate::game::{Achievement, gap_strength, Player, Rank, Status, TimingTier, Tone, crit_chance, meter_value, streak_mult};
+use crate::game::{Achievement, Player, Rank, Status, TimingTier, Tone, crit_chance, meter_value, status_defense_mult, status_power_mult, streak_mult};
 use crate::items::{self, ItemId};
 use crate::protocol::{Fx, InviteView, NPC_TARGET, PeerView, PlayerId, ServerMsg, StateView};
 use crate::utils::{clean_name, decimal, format_mp, format_wait, sane};
@@ -26,7 +26,7 @@ pub struct Slot {
     pub aura_farm_until: Instant,
     /// Until when the Ice Pack immunity lasts, to tell it from immunity earned by being hit.
     pub ice_until: Instant,
-    pub abalado_until: Instant,
+    abalado_until: Instant,
     /// Until when, and at which rank gap.
     perdeu_aura: (Instant, u8),
     ego_proibido: (Instant, u8),
@@ -65,12 +65,30 @@ impl Slot {
         }
     }
 
-    fn set_status(&mut self, status: Status, until: Instant) {
+    /// Applies `status` unless the running one lasts longer or Perdeu Aura is still in its grace; true when it took.
+    fn set_status(&mut self, status: Status, until: Instant, now: Instant) -> bool {
+        let current = match status {
+            Status::Abalado => self.abalado_until,
+            Status::PerdeuAura(_) if self.perdeu_aura.1 > 0 && now < self.perdeu_aura.0 + PERDEU_AURA_GRACE => return false,
+            Status::PerdeuAura(_) => self.perdeu_aura.0,
+            Status::EgoProibido(_) => self.ego_proibido.0,
+        };
+        if until <= current {
+            return false;
+        }
         match status {
             Status::Abalado => self.abalado_until = until,
             Status::PerdeuAura(n) => self.perdeu_aura = (until, n),
             Status::EgoProibido(n) => self.ego_proibido = (until, n),
         }
+        true
+    }
+
+    /// Ends every fight status at `now`, grace included.
+    pub fn clear_statuses(&mut self, now: Instant) {
+        self.abalado_until = now;
+        self.perdeu_aura = (now, 0);
+        self.ego_proibido = (now, 0);
     }
 
     /// Statuses running at `now`, with the ms left.
@@ -88,13 +106,12 @@ impl Slot {
 
     /// Power multiplier from fight statuses.
     pub fn atk_mult(&self, now: Instant) -> f64 {
-        let strength = |(until, n): (Instant, u8)| if now < until { gap_strength(n) } else { 0.0 };
-        (1.0 - strength(self.perdeu_aura)) * (1.0 + strength(self.ego_proibido))
+        status_power_mult(self.active_statuses(now).into_iter().map(|(st, _)| st))
     }
 
     /// Defense multiplier from fight statuses.
     fn def_mult(&self, now: Instant) -> f64 {
-        if now < self.abalado_until { 1.0 - ABALADO_DEF_CUT } else { 1.0 }
+        status_defense_mult(self.active_statuses(now).into_iter().map(|(st, _)| st))
     }
 
     pub fn meter(&self, now: Instant) -> f64 {
@@ -521,8 +538,10 @@ impl World {
             }
             Defense::Held { roll } => {
                 let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
-                let lost = self.on_loss(id, &defender_name, &why, self.rank_ratio(id, target));
-                self.on_held(target, &attacker_name, lost);
+                let swing = self.rank_ratio(id, target);
+                let lost = self.on_loss(id, &defender_name, &why, swing);
+                // The holder's prize comes from the plain loss, so the rank swing doesn't pay twice.
+                self.on_held(target, &attacker_name, lost / swing);
                 if down >= 1 {
                     self.upset(target, id, down, now);
                 }
@@ -548,7 +567,9 @@ impl World {
     fn afflict(&mut self, id: PlayerId, status: Status, base: Duration, now: Instant) {
         let Some(slot) = self.slots.get_mut(&id) else { return };
         let cut = if status.is_bad() { 1.0 - slot.player.stats().resilience } else { 1.0 };
-        slot.set_status(status, now + base.mul_f64(cut));
+        if !slot.set_status(status, now + base.mul_f64(cut), now) {
+            return;
+        }
         slot.dirty = true;
         let tone = if status.is_bad() { Tone::Bad } else { Tone::Good };
         self.event(id, tone, format!("{} ({}).", status.label(), status.effect()), None, false);
@@ -716,6 +737,7 @@ impl World {
                     immune: now < s.immune_until,
                     immune_ms: remaining_ms(s.immune_until, now),
                     clan_tag: self.clan_of.get(other).map(|(_, tag)| tag.clone()),
+                    statuses: s.active_statuses(now),
                 }
             })
             .collect();

@@ -371,7 +371,7 @@ fn target_paragraph(g: &Game, now: Instant) -> Paragraph<'static> {
             }
             match peer.immune_left(now) {
                 Some(left) => spans.push(Span::styled(format!("  · se recuperando, volta em {}", format_wait(left)), fg(Color::Red).bold())),
-                None => spans.extend(odds_spans(g.mog_odds(peer))),
+                None => spans.extend(odds_spans(g.mog_odds(peer, now))),
             }
             Line::from(spans)
         }

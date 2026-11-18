@@ -573,6 +573,61 @@ fn a_high_rank_failing_against_a_low_one_pays_extra_and_is_shamed() {
     let status = |id| w.view(id, now).unwrap().statuses.first().map(|(s, _)| *s);
     assert_eq!(status(1), Some(Status::PerdeuAura(RANK_GAP_CAP as u8)));
     assert_eq!(status(2), Some(Status::EgoProibido(RANK_GAP_CAP as u8)));
+    let prize = penalty / (1.0 + RANK_WEIGHT_SPAN) * COUNTER_RATIO;
+    assert!((player(&w, 2).mp - prize).abs() < 1e-9, "the holder's prize skips the rank swing: {}", player(&w, 2).mp);
+}
+
+#[test]
+fn perdeu_aura_does_not_chain_and_statuses_keep_the_longer_one() {
+    let mut now = Instant::now();
+    let mut w = world(2, now);
+    w.slot_mut(1).unwrap().player.lifetime = 1e12;
+    give(&mut w, 2, ItemId::DiamondJaw, 50);
+    let fail = |w: &mut pmog::world::World, now: Instant| {
+        w.slot_mut(1).unwrap().player.mp = 1000.0;
+        w.slot_mut(1).unwrap().cooldown_until = now;
+        w.slot_mut(2).unwrap().immune_until = now;
+        w.mog(1, 2, 0.0, now);
+    };
+    let perdeu = |w: &pmog::world::World, now: Instant| {
+        w.view(1, now).unwrap().statuses.iter().find(|(s, _)| matches!(s, Status::PerdeuAura(_))).map(|(_, ms)| *ms)
+    };
+    let ms = UPSET_DURATION.as_millis() as u64;
+    fail(&mut w, now);
+    assert_eq!(perdeu(&w, now), Some(ms));
+    now += Duration::from_secs(10);
+    fail(&mut w, now);
+    assert_eq!(perdeu(&w, now), Some(ms - 10_000), "a second loss doesn't refresh it");
+    now += UPSET_DURATION;
+    fail(&mut w, now);
+    assert_eq!(perdeu(&w, now), None, "nor lands again during the grace");
+    now += PERDEU_AURA_GRACE;
+    fail(&mut w, now);
+    assert_eq!(perdeu(&w, now), Some(ms), "after the grace it lands again");
+    let ego = w.view(2, now).unwrap().statuses.iter().find(|(s, _)| matches!(s, Status::EgoProibido(_))).map(|(_, ms)| *ms);
+    assert_eq!(ego, Some(ms), "a newer Ego Proibido lasts longer and replaces the old one");
+}
+
+#[test]
+fn shown_odds_count_both_sides_statuses() {
+    use pmog::game::{Peer, beat_chance, status_defense_mult, status_power_mult};
+    let now = Instant::now();
+    let w = world(2, now);
+    let mut game = pmog::game::Game::new(player(&w, 1).clone(), now);
+    game.streak = 0;
+    let stats = game.player.stats();
+    let defense = stats.attack * 1.3;
+    let later = now + Duration::from_secs(5);
+    let mut peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: vec![(Status::Abalado, later)] };
+    game.statuses = vec![(Status::EgoProibido(2), later)];
+    let power = stats.attack * status_power_mult([Status::EgoProibido(2)]) * PERFECT_MULT;
+    let beat = beat_chance(power, defense * status_defense_mult([Status::Abalado]), DEFENSE_ROLL);
+    let crit = crit_chance(stats.attack, defense, 0.0);
+    let (_, perfect) = game.mog_odds(&peer, now);
+    assert!((perfect - (beat + (1.0 - beat) * crit)).abs() < 1e-9);
+    peer.statuses.clear();
+    game.statuses.clear();
+    assert!(game.mog_odds(&peer, now).1 < perfect, "without the statuses the odds drop");
 }
 
 #[test]
@@ -727,9 +782,9 @@ fn shown_odds_match_what_the_server_rolls() {
         w.slot_mut(1).unwrap().cooldown_until = t;
         w.slot_mut(1).unwrap().streak = 0;
         w.slot_mut(2).unwrap().immune_until = t;
-        w.slot_mut(2).unwrap().abalado_until = t; // a crit would leave Abalado and skew the next trial
         for id in [1, 2] {
-            w.slot_mut(id).unwrap().player.lifetime = 0.0; // gains would change ranks, and a rank gap brings Zebra/Vexame
+            w.slot_mut(id).unwrap().clear_statuses(t); // a crit or a rank gap would leave a status and skew the next trial
+            w.slot_mut(id).unwrap().player.lifetime = 0.0; // gains would change ranks
         }
         w.slot_mut(2).unwrap().player.mp = 1_000.0;
         w.slot_mut(1).unwrap().player.mp = 1_000.0;
@@ -742,9 +797,9 @@ fn shown_odds_match_what_the_server_rolls() {
     assert!((rate - expected).abs() < 0.04, "server {rate:.3} vs shown {expected:.3}");
 
     let mut game = pmog::game::Game::new(player(&w, 1).clone(), now);
-    let peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None };
+    let peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new() };
     game.streak = 0;
-    let (good, perfect_odds) = game.mog_odds(&peer);
+    let (good, perfect_odds) = game.mog_odds(&peer, now);
     assert!((perfect_odds - expected).abs() < 1e-9);
     assert!(good < perfect_odds);
     assert_eq!(beat_chance(10.0, 100.0, DEFENSE_ROLL), 0.0);

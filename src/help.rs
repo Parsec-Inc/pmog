@@ -180,7 +180,23 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
             "Mentalidade Underdog soma chance de crítico a cada vez que a defesa do alvo dobra sobre o seu poder, até {} no total. Ego Ferido garante o crítico no próximo mog em quem te moggou por último.",
             pct(CRIT_MAX_CHANCE)
         )),
-        bullet("Ao lado do alvo aparece sua chance de vencer com timing BOM e com PERFECT. Escudo e Espelho do alvo não entram na conta, porque ficam escondidos."),
+        bullet(format!(
+            "Rank pesa: mogar alguém de rank maior rende até x{} mais, e quem tem rank maior perde até x{} mais quando falha contra um rank menor.",
+            n(1.0 + RANK_WEIGHT_SPAN),
+            n(1.0 + RANK_WEIGHT_SPAN)
+        )),
+        bullet(format!(
+            "Status de luta: quem leva crítico fica ABALADO ({} s, defesa -{}). Quando um rank menor vence um maior, o menor ganha EGO PROIBIDO e o maior fica com PERDEU AURA por {} s: poder +/- {}, {} ou {} para 1, 2 ou 3+ ranks de diferença. Perdeu Aura não volta antes de {} s depois de acabar.",
+            ABALADO_DURATION.as_secs(),
+            pct(ABALADO_DEF_CUT),
+            UPSET_DURATION.as_secs(),
+            pct(RANK_GAP_STRENGTH[0]),
+            pct(RANK_GAP_STRENGTH[1]),
+            pct(RANK_GAP_STRENGTH[2]),
+            PERDEU_AURA_GRACE.as_secs()
+        )),
+        bullet(format!("Sessão de Terapia encurta Abalado e Perdeu Aura, até {} a menos.", pct(DEBUFF_CUT_CAP))),
+        bullet("Ao lado do alvo aparece sua chance de vencer com timing BOM e com PERFECT, já com os status de luta dos dois. Escudo e Espelho do alvo não entram na conta, porque ficam escondidos."),
         gap(),
         title("Timing"),
         text("Um cursor vai e volta no medidor abaixo do botão. O momento em que você aperta faz duas coisas: define seu poder (a chance de vencer) e multiplica o MP que você ganha se vencer."),
@@ -347,6 +363,7 @@ fn economy(g: &Game) -> Vec<Line<'static>> {
         bullet(format!("+{} de MP em cada vitória", pct(s.win_bonus))),
         bullet(format!("{} do que o atacante perde, quando você segura um mog", pct(s.counter_ratio))),
         bullet(format!("+{} de crítico a cada vez que a defesa do alvo dobra sobre seu poder", pct(s.underdog))),
+        bullet(format!("status ruins duram {} menos", pct(s.resilience))),
     ]
 }
 

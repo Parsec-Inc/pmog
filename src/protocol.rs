@@ -90,6 +90,9 @@ pub struct PeerView {
     /// Tag of the player's clan, shown next to the name.
     #[serde(default)]
     pub clan_tag: Option<String>,
+    /// Fight statuses and ms left, so the odds shown count them.
+    #[serde(default)]
+    pub statuses: Vec<(crate::game::Status, u64)>,
 }
 
 /// A duel invitation; `peer` is the other player.

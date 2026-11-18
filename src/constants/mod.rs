@@ -206,6 +206,8 @@ pub const RANK_GAP_CAP: usize = RANK_GAP_STRENGTH.len();
 pub const ABALADO_DEF_CUT: f64 = 0.25;
 pub const ABALADO_DURATION: Duration = Duration::from_secs(20);
 pub const UPSET_DURATION: Duration = Duration::from_secs(30);
+/// After Perdeu Aura ends, it can't land again for this long, so one loss doesn't chain into more.
+pub const PERDEU_AURA_GRACE: Duration = Duration::from_secs(30);
 /// Each level of Sessão de Terapia shortens debuffs by this share, up to the cap.
 pub const DEBUFF_CUT_CAP: f64 = 0.75;
 /// Each mog suffered in a row multiplies the next immunity by this.

@@ -146,7 +146,8 @@ cargo run --example screenshots     # refaz as imagens deste README
 - 6 rodadas com minigames sorteados, sem repetir. Opcional: no seletor de aposta, desça (`↓`) para a linha Minigames e marque Escolher; cada um pega 3, alternando, com 12 s por escolha (na fila, só se os dois marcarem). Acaba antes se a vantagem não puder mais ser tirada; 3 x 3 vai para morte súbita com um minigame que ainda não saiu.
 - 5 s de explicação antes de cada rodada e 3,5 s de pausa entre elas.
 - Lag não conta: o servidor mede o ping e aceita o horário em que você apertou, dentro da janela que o ping permite.
-- Mog entre jogadores só troca MP de mão. Bater em quem está 2 ranks abaixo rende 25%; 3 ou mais, nada.
+- Mog entre jogadores só troca MP de mão. Bater em quem está 2 ranks abaixo rende 25%; 3 ou mais, nada. Bater em quem está acima rende até 3x, e quem está acima perde até 3x quando falha contra um rank menor.
+- Status de luta: crítico deixa **Abalado** (defesa -25% por 20 s). Rank menor que vence um maior ganha **Ego Proibido** (poder +15%, +25% ou +40% por 30 s, conforme a diferença) e o maior fica com **Perdeu Aura** (o mesmo, para baixo), que não volta antes de 30 s depois de acabar. A Sessão de Terapia encurta os status ruins. A chance mostrada ao lado do alvo já conta os status dos dois.
 - Quem apanha seguido fica imune por mais tempo (5 s, 15 s, 45 s, até 60 s). O tempo restante aparece ao lado do nome, e tentar mogar alguém imune não gasta cooldown.
 
 </details>

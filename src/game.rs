@@ -431,11 +431,13 @@ pub struct Peer {
     /// When the player can be mogged again; `None` if not immune.
     pub immune_until: Option<Instant>,
     pub clan_tag: Option<String>,
+    /// Fight statuses and when they end.
+    pub statuses: Vec<(Status, Instant)>,
 }
 
 impl Peer {
     pub fn npc() -> Peer {
-        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None }
+        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new() }
     }
 
     pub fn is_npc(&self) -> bool {
@@ -569,6 +571,20 @@ impl Status {
     pub fn is_bad(self) -> bool {
         !matches!(self, Status::EgoProibido(_))
     }
+}
+
+/// Power multiplier from the given active statuses.
+pub fn status_power_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
+    statuses.into_iter().fold(1.0, |m, st| match st {
+        Status::PerdeuAura(n) => m * (1.0 - gap_strength(n)),
+        Status::EgoProibido(n) => m * (1.0 + gap_strength(n)),
+        Status::Abalado => m,
+    })
+}
+
+/// Defense multiplier from the given active statuses.
+pub fn status_defense_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
+    if statuses.into_iter().any(|st| st == Status::Abalado) { 1.0 - ABALADO_DEF_CUT } else { 1.0 }
 }
 
 /// An edge from a consumable that is active right now.
@@ -730,16 +746,19 @@ impl Game {
     }
 
     /// Chance of mogging `peer` with a mid GOOD hit and with a PERFECT one; shields and mirrors are not visible.
-    pub fn mog_odds(&self, peer: &Peer) -> (f64, f64) {
+    pub fn mog_odds(&self, peer: &Peer, now: Instant) -> (f64, f64) {
         let stats = self.player.stats();
         let angle = if self.player.angle_armed { 2.0 } else { 1.0 };
-        let base = stats.attack * streak_mult(self.streak, &stats) * angle;
+        let mine = self.active_statuses(now).into_iter().map(|(st, _)| st);
+        let base = stats.attack * status_power_mult(mine) * streak_mult(self.streak, &stats) * angle;
         let good = TIMING_FLOOR + TIMING_SPAN * (TIMING_GOOD_FROM + stats.perfect_threshold) / 2.0;
         let (defense, roll) = if peer.is_npc() { (stats.attack, NPC_DEFENSE_ROLL) } else { (peer.defense, DEFENSE_ROLL) };
+        let theirs = peer.statuses.iter().filter(|(_, until)| now < *until).map(|(st, _)| *st);
+        let rolled_defense = defense * status_defense_mult(theirs);
         let revenge = self.player.ego_armed && self.player.nemesis.as_deref() == Some(peer.name.as_str());
         let crit = if revenge { 1.0 } else { crit_chance(stats.attack, defense, stats.underdog) };
         let odds = |power: f64| {
-            let beat = beat_chance(power, defense, roll.clone());
+            let beat = beat_chance(power, rolled_defense, roll.clone());
             beat + (1.0 - beat) * crit
         };
         (odds(base * good), odds(base * PERFECT_MULT))
@@ -1173,6 +1192,7 @@ impl Game {
             in_duel: p.in_duel,
             immune_until: p.immune.then(|| now + ms(p.immune_ms.max(1))),
             clan_tag: p.clan_tag,
+            statuses: p.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect(),
         }));
         self.peers = peers;
         self.selected = selected_id
