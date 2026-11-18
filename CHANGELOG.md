@@ -1,3 +1,13 @@
+## 0.4.0 (2026-11-18)
+
+### Feat
+
+- rebalanceamento dos itens e itens de counter
+
+### Fix
+
+- fixed sprite frame
+
 ## 0.3.0 (2026-11-17)
 
 ### Feat
