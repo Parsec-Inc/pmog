@@ -66,6 +66,8 @@ pub enum ItemId {
     MarbleBust,
     PocketMeteor,
     ThirdEye,
+    Underdog,
+    WoundedEgo,
 }
 
 /// Shop tab an item belongs to.
@@ -116,6 +118,7 @@ pub enum Effect {
     CounterBonus(f64),
     MeterSlow(f64),
     Aura(f64),
+    Underdog(f64),
 }
 
 impl Effect {
@@ -133,9 +136,10 @@ impl Effect {
             Effect::CooldownCut(v) => format!("-{} s de cooldown", num(v)),
             Effect::StreakBonus(v) => format!("+{}% de poder por streak", pct(v)),
             Effect::ImmunityBonus(v) => format!("+{} s de imunidade", num(v)),
-            Effect::CounterBonus(v) => format!("+{} MP ao segurar um mog", num(v)),
+            Effect::CounterBonus(v) => format!("+{}% do que o atacante perde, quando você segura o mog", pct(v)),
             Effect::MeterSlow(v) => format!("cursor {}% mais lento", pct(v)),
             Effect::Aura(v) => format!("+{}% em poder, defesa e MP", pct(v)),
+            Effect::Underdog(v) => format!("+{}% de crítico a cada vez que a defesa do alvo dobra sobre seu poder", pct(v)),
         }
     }
 }
@@ -172,10 +176,10 @@ impl ItemDef {
             MidFade | RingLight | NichePerfume | Sunglasses | Photographer | LuxuryWatch | PrivateJet | Mansion | MogCrown | WolfHood | PocketMeteor => {
                 Category::Drip
             }
-            Therapy | PhonkTrack | Meditation | InfiniteAura | BlessedGenes | BoatDance | DoorLean | Jestermaxxing | AuraScepter | PhoenixFeather
+            Therapy | PhonkTrack | Meditation | InfiniteAura | BlessedGenes | BoatDance | DoorLean | Jestermaxxing | AuraScepter | Underdog | PhoenixFeather
             | ThirdEye => Category::Aura,
             SixSeven | SixSevenHeight | Capoeira | SharkSneakers | SahurBat | CrocBomber | BananaMonkey | Trophy67 => Category::Brainrot,
-            EnergyDrink | SigmaShield | AngleShot | PreWorkout | PocketMirror | JawTape | Cologne | IcePack | ComboSixSeven | AuraFarm => {
+            EnergyDrink | SigmaShield | AngleShot | PreWorkout | PocketMirror | JawTape | Cologne | IcePack | ComboSixSeven | AuraFarm | WoundedEgo => {
                 Category::Consumable
             }
         }
@@ -255,7 +259,7 @@ const fn consumable(
     ItemDef { id, name, flavor, min_rank, base_cost, max_level: 99, effects: &[], usage: Some((key, text)) }
 }
 
-pub const CATALOG: [ItemDef; 59] = [
+pub const CATALOG: [ItemDef; 61] = [
     permanent(ItemId::Mewing, "Tutorial de Mewing", "Língua no céu da boca, 24 horas por dia.", Rank::Sub5, 25.0, 50,
         &[Effect::Passive(0.5), Effect::MewGain(0.25)]),
     permanent(ItemId::Sunscreen, "Protetor Solar FPS 70", "Envelhecer é para quem foi moggado.", Rank::Sub5, 45.0, 20,
@@ -276,32 +280,32 @@ pub const CATALOG: [ItemDef; 59] = [
         &[Effect::Defense(8.0), Effect::Passive(1.0)]),
     permanent(ItemId::Insoles, "Palmilha de 7 cm", "Height mog instantâneo, ninguém precisa saber.", Rank::Mtn, 650.0, 50,
         &[Effect::Attack(12.0)]),
-    permanent(ItemId::RingLight, "Ring Light", "Iluminação de estúdio: cada vitória rende mais.", Rank::Mtn, 900.0, 10,
+    permanent(ItemId::RingLight, "Ring Light", "Iluminação de estúdio: cada vitória rende mais.", Rank::Mtn, 900.0, 5,
         &[Effect::WinBonus(0.10)]),
     permanent(ItemId::NichePerfume, "Perfume Nicho", "Deixa rastro: quem chega perto já se sente moggado.", Rank::Mtn, 1_100.0, 10,
-        &[Effect::WinBonus(0.05), Effect::CounterBonus(5.0)]),
+        &[Effect::WinBonus(0.05), Effect::CounterBonus(0.03)]),
     permanent(ItemId::Sunglasses, "Óculos Escuros", "Ninguém vê seus olhos hesitando.", Rank::Htn, 2_000.0, 5,
         &[Effect::PerfectZone(0.006)]),
     permanent(ItemId::Therapy, "Sessão de Terapia", "Ser moggado dói menos quando você se conhece.", Rank::Htn, 2_500.0, 5,
-        &[Effect::LossShield(0.10)]),
+        &[Effect::LossShield(0.05)]),
     permanent(ItemId::Veneers, "Lentes de Porcelana", "Um sorriso que ofusca de longe.", Rank::Htn, 3_000.0, 10,
         &[Effect::Attack(8.0), Effect::StreakBonus(0.03)]),
     permanent(ItemId::PhonkTrack, "Trilha Phonk", "Toca sozinha quando você entra no ambiente.", Rank::Chadlite, 6_000.0, 10,
         &[Effect::CooldownCut(0.3), Effect::StreakBonus(0.05)]),
     permanent(ItemId::LuxuryWatch, "Relógio de Luxo", "Pulso pesado, postura de quem não se abala.", Rank::Chadlite, 8_000.0, 5,
-        &[Effect::ImmunityBonus(1.0), Effect::CounterBonus(10.0)]),
+        &[Effect::ImmunityBonus(1.0), Effect::CounterBonus(0.06)]),
     permanent(ItemId::Photographer, "Fotógrafo Particular", "Ele grita AGORA no momento exato.", Rank::Chadlite, 10_000.0, 5,
-        &[Effect::PerfectZone(0.004), Effect::MeterSlow(0.02)]),
+        &[Effect::PerfectZone(0.006), Effect::MeterSlow(0.02)]),
     permanent(ItemId::Meditation, "Meditação Sigma", "O tempo desacelera para quem está em paz.", Rank::Chad, 15_000.0, 6,
         &[Effect::MeterSlow(0.035)]),
     permanent(ItemId::DiamondJaw, "Maxilar de Diamante", "Corta vidro. Corta egos.", Rank::Chad, 20_000.0, 50,
         &[Effect::Attack(30.0), Effect::Defense(30.0)]),
     permanent(ItemId::CanthalTape, "Fita de Canthal Tilt", "Olhar de caçador até dormindo.", Rank::Chad, 25_000.0, 10,
-        &[Effect::ImmunityBonus(1.0), Effect::LossShield(0.03)]),
+        &[Effect::ImmunityBonus(1.0), Effect::LossShield(0.05)]),
     permanent(ItemId::PrivateJet, "Jatinho Particular", "Wealth mog: o MP entra enquanto você voa.", Rank::Gigachad, 60_000.0, 20,
         &[Effect::Passive(20.0)]),
     permanent(ItemId::InfiniteAura, "Aura Infinita", "Multiplica tudo o que você já é.", Rank::Gigachad, 80_000.0, 10,
-        &[Effect::Aura(0.5)]),
+        &[Effect::Aura(0.15)]),
     permanent(ItemId::Mansion, "Mansão com Academia", "Supino com vista para o mar.", Rank::Gigachad, 120_000.0, 10,
         &[Effect::Passive(30.0), Effect::Defense(50.0)]),
     permanent(ItemId::MogCrown, "Coroa do Mog", "Só existe uma. Ou cinco.", Rank::Ascended, 250_000.0, 5,
@@ -329,7 +333,7 @@ pub const CATALOG: [ItemDef; 59] = [
     permanent(ItemId::Dermaroller, "Dermaroller", "Mil agulhinhas a favor do seu colágeno.", Rank::Htn, 2_800.0, 10,
         &[Effect::Defense(15.0), Effect::LossShield(0.02)]),
     permanent(ItemId::FoxEyes, "Gel Fox Eyes", "Sobrancelha puxada, olhar de quem já ganhou.", Rank::Chadlite, 7_000.0, 10,
-        &[Effect::Attack(10.0), Effect::StreakBonus(0.03)]),
+        &[Effect::Attack(18.0), Effect::StreakBonus(0.04)]),
     permanent(ItemId::ShoulderPads, "Ombreira de Frame Mog", "Brutalmente frame-moggado: agora é você que mogga.", Rank::Mtn, 800.0, 20,
         &[Effect::Attack(6.0), Effect::Defense(6.0)]),
     permanent(ItemId::SleepKit, "Kit Sleepmaxxing", "Máscara, fita na boca e 9 horas de sono.", Rank::Ltn, 180.0, 20,
@@ -337,41 +341,45 @@ pub const CATALOG: [ItemDef; 59] = [
     permanent(ItemId::Whey, "Whey Isolado", "Proteinmaxxing: 2 g por quilo, sem desculpa.", Rank::Ltn, 220.0, 30,
         &[Effect::Attack(2.0), Effect::MewGain(0.5)]),
     permanent(ItemId::BoatDance, "Dança na Proa", "Aura farming de óculos escuros, no bico do barco.", Rank::Htn, 2_200.0, 10,
-        &[Effect::WinBonus(0.05), Effect::CounterBonus(8.0)]),
+        &[Effect::WinBonus(0.05), Effect::CounterBonus(0.05)]),
     permanent(ItemId::DoorLean, "Pose Encostado na Porta", "Braço cruzado, olhar no horizonte, nada a provar.", Rank::Mtn, 1_000.0, 10,
         &[Effect::StreakBonus(0.02), Effect::Defense(5.0)]),
     permanent(ItemId::Jestermaxxing, "Jestermaxxing", "Fazer o grupo rir também é mogar.", Rank::Ltn, 300.0, 10,
-        &[Effect::CounterBonus(3.0), Effect::Passive(0.5)]),
+        &[Effect::CounterBonus(0.02), Effect::Passive(0.5)]),
     permanent(ItemId::SixSeven, "Gesto do 6-7", "Mãos na balança: seis, sete. Ninguém sabe o que significa.", Rank::Ltn, 67.0, 67,
         &[Effect::Attack(0.6), Effect::Defense(0.7)]),
     permanent(ItemId::SixSevenHeight, "Altura de 6'7\"", "Dois metros e um centímetro de height mog.", Rank::Chadlite, 6_767.0, 7,
         &[Effect::Attack(20.0), Effect::Defense(7.0)]),
     permanent(ItemId::Capoeira, "Capoeira Proibida", "Eu sabendo capoeira proibida ☠️ (toca phonk).", Rank::Htn, 3_300.0, 10,
-        &[Effect::Attack(10.0), Effect::CounterBonus(6.0)]),
+        &[Effect::Attack(10.0), Effect::CounterBonus(0.04)]),
     permanent(ItemId::SharkSneakers, "Tralalero Tralala", "O tubarão de três patas e tênis azul.", Rank::Mtn, 1_200.0, 10,
         &[Effect::CooldownCut(0.1), Effect::Passive(2.0)]),
     permanent(ItemId::BananaMonkey, "Chimpanzini Bananini", "Metade chimpanzé, metade banana. Wa wa wa.", Rank::Ltn, 400.0, 10,
         &[Effect::MewGain(1.0), Effect::MewCap(1)]),
     permanent(ItemId::SahurBat, "Tung Tung Tung Sahur", "O tronco com taco de beisebol que te acorda pra mogar.", Rank::Chad, 18_000.0, 10,
-        &[Effect::Attack(25.0), Effect::StreakBonus(0.02)]),
+        &[Effect::Attack(40.0), Effect::StreakBonus(0.02)]),
     permanent(ItemId::CrocBomber, "Bombardiro Crocodilo", "Meio crocodilo, meio bombardeiro, todo destruição.", Rank::Gigachad, 70_000.0, 10,
-        &[Effect::Attack(60.0), Effect::WinBonus(0.05)]),
+        &[Effect::Attack(80.0), Effect::WinBonus(0.05)]),
     consumable(ItemId::ComboSixSeven, "Combo 6-7", "Seis, sete, e o MP vem junto.", Rank::Mtn, 670.0, '9',
         "o próximo mog que acertar rende +67% de MP"),
     consumable(ItemId::AuraFarm, "Farmar Aura", "Pose, phonk e câmera lenta por 45 s.", Rank::Htn, 2_000.0, '0',
         "por 45 s, o MP passivo vem em dobro"),
     permanent(ItemId::WolfHood, "Capuz do Lobo Solitário", "Ninguém vê sua cara. Ninguém precisa ver.", Rank::Sigma, 600_000.0, 5,
-        &[Effect::Defense(150.0), Effect::LossShield(0.05)]),
+        &[Effect::Defense(300.0), Effect::LossShield(0.05)]),
     permanent(ItemId::AuraScepter, "Cetro da Aura", "Cada aura farmada vira poder.", Rank::AuraLord, 1_500_000.0, 5,
-        &[Effect::Aura(0.25), Effect::Passive(100.0)]),
+        &[Effect::Aura(0.3), Effect::Passive(500.0)]),
     permanent(ItemId::Trophy67, "Troféu 6-7", "Ninguém sabe por que você ganhou, mas ganhou.", Rank::SixSeven, 6_700_000.0, 7,
-        &[Effect::Attack(67.0), Effect::Defense(67.0), Effect::Passive(167.0)]),
+        &[Effect::Attack(670.0), Effect::Defense(670.0), Effect::Passive(1_670.0)]),
     permanent(ItemId::PhoenixFeather, "Pena de Fênix", "Moggado hoje, renascido amanhã.", Rank::Mythic, 12_000_000.0, 5,
-        &[Effect::ImmunityBonus(2.0), Effect::LossShield(0.05), Effect::StreakBonus(0.05)]),
+        &[Effect::ImmunityBonus(3.0), Effect::LossShield(0.08), Effect::StreakBonus(0.10)]),
     permanent(ItemId::MarbleBust, "Busto de Mármore", "Proporção áurea esculpida em pedra.", Rank::GreekGod, 35_000_000.0, 5,
-        &[Effect::Attack(300.0), Effect::Defense(300.0)]),
+        &[Effect::Attack(2_000.0), Effect::Defense(2_000.0)]),
     permanent(ItemId::PocketMeteor, "Meteoro de Bolso", "Um pedaço do espaço sideral que rende juros.", Rank::Cosmic, 80_000_000.0, 5,
-        &[Effect::Passive(2_000.0), Effect::WinBonus(0.10)]),
+        &[Effect::Passive(10_000.0), Effect::WinBonus(0.10)]),
     permanent(ItemId::ThirdEye, "Terceiro Olho", "Vê o mog antes de ele acontecer.", Rank::Transcendent, 250_000_000.0, 3,
         &[Effect::Aura(0.5), Effect::PerfectZone(0.02), Effect::MeterSlow(0.03)]),
+    permanent(ItemId::Underdog, "Mentalidade Underdog", "Quanto maior o gigante, mais forte o tapa.", Rank::Htn, 3_000.0, 10,
+        &[Effect::Underdog(0.04)]),
+    consumable(ItemId::WoundedEgo, "Ego Ferido", "Ninguém mogga você duas vezes.", Rank::Htn, 2_500.0, 'e',
+        "o próximo mog em quem te moggou por último é crítico garantido"),
 ];

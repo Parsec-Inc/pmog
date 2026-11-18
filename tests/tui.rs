@@ -221,7 +221,7 @@ fn shop_preview_explains_purchase_impact() {
     assert!(screen.contains("Poder: 10 → 15"), "{screen}");
 
     a.game.shop_cursor = at(ItemId::Therapy);
-    assert!(render(&a, 170, 50).contains("Proteção nas perdas: 0% → 10%"));
+    assert!(render(&a, 170, 50).contains("Proteção nas perdas: 0% → 5%"));
 
     a.game.shop_cursor = at(ItemId::PocketMirror);
     let screen = render(&a, 170, 50);

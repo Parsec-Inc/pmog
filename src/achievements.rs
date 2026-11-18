@@ -138,7 +138,7 @@ fn distinct_items(p: &Player) -> u64 {
 }
 
 fn armed_consumables(p: &Player) -> u64 {
-    [p.shield_armed, p.angle_armed, p.mirror_armed, p.tape_armed, p.combo_armed].into_iter().filter(|b| *b).count() as u64
+    [p.shield_armed, p.angle_armed, p.mirror_armed, p.tape_armed, p.combo_armed, p.ego_armed].into_iter().filter(|b| *b).count() as u64
 }
 
 impl Achievement {
