@@ -48,8 +48,8 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
     let args = parse_args();
-    if let Ok(exe) = std::env::current_exe() {
-        update::cleanup(&exe);
+    if let Ok(exe) = update::running_exe() {
+        update::cleanup(exe);
     }
     let ports = Ports::default();
     if args.bot {
