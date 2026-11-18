@@ -80,8 +80,9 @@ impl Discovery {
                 release: beacon.release,
                 update,
             };
-            match self.servers.iter_mut().find(|s| s.addr == addr) {
-                Some(existing) => *existing = entry,
+            // The same server heard over two networks (LAN and VPN) keeps the first address.
+            match self.servers.iter_mut().find(|s| s.addr == addr || (s.addr.port() == addr.port() && s.name == entry.name)) {
+                Some(existing) => *existing = ServerEntry { addr: existing.addr, ..entry },
                 None => self.servers.push(entry),
             }
         }

@@ -5,7 +5,7 @@ use std::time::Instant;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, Confirm, Screen};
-use crate::constants::{HELP_PAGE_STEP, MACROS_INPUT_LEN, MAX_NAME_LEN, WEB_MAX_PASSWORD};
+use crate::constants::{HELP_PAGE_STEP, MACROS_INPUT_LEN, MAX_ADDRESS_LEN, MAX_NAME_LEN, WEB_MAX_PASSWORD};
 use crate::duel::{DuelKey, Minigame, Phase};
 use crate::game::{Game, Overlay};
 use crate::help::PAGES;
@@ -62,6 +62,18 @@ pub fn handle_key(app: &mut App, key: KeyEvent, now: Instant) -> bool {
         }
         return true;
     }
+    if let Some(typed) = app.editing_address.as_mut() {
+        match key.code {
+            KeyCode::Enter => app.finish_address_edit(),
+            KeyCode::Esc => app.editing_address = None,
+            KeyCode::Backspace => {
+                typed.pop();
+            }
+            KeyCode::Char(c) if !c.is_whitespace() && !c.is_control() && typed.chars().count() < MAX_ADDRESS_LEN => typed.push(c),
+            _ => {}
+        }
+        return true;
+    }
     if let Some(typed) = app.editing_name.as_mut() {
         match key.code {
             KeyCode::Enter => {
@@ -114,6 +126,7 @@ fn lobby_key(app: &mut App, code: KeyCode) {
         KeyCode::Down | KeyCode::Char('j') => app.lobby_move(1),
         KeyCode::Enter | KeyCode::Char(' ') => app.lobby_enter(),
         KeyCode::Char('n') => app.start_name_edit(),
+        KeyCode::Char('i') => app.start_address_edit(),
         KeyCode::Char('c') => app.start_phone_password_edit(),
         KeyCode::Char('e') => app.toggle_phone_mode(),
         KeyCode::Char('x') => app.drop_phone("O PC desconectou o celular."),

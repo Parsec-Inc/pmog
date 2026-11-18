@@ -133,6 +133,7 @@ fn basics() -> Vec<Line<'static>> {
         title("Servidores"),
         bullet("O progresso de cada jogador fica guardado no servidor em que ele joga, não no computador dele."),
         bullet("Na tela inicial aparecem os servidores encontrados na rede. Enter conecta no selecionado."),
+        bullet("Servidor que não aparece (outra rede, VPN sem broadcast): aperte I na tela inicial e digite o IP, ou IP:porta. O painel S de quem hospeda mostra todos os endereços dele, inclusive o da VPN."),
         bullet("Mundos: cada mundo é um save separado, com seus próprios jogadores e progresso. \"Criar mundo novo\" pede um nome, liga o servidor aqui e já te conecta. Quem estiver na mesma rede vê o mundo na lista com esse nome."),
         bullet("Os mundos salvos aparecem na tela inicial: Enter hospeda, R renomeia e A apaga (vai para a lixeira do PMOG). Dá para hospedar vários ao mesmo tempo, cada um numa porta; P para o mundo selecionado."),
         bullet("Atualização: se alguém hospedar uma versão mais nova, ou se sair uma versão nova no GitHub, o jogo pergunta se você quer atualizar. Ele só aceita versões assinadas pelo dono do jogo, confere tudo antes de trocar o executável e reabre sozinho. Se disser não, aperte U na tela inicial depois."),

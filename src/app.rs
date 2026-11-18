@@ -94,6 +94,8 @@ pub struct App {
     /// Saved worlds, refreshed after each change.
     pub worlds: Vec<WorldSave>,
     pub editing_world: Option<WorldEdit>,
+    /// Server address being typed in the lobby, if the editor is open.
+    pub editing_address: Option<String>,
     pub ports: Ports,
     pub quit: bool,
     /// Set when the name changed and should be written to the local config.
@@ -143,6 +145,7 @@ impl App {
             worlds: store.as_ref().map(WorldStore::list).unwrap_or_default(),
             store,
             editing_world: None,
+            editing_address: None,
             ports,
             quit: false,
             name_changed: false,
@@ -533,7 +536,7 @@ impl App {
             return;
         }
         let pending = self.update_offer().filter(|(_, r)| *r > self.update_declined);
-        if pending.is_some() && self.screen == Screen::Lobby && self.confirm.is_none() && self.editing_name.is_none() && self.editing_world.is_none() {
+        if pending.is_some() && self.screen == Screen::Lobby && self.confirm.is_none() && self.editing_name.is_none() && self.editing_world.is_none() && self.editing_address.is_none() {
             self.confirm = Some(Confirm::Update);
         }
     }
@@ -541,6 +544,20 @@ impl App {
     /// True while a duel is still being played (not just its result screen).
     pub fn dueling(&self) -> bool {
         self.game.duel.as_ref().is_some_and(|d| d.i_won.is_none())
+    }
+
+    pub fn start_address_edit(&mut self) {
+        self.editing_address = Some(String::new());
+    }
+
+    /// Connects to the typed server address.
+    pub fn finish_address_edit(&mut self) {
+        let Some(typed) = self.editing_address.take() else { return };
+        match crate::utils::parse_server_addr(&typed, self.ports.tcp_start) {
+            Some(addr) => self.connect(addr),
+            None if typed.trim().is_empty() => {}
+            None => self.notice = Some((Tone::Bad, format!("Não entendi o endereço \"{}\". Use um IP, como 10.7.96.196, ou IP:porta.", typed.trim()))),
+        }
     }
 
     pub fn start_name_edit(&mut self) {
