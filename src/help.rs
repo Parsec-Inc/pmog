@@ -382,8 +382,9 @@ fn shop() -> Vec<Line<'static>> {
         bullet("O número ao lado da categoria diz quantos itens dela você já pode comprar."),
         bullet("O painel da direita mostra o que o item faz e quanto seus números mudam com a compra."),
         bullet(format!(
-            "Itens permanentes têm níveis. Cada nível soma o efeito de novo e custa {}x o anterior.",
-            n(COST_GROWTH)
+            "Itens permanentes têm níveis. Cada nível soma o efeito de novo e custa {}x o anterior ({}x na Aura Infinita).",
+            n(COST_GROWTH),
+            n(AURA_COST_GROWTH)
         )),
         bullet("Consumíveis têm preço fixo, ficam no inventário e são usados com as teclas 1 a 9 e 0."),
         bullet("Escudo, Foto no Ângulo, Espelho, Fita de Mandíbula e Combo 6-7 ficam preparados até serem gastos, mesmo se você fechar o jogo."),

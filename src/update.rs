@@ -7,6 +7,7 @@ use std::io::{self, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
@@ -171,7 +172,7 @@ impl Shelf {
 
     /// Builds found next to the running executable.
     pub fn beside_exe() -> Shelf {
-        let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+        let dir = running_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
         dir.map_or_else(Shelf::default, |d| Shelf::scan(&d, release_pubkey()))
     }
 
@@ -426,36 +427,42 @@ pub fn cleanup(exe: &Path) {
     let _ = fs::remove_file(with_suffix(exe, ".new"));
 }
 
+/// Path of the running executable, resolved once so it survives being replaced on disk.
+pub fn running_exe() -> Result<&'static Path, String> {
+    static EXE: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+    EXE.get_or_init(|| std::env::current_exe().map_err(|e| format!("Não achei o executável: {e}"))).as_deref().map_err(Clone::clone)
+}
+
 /// Downloads from `addr` and installs over the running executable.
 pub fn update_from(addr: SocketAddr) -> Result<u64, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("Não achei o executável: {e}"))?;
+    let exe = running_exe()?;
     let (manifest, bytes) = fetch(addr, platform(), release(), release_pubkey())?;
-    install(&exe, &manifest, &bytes)?;
+    install(exe, &manifest, &bytes)?;
     Ok(manifest.release)
 }
 
 /// Downloads the GitHub build and installs over the running executable.
 pub fn update_from_web(offer: &WebOffer) -> Result<u64, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("Não achei o executável: {e}"))?;
+    let exe = running_exe()?;
     let bytes = fetch_web(offer, release_pubkey(), download)?;
-    install(&exe, &offer.manifest, &bytes)?;
+    install(exe, &offer.manifest, &bytes)?;
     Ok(offer.manifest.release)
 }
 
 /// Starts the freshly installed executable with the same arguments; never returns.
 pub fn restart() -> ! {
-    let exe = std::env::current_exe().expect("running executable");
+    let exe = running_exe().expect("running executable");
     let args: Vec<String> = std::env::args().skip(1).collect();
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        let err = std::process::Command::new(&exe).args(&args).exec();
+        let err = std::process::Command::new(exe).args(&args).exec();
         eprintln!("Atualizado, mas não consegui reabrir o jogo ({err}). Abra o PMOG de novo.");
         std::process::exit(1);
     }
     #[cfg(not(unix))]
     {
-        let code = std::process::Command::new(&exe).args(&args).status().ok().and_then(|s| s.code()).unwrap_or(0);
+        let code = std::process::Command::new(exe).args(&args).status().ok().and_then(|s| s.code()).unwrap_or(0);
         std::process::exit(code);
     }
 }

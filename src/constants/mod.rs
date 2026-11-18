@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 17;
+pub const PROTOCOL_VERSION: u32 = 18;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -111,6 +111,8 @@ pub const LOSS_PENALTY_FLAT: f64 = 2.0;
 pub const COUNTER_RATIO: f64 = 0.25;
 pub const MAX_COUNTER_RATIO: f64 = 1.0;
 pub const COST_GROWTH: f64 = 1.55;
+/// Steeper price curve for Aura Infinita, so stacking it is a late-game goal.
+pub const AURA_COST_GROWTH: f64 = 2.0;
 pub const MEW_CAP_PER_SEC: u32 = 5;
 pub const MAX_LOSS_SHIELD: f64 = 0.5;
 pub const MIN_METER_FACTOR: f64 = 0.7;

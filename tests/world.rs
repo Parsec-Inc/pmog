@@ -73,6 +73,8 @@ fn item_costs_grow_and_consumables_are_flat() {
     assert!(mewing.cost(1) > mewing.cost(0));
     let drink = &CATALOG[index(ItemId::EnergyDrink)];
     assert_eq!(drink.cost(0), drink.cost(10));
+    let aura = &CATALOG[index(ItemId::InfiniteAura)];
+    assert_eq!(aura.cost(3), aura.cost(0) * AURA_COST_GROWTH.powi(3), "Aura Infinita climbs on its own curve");
 }
 
 #[test]
