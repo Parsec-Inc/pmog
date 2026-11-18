@@ -1,3 +1,13 @@
+## 0.5.0 (2026-11-18)
+
+### Feat
+
+- encarece a Aura Infinita e reduz o passivo do Cetro da Aura
+
+### Fix
+
+- reabre o jogo depois de atualizar no Linux
+
 ## 0.4.0 (2026-11-18)
 
 ### Feat
