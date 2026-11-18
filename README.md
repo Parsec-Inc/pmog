@@ -73,7 +73,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
    | Qualquer um | `pmog-linux` / `pmog-windows.exe` direto, ou com quem já tem o jogo |
 
 2. Abra no terminal (`pmog`). Sem pacote, no Linux: `chmod +x pmog-linux && ./pmog-linux`.
-3. Escolha **Criar mundo novo** (ou um mundo salvo) para hospedar, ou entre num servidor da lista. Dá para hospedar vários mundos ao mesmo tempo.
+3. Escolha **Criar mundo novo** (ou um mundo salvo) para hospedar, ou entre num servidor da lista. Dá para hospedar vários mundos ao mesmo tempo. Se o servidor não aparecer, aperte `I` e digite o IP (ou abra com `pmog --server IP`).
 4. Aperte `?` dentro do jogo para ver todas as regras.
 
 ### No celular
@@ -111,6 +111,8 @@ sudo ufw allow pmog                                                             
 Sem pacote, libere as portas à mão (ex.: `sudo firewall-cmd --add-port=47790-47809/tcp --add-port=47777/udp`).
 
 A descoberta usa UDP `47777` (multicast `239.77.77.77` e broadcast) e o jogo usa TCP na primeira porta livre entre `47790` e `47799`. Quem só entra precisa receber UDP `47777` para ver a lista. Para jogar pelo celular, cada PC abre também a primeira porta TCP livre entre `47800` e `47809`. No Windows, permita o PMOG quando o firewall perguntar.
+
+O servidor anuncia em todas as redes do computador (Wi-Fi, cabo e VPNs como o ZeroTier), e o painel do servidor (`S`) lista todos os endereços. Com amigos longe, coloque todo mundo na mesma rede virtual: o servidor aparece na lista como se fosse a rede local, e o mesmo servidor ouvido por duas redes aparece uma vez só. Em VPNs que não repassam broadcast, como o Tailscale, entre com `I` e o IP da VPN.
 
 Ao abrir, o pmog confere o firewall (firewalld, ufw, Firewall do Windows ou do macOS) e, se achar algo bloqueando, mostra na tela inicial o comando para liberar. Quando um servidor aparece na lista mas não responde, o aviso lembra que o firewall de um dos lados pode ser o motivo.
 

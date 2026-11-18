@@ -107,6 +107,9 @@ pub fn draw(f: &mut Frame, app: &App) {
         let title = if edit.id.is_some() { " Novo nome do mundo · Enter salva · Esc cancela " } else { " Nome do mundo novo · Enter cria · Esc cancela " };
         draw_text_editor(f, title, &edit.typed);
     }
+    if let Some(typed) = &app.editing_address {
+        draw_text_editor(f, " IP do servidor · Enter conecta · Esc cancela ", typed);
+    }
     if let Some(typed) = &app.editing_phone_password {
         draw_text_editor(f, " Senha do celular · Enter salva · Esc cancela ", &"•".repeat(typed.chars().count()));
     }
@@ -1155,7 +1158,7 @@ fn draw_lobby(f: &mut Frame, app: &App) {
         Some(LobbyRow::World(_)) => hints.extend([hint("R", "renomear"), hint("A", "apagar")]),
         _ => {}
     }
-    hints.extend([hint("N", "trocar nome"), hint("C", "senha do celular")]);
+    hints.extend([hint("I", "conectar por endereço"), hint("N", "trocar nome"), hint("C", "senha do celular")]);
     hints.push(hint("Q", "sair"));
     let footer_lines = hint_lines(&hints, full.width);
     let notice_lines = app.notice.as_ref().map(|(tone, text)| Line::styled(text.clone(), fg(tone_color(*tone)).bold()));
@@ -1365,8 +1368,13 @@ fn draw_server_panel(f: &mut Frame, app: &App) {
     if let Some(host) = app.current_host() {
         let status = host.status();
         lines.push(heading("VOCÊ HOSPEDA ESTE SERVIDOR"));
-        let ip = crate::utils::lan_ip().map_or("desconhecido".to_string(), |ip| ip.to_string());
-        lines.push(Line::raw(format!(" Endereço na rede: {ip}:{}", host.port)));
+        let networks = crate::utils::local_networks();
+        if networks.is_empty() {
+            lines.push(Line::raw(" Endereço na rede: desconhecido"));
+        }
+        for (ip, _) in networks {
+            lines.push(Line::raw(format!(" Endereço na rede: {ip}:{}", host.port)));
+        }
         let db = host.db_path.as_ref().map_or("em memória".to_string(), |p| p.display().to_string());
         lines.push(Line::raw(format!(" Banco: {db}")));
         lines.push(Line::raw(format!(" Jogadores cadastrados: {}   Duelos registrados: {}", status.registered, status.duels)));

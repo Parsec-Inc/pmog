@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use crate::constants::{APP_DIR, LEGACY_APP_DIR, MAX_NAME_LEN, RTT_SMOOTHING, RTT_WINDOW};
+use crate::constants::{APP_DIR, LEGACY_APP_DIR, MAX_NAME_LEN, RTT_SMOOTHING, RTT_WINDOW, VIRTUAL_BRIDGE_PREFIXES};
 
 /// Formats a point amount with k/M/B suffixes.
 /// Whole number with dots between thousands, like `6.767`.
@@ -59,6 +59,44 @@ pub fn lan_ip() -> Option<std::net::IpAddr> {
     let socket = std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).ok()?;
     socket.connect((std::net::Ipv4Addr::new(10, 255, 255, 255), 1)).ok()?;
     socket.local_addr().ok().map(|a| a.ip()).filter(|ip| !ip.is_unspecified())
+}
+
+/// IPv4 address and broadcast address of each network interface, without loopback and container bridges.
+pub fn local_networks() -> Vec<(std::net::Ipv4Addr, std::net::Ipv4Addr)> {
+    let interfaces = if_addrs::get_if_addrs().unwrap_or_default();
+    let mut networks: Vec<_> = interfaces
+        .into_iter()
+        .filter(|i| !VIRTUAL_BRIDGE_PREFIXES.iter().any(|p| i.name.starts_with(p)))
+        .filter_map(|i| match i.addr {
+            if_addrs::IfAddr::V4(v4) if !v4.ip.is_loopback() => Some((v4.ip, directed_broadcast(v4.ip, v4.netmask))),
+            _ => None,
+        })
+        .collect();
+    networks.sort();
+    networks.dedup();
+    networks
+}
+
+/// Broadcast address of the network `ip` belongs to.
+pub fn directed_broadcast(ip: std::net::Ipv4Addr, netmask: std::net::Ipv4Addr) -> std::net::Ipv4Addr {
+    (u32::from(ip) | !u32::from(netmask)).into()
+}
+
+/// Server address typed by the player: IP or name, with the default port when it has none.
+pub fn parse_server_addr(text: &str, default_port: u16) -> Option<std::net::SocketAddr> {
+    use std::net::ToSocketAddrs;
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    if let Ok(addr) = text.parse() {
+        return Some(addr);
+    }
+    if let Ok(ip) = text.trim_start_matches('[').trim_end_matches(']').parse::<std::net::IpAddr>() {
+        return Some((ip, default_port).into());
+    }
+    let resolved = if text.contains(':') { text.to_socket_addrs() } else { (text, default_port).to_socket_addrs() };
+    resolved.ok()?.next()
 }
 
 /// Running round-trip estimate: smoothed average plus the worst recent sample.

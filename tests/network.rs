@@ -14,7 +14,8 @@ use pmog::db::Db;
 use pmog::discovery::Discovery;
 use pmog::items::ItemId;
 use pmog::machine_id;
-use pmog::protocol::{ClientMsg, NPC_TARGET, ServerMsg, read_msg, write_msg};
+use pmog::protocol::{Beacon, ClientMsg, NPC_TARGET, ServerMsg, read_msg, write_msg};
+use pmog::utils::{directed_broadcast, parse_server_addr};
 
 #[test]
 fn progress_lives_on_the_server_across_reconnects_renames_and_restarts() {
@@ -199,6 +200,45 @@ fn discovery_lists_the_server_with_player_count() {
         thread::sleep(Duration::from_millis(200));
     }
     assert!(discovery.servers().is_empty(), "stopped servers leave the list");
+}
+
+#[test]
+#[cfg_attr(target_os = "macos", ignore = "o loopback do macOS só tem 127.0.0.1")]
+fn one_server_heard_over_two_networks_is_listed_once() {
+    let p = ports(40);
+    let mut discovery = Discovery::start(p.discovery).expect("listen");
+    let beacon = Beacon { v: PROTOCOL_VERSION, name: "Servidor de Igor".into(), port: 47_790, players: 2, release: 0, updates: Vec::new() };
+    let bytes = serde_json::to_vec(&beacon).unwrap();
+    let send_from = |from: &str| std::net::UdpSocket::bind((from, 0)).expect("sender").send_to(&bytes, ("127.0.0.1", p.discovery)).unwrap();
+    send_from("127.0.0.1");
+    let start = Instant::now();
+    while start.elapsed() < DEADLINE && discovery.refresh(Instant::now()).is_empty() {
+        thread::sleep(Duration::from_millis(20));
+    }
+    send_from("127.0.0.2");
+    thread::sleep(Duration::from_millis(300));
+    let servers = discovery.refresh(Instant::now());
+    assert_eq!(servers.len(), 1, "same name and port over two networks: {servers:?}");
+    assert_eq!(servers[0].addr.to_string(), "127.0.0.1:47790", "keeps the first address it heard");
+}
+
+#[test]
+fn typed_addresses_take_the_default_port_when_missing() {
+    assert_eq!(parse_server_addr(" 10.7.96.196 ", 47_790), Some("10.7.96.196:47790".parse().unwrap()));
+    assert_eq!(parse_server_addr("10.7.96.196:47791", 47_790), Some("10.7.96.196:47791".parse().unwrap()));
+    assert_eq!(parse_server_addr("[::1]:47792", 47_790), Some("[::1]:47792".parse().unwrap()));
+    assert_eq!(parse_server_addr("::1", 47_790), Some("[::1]:47790".parse().unwrap()));
+    assert_eq!(parse_server_addr("localhost:47793", 47_790).map(|a| a.port()), Some(47_793));
+    assert_eq!(parse_server_addr("", 47_790), None);
+    assert_eq!(parse_server_addr("10.7.96.196:porta", 47_790), None);
+}
+
+#[test]
+fn each_network_gets_its_own_broadcast() {
+    let zerotier = directed_broadcast("10.7.96.196".parse().unwrap(), "255.255.255.0".parse().unwrap());
+    assert_eq!(zerotier.to_string(), "10.7.96.255");
+    let wifi = directed_broadcast("10.1.15.34".parse().unwrap(), "255.255.254.0".parse().unwrap());
+    assert_eq!(wifi.to_string(), "10.1.15.255");
 }
 
 #[test]

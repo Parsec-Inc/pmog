@@ -7,6 +7,7 @@ description = "Jogo de terminal multiplayer na rede local"
 [dependencies]
 dirs = "6"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+if-addrs = "0.15.0"
 png = "0.18.1"
 qrcode = { version = "0.14.1", default-features = false }
 rand = "0.8"
