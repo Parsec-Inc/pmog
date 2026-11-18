@@ -1,10 +1,8 @@
 name: Release
 
-# Push na main: testes, bump pelo commitizen, builds assinadas de Linux, Windows e macOS,
-# pacotes, release no GitHub e, se ligados, AUR, COPR e Homebrew. Ver docs/PACKAGING.md.
-
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -21,17 +19,18 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  BASE_SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+
 jobs:
   tests:
-    if: ${{ !startsWith(github.event.head_commit.message, 'bump:') }}
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || github.event.pull_request.merged
     uses: ./.github/workflows/tests.yml
 
-  bump:
-    needs: tests
+  version:
+    if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || github.event.pull_request.merged
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
     outputs:
       released: ${{ steps.bump.outputs.released }}
       version: ${{ steps.bump.outputs.version }}
@@ -39,8 +38,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ env.BASE_SHA }}
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@v10.3.2
 
@@ -66,16 +66,18 @@ jobs:
           [ "$status" -eq 0 ] || exit "$status"
           version="$(git describe --tags --exact-match HEAD)"
           uvx --from commitizen cz changelog "$version" --dry-run > release-notes.md
-          echo "released=true" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "pmog_release=$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+          git bundle create bump.bundle "$BASE_SHA..refs/tags/$version"
+          {
+            echo "released=true"
+            echo "version=$version"
+            echo "pmog_release=$(date -u +%Y%m%d%H%M)"
+          } >> "$GITHUB_OUTPUT"
 
-      # A tag sobe antes dos builds para todos os jobs compilarem o mesmo commit.
-      - name: Push version commit and tag
+      - uses: actions/upload-artifact@v7
         if: steps.bump.outputs.released == 'true'
-        env:
-          VERSION: ${{ steps.bump.outputs.version }}
-        run: git push --atomic origin HEAD:main "$VERSION"
+        with:
+          name: bump
+          path: bump.bundle
 
       - uses: actions/upload-artifact@v7
         if: steps.bump.outputs.released == 'true'
@@ -84,18 +86,22 @@ jobs:
           path: release-notes.md
 
   linux:
-    needs: bump
-    if: needs.bump.outputs.released == 'true'
+    needs: version
+    if: needs.version.outputs.released == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      VERSION: ${{ needs.bump.outputs.version }}
-      PMOG_RELEASE: ${{ needs.bump.outputs.pmog_release }}
+      VERSION: ${{ needs.version.outputs.version }}
+      PMOG_RELEASE: ${{ needs.version.outputs.pmog_release }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.bump.outputs.version }}
+          ref: ${{ env.BASE_SHA }}
           persist-credentials: false
+
+      - uses: ./.github/actions/release-checkout
+        with:
+          version: ${{ needs.version.outputs.version }}
 
       - name: Install toolchain
         run: |
@@ -145,18 +151,22 @@ jobs:
           path: target/release/examples/release
 
   macos:
-    needs: bump
-    if: needs.bump.outputs.released == 'true'
+    needs: version
+    if: needs.version.outputs.released == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
     env:
-      VERSION: ${{ needs.bump.outputs.version }}
-      PMOG_RELEASE: ${{ needs.bump.outputs.pmog_release }}
+      VERSION: ${{ needs.version.outputs.version }}
+      PMOG_RELEASE: ${{ needs.version.outputs.pmog_release }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.bump.outputs.version }}
+          ref: ${{ env.BASE_SHA }}
           persist-credentials: false
+
+      - uses: ./.github/actions/release-checkout
+        with:
+          version: ${{ needs.version.outputs.version }}
 
       - uses: Swatinem/rust-cache@v2
 
@@ -170,17 +180,21 @@ jobs:
 
   # assina o binário do macOS no Linux (a chave não vai para o runner do Mac) e monta a fórmula
   macos-sign:
-    needs: [bump, linux, macos]
+    needs: [version, linux, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      VERSION: ${{ needs.bump.outputs.version }}
-      PMOG_RELEASE: ${{ needs.bump.outputs.pmog_release }}
+      VERSION: ${{ needs.version.outputs.version }}
+      PMOG_RELEASE: ${{ needs.version.outputs.pmog_release }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.bump.outputs.version }}
+          ref: ${{ env.BASE_SHA }}
           persist-credentials: false
+
+      - uses: ./.github/actions/release-checkout
+        with:
+          version: ${{ needs.version.outputs.version }}
 
       - uses: actions/download-artifact@v8
         with:
@@ -214,19 +228,23 @@ jobs:
           path: dist/brew/
 
   msi:
-    needs: [bump, linux]
+    needs: [version, linux]
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
       run:
         shell: bash
     env:
-      VERSION: ${{ needs.bump.outputs.version }}
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.bump.outputs.version }}
+          ref: ${{ env.BASE_SHA }}
           persist-credentials: false
+
+      - uses: ./.github/actions/release-checkout
+        with:
+          version: ${{ needs.version.outputs.version }}
 
       # o MSI empacota o mesmo .exe assinado da release, compilado no job linux
       - uses: actions/download-artifact@v8
@@ -248,32 +266,43 @@ jobs:
           path: dist/*.msi
 
   release:
-    needs: [bump, linux, macos-sign, msi]
-    # publica o que saiu mesmo se macOS ou MSI falharem; o linux (builds do auto-update) é obrigatório
-    if: ${{ !cancelled() && needs.linux.result == 'success' }}
+    needs: [version, tests, linux, macos-sign, msi]
+    if: ${{ !cancelled() && needs.tests.result == 'success' && needs.linux.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
     env:
-      VERSION: ${{ needs.bump.outputs.version }}
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE_SHA }}
+
+      - uses: ./.github/actions/release-checkout
+        with:
+          version: ${{ needs.version.outputs.version }}
+
+      - name: Push version commit and tag
+        run: git push --atomic origin "$(git rev-parse "$VERSION^{commit}"):refs/heads/main" "refs/tags/$VERSION"
+
       - uses: actions/download-artifact@v8
         with:
           pattern: '{linux,macos,msi,notes}'
-          path: dist
+          path: ${{ runner.temp }}/dist
           merge-multiple: true
 
       - name: GitHub release
+        working-directory: ${{ runner.temp }}/dist
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mv dist/release-notes.md .
-          (cd dist && sha256sum * > SHA256SUMS)
-          gh release create "$VERSION" dist/* -R "$GITHUB_REPOSITORY" --title "$VERSION" --notes-file release-notes.md
+          mv release-notes.md ..
+          sha256sum -- * > SHA256SUMS
+          gh release create "$VERSION" -R "$GITHUB_REPOSITORY" --title "$VERSION" --notes-file ../release-notes.md -- *
 
   aur:
-    needs: [bump, release]
+    needs: [version, release]
     if: ${{ vars.PUBLISH_AUR == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -290,11 +319,11 @@ jobs:
           updpkgsums: true
           commit_username: github-actions[bot]
           commit_email: 41898282+github-actions[bot]@users.noreply.github.com
-          commit_message: ${{ needs.bump.outputs.version }}
+          commit_message: ${{ needs.version.outputs.version }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
 
   copr:
-    needs: [bump, release]
+    needs: [version, release]
     if: ${{ vars.PUBLISH_COPR == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -317,7 +346,7 @@ jobs:
           uvx copr-cli build "$COPR_PROJECT" dist/*.src.rpm
 
   homebrew:
-    needs: [bump, release, macos-sign]
+    needs: [version, release, macos-sign]
     if: ${{ vars.PUBLISH_BREW == 'true' && needs.macos-sign.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -331,7 +360,7 @@ jobs:
       - name: Atualiza a fórmula no tap
         env:
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          VERSION: ${{ needs.bump.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/Parsec-Inc/homebrew-tap.git" tap
           mkdir -p tap/Formula

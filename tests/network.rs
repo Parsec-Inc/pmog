@@ -179,6 +179,7 @@ fn shop_and_consumables_round_trip() {
 }
 
 #[test]
+#[cfg_attr(target_os = "macos", ignore = "o runner do macOS no CI não entrega o beacon UDP para a própria máquina")]
 fn discovery_lists_the_server_with_player_count() {
     let p = ports(6);
     let mut discovery = Discovery::start(p.discovery).expect("listen");

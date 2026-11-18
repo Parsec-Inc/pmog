@@ -1,0 +1,23 @@
+name: Release checkout
+description: Troca o checkout pelo commit do bump (ainda não enviado), trazido do artefato do job version.
+
+inputs:
+  version:
+    description: Tag criada pelo bump
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: bump
+        path: ${{ runner.temp }}/bump
+
+    - shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        BUNDLE: ${{ runner.temp }}/bump/bump.bundle
+      run: |
+        git fetch --quiet "$BUNDLE" "refs/tags/$VERSION:refs/tags/$VERSION"
+        git -c advice.detachedHead=false checkout --quiet "$VERSION"
