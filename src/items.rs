@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::constants::COST_GROWTH;
+use crate::constants::{AURA_COST_GROWTH, COST_GROWTH};
 use crate::game::Rank;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -190,8 +190,13 @@ impl ItemDef {
         if self.consumable() {
             self.base_cost
         } else {
-            self.base_cost * COST_GROWTH.powi(level as i32)
+            self.base_cost * self.cost_growth().powi(level as i32)
         }
+    }
+
+    /// How much each level costs over the previous one.
+    pub fn cost_growth(&self) -> f64 {
+        if self.id == ItemId::InfiniteAura { AURA_COST_GROWTH } else { COST_GROWTH }
     }
 
     /// Why `player` can't buy the next unit or level right now, if anything stops it.
@@ -367,7 +372,7 @@ pub const CATALOG: [ItemDef; 61] = [
     permanent(ItemId::WolfHood, "Capuz do Lobo Solitário", "Ninguém vê sua cara. Ninguém precisa ver.", Rank::Sigma, 600_000.0, 5,
         &[Effect::Defense(300.0), Effect::LossShield(0.05)]),
     permanent(ItemId::AuraScepter, "Cetro da Aura", "Cada aura farmada vira poder.", Rank::AuraLord, 1_500_000.0, 5,
-        &[Effect::Aura(0.3), Effect::Passive(500.0)]),
+        &[Effect::Aura(0.3), Effect::Passive(200.0)]),
     permanent(ItemId::Trophy67, "Troféu 6-7", "Ninguém sabe por que você ganhou, mas ganhou.", Rank::SixSeven, 6_700_000.0, 7,
         &[Effect::Attack(670.0), Effect::Defense(670.0), Effect::Passive(1_670.0)]),
     permanent(ItemId::PhoenixFeather, "Pena de Fênix", "Moggado hoje, renascido amanhã.", Rank::Mythic, 12_000_000.0, 5,
