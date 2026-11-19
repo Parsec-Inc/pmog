@@ -75,6 +75,23 @@ fn main_screen_shows_everything() {
 }
 
 #[test]
+fn the_inventory_lists_owned_items_under_the_feed() {
+    let mut a = playing();
+    assert!(render(&a, 170, 42).contains("Nada ainda. L abre a loja."));
+    a.game.player.items.insert(ItemId::Mewing, 3);
+    a.game.player.items.insert(ItemId::EnergyDrink, 2);
+    let screen = render(&a, 170, 42);
+    let row = |needle: &str| screen.lines().position(|l| l.contains(needle)).unwrap_or_else(|| panic!("missing {needle:?}\n{screen}"));
+    assert!(row("Feed") < row("Inventário"));
+    assert!(row("Inventário") < row("1  Energético") && row("1  Energético") < row("Tutorial de Mewing"));
+    assert!(screen.lines().nth(row("Tutorial de Mewing")).unwrap().contains("3/50"));
+    for i in 0..40 {
+        a.game.player.items.insert(pmog::game::CATALOG[i].id, 1);
+    }
+    assert!(render(&a, 170, 42).contains("itens"));
+}
+
+#[test]
 fn every_overlay_renders() {
     let mut a = playing();
     a.game.player.achievements.push(Achievement::FirstMog);

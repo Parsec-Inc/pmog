@@ -69,6 +69,11 @@ fn fg(color: Color) -> Style {
     Style::new().fg(color)
 }
 
+/// Badge style for a key the player can press.
+fn key_style() -> Style {
+    Style::new().bg(Color::DarkGray).fg(Color::White).bold()
+}
+
 pub fn draw(f: &mut Frame, app: &App) {
     match app.screen {
         Screen::Lobby => draw_lobby(f, app),
@@ -180,7 +185,11 @@ fn draw_game(f: &mut Frame, app: &App) {
             Layout::horizontal([Constraint::Percentage(26), Constraint::Percentage(48), Constraint::Percentage(26)]).areas(body);
         draw_peers(f, left, g, now);
         draw_center(f, center, g, now, full.height < SHORT_HEIGHT);
-        draw_feed(f, right, g);
+        let rows = inventory_rows(g);
+        let inventory_h = (rows.len().max(1) as u16 + 2).min(right.height / 2);
+        let [feed, inventory] = Layout::vertical([Constraint::Min(0), Constraint::Length(inventory_h)]).areas(right);
+        draw_feed(f, feed, g);
+        draw_inventory(f, inventory, rows);
     }
 
     match g.overlay {
@@ -581,6 +590,47 @@ fn draw_feed(f: &mut Frame, area: Rect, g: &Game) {
     f.render_widget(paragraph, area);
 }
 
+/// Owned items: consumables first with their key and count, then permanent items with their level.
+fn inventory_rows(g: &Game) -> Vec<Row<'static>> {
+    let owned = CATALOG.iter().filter(|d| g.player.level(d.id) > 0);
+    let (consumables, permanent): (Vec<&ItemDef>, Vec<&ItemDef>) = owned.partition(|d| d.consumable());
+    // Permanent names line up with the consumable names after their key badge.
+    let indent = if consumables.is_empty() { " " } else { "    " };
+    consumables
+        .into_iter()
+        .chain(permanent)
+        .map(|d| {
+            let level = g.player.level(d.id);
+            let (name, amount) = match d.usage {
+                Some((key, _)) => (Line::from(vec![Span::styled(format!(" {key} "), key_style()), Span::raw(format!(" {}", d.name))]), format!("x{level} ")),
+                None => (Line::raw(format!("{indent}{}", d.name)), format!("{level}/{} ", d.max_level)),
+            };
+            let color = if level >= d.max_level { Color::Yellow } else { Color::Gray };
+            Row::new([Cell::from(name), Cell::from(Line::styled(amount, fg(color)).right_aligned())])
+        })
+        .collect()
+}
+
+/// Inventory box under the feed; rows that do not fit fold into a "+N itens" line.
+fn draw_inventory(f: &mut Frame, area: Rect, mut rows: Vec<Row<'static>>) {
+    if area.height < 3 {
+        return;
+    }
+    let block = Block::bordered().title(" Inventário ");
+    if rows.is_empty() {
+        f.render_widget(Paragraph::new(Line::styled(" Nada ainda. L abre a loja.", fg(Color::DarkGray))).block(block), area);
+        return;
+    }
+    let shown = area.height as usize - 2;
+    let hidden = rows.len().saturating_sub(shown);
+    if hidden > 0 {
+        rows.truncate(shown - 1);
+        rows.push(Row::new([Cell::from(Line::styled(format!(" +{} itens", hidden + 1), fg(Color::DarkGray)))]));
+    }
+    let table = Table::new(rows, [Constraint::Min(0), Constraint::Length(7)]).block(block);
+    f.render_widget(table, area);
+}
+
 /// One footer hint: the key and what it does; an empty key is plain text.
 pub(crate) type KeyHint = (String, String);
 
@@ -615,7 +665,6 @@ fn game_hints(g: &Game) -> Vec<KeyHint> {
 
 /// Packs hints into as few lines as fit `width`, never splitting one.
 pub(crate) fn hint_lines(hints: &[KeyHint], width: u16) -> Vec<Line<'static>> {
-    let key_style = Style::new().bg(Color::DarkGray).fg(Color::White).bold();
     let mut lines = Vec::new();
     let mut current: Vec<Span<'static>> = Vec::new();
     let mut used = 0usize;
@@ -627,7 +676,7 @@ pub(crate) fn hint_lines(hints: &[KeyHint], width: u16) -> Vec<Line<'static>> {
             used = 0;
         }
         if !key.is_empty() {
-            current.push(Span::styled(format!(" {key} "), key_style));
+            current.push(Span::styled(format!(" {key} "), key_style()));
         }
         current.push(Span::raw(format!(" {label} ")));
         used += size;
