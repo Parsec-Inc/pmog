@@ -19,7 +19,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 
 |  |  |
 |---|---|
-| **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro, e o streak multiplica tudo. | **18 minigames de duelo** em 6 rodadas sorteadas, de encarada e digitação a fit check, fotogenia e mog reverso. Se os dois quiserem, cada um escolhe 3. |
+| **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro, e o streak multiplica tudo. | **18 minigames de duelo**, 1 contra 1 ou em grupo de até 5, em 6 rodadas sorteadas, de encarada e digitação a fit check, fotogenia e mog reverso. Se os dois quiserem, cada um escolhe 3. |
 | **59 itens na loja** em 6 abas (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. Os 10 consumíveis ficam nas teclas `1`–`0`. | **Buffs à vista**: escudo, colônia, combo 6-7, aura farmada e afins aparecem numa faixa ⚡ BUFFADO enquanto valem. |
 | **15 ranks**, de Sub-5 a Transcendente, cada um com um efeito no nome (brilho, fogo, arco-íris, estrelas, 6-7 piscando). Os 7 ranks acima do Ascendido liberam um item exclusivo cada. | **66 conquistas** em 7 grupos, com progresso (37/100) e 4 secretas. |
 | **DLC Cadeia**: compre uma vez e todo mog PERFECT faz o alvo pegar o sabonete e ganhar um número na testa. Traz 12 itens da novelinha "O sabonete", títulos da cela do X9 ao Zero e 6 conquistas. | **DLCs plugáveis**: cada expansão é um módulo que implementa o trait `Dlc` (ver [docs/dlc.md](docs/dlc.md)). |
@@ -150,10 +150,11 @@ Para criar uma DLC nova, veja [docs/dlc.md](docs/dlc.md).
 <summary><b>Duelos e jogo limpo</b></summary>
 
 - `D` desafia, `F` entra na fila (até 1 rank de distância; depois de 10 s, qualquer um). Aposta de amistoso a tudo do MP do mais pobre; as duas ficam presas no servidor e o vencedor leva. Empate ou servidor desligado devolve; sair no meio é desistência.
+- **Duelo em grupo**: até 5 jogadores. No `D`, marque vários na linha Jogadores (`Espaço`); na `F`, troque para Em grupo (começa com 5, ou com 3 depois de 20 s). Cada rodada dá 1 ponto por rival superado e o vencedor leva o pote inteiro. Sem escolha de minigames e sem os de 1 contra 1.
 - 6 rodadas com minigames sorteados, sem repetir. Opcional: no seletor de aposta, desça (`↓`) para a linha Minigames e marque Escolher; cada um pega 3, alternando, com 12 s por escolha (na fila, só se os dois marcarem). Acaba antes se a vantagem não puder mais ser tirada; 3 x 3 vai para morte súbita com um minigame que ainda não saiu.
 - 5 s de explicação antes de cada rodada e 3,5 s de pausa entre elas.
 - Lag não conta: o servidor mede o ping e aceita o horário em que você apertou, dentro da janela que o ping permite.
-- Mog entre jogadores só troca MP de mão. Bater em quem está 2 ranks abaixo rende 25%; 3 ou mais, nada. Bater em quem está acima rende até 3x, e quem está acima perde até 3x quando falha contra um rank menor.
+- Mog entre jogadores só troca MP de mão. O teto do que um mog tira cresce com o menor rank dos dois (1% do limiar dele, no mínimo 5k). Bater em quem está 2 ranks abaixo rende 25%; 3 ou mais, nada. Bater em quem está acima rende até 3x, e quem está acima perde até 3x quando falha contra um rank menor.
 - Status de luta: crítico deixa **Abalado** (defesa -25% por 20 s). Rank menor que vence um maior ganha **Ego Proibido** (poder +15%, +25% ou +40% por 30 s, conforme a diferença) e o maior fica com **Perdeu Aura** (o mesmo, para baixo), que não volta antes de 30 s depois de acabar. A Sessão de Terapia encurta os status ruins. A chance mostrada ao lado do alvo já conta os status dos dois.
 - Quem apanha seguido fica imune por mais tempo (5 s, 15 s, 45 s, até 60 s). O tempo restante aparece ao lado do nome, e tentar mogar alguém imune não gasta cooldown.
 

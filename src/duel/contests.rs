@@ -6,10 +6,10 @@ use rand::Rng;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
-use super::{Board, DuelKey, HunterProgress, Minigame, mean};
+use super::{Board, DuelKey, EXACT, HunterProgress, Minigame, Standings, mean};
 use crate::constants::*;
 
-/// Rules of one minigame round between two sides.
+/// Rules of one minigame round between any number of sides.
 pub trait Contest: Send {
     /// How long play lasts.
     fn play_len(&self) -> Duration;
@@ -19,46 +19,39 @@ pub trait Contest: Send {
     fn settled(&self) -> bool {
         false
     }
-    /// Winner and result text; `end` is when play stopped.
-    fn result(&self, names: &[String; 2], end: f64) -> (Option<usize>, String);
-    /// What `side` sees at `t`.
-    fn board(&self, side: usize, t: f64) -> Board;
+    /// Each side's ranking key; `end` is when play stopped.
+    fn standings(&self, end: f64) -> Standings;
+    /// One side's numbers, for the group ranking.
+    fn line(&self, side: usize, end: f64) -> String;
+    /// Result text of a two-side round; `by_first` when the main number decided it.
+    fn duo_text(&self, names: &[String], winner: Option<usize>, by_first: bool, end: f64) -> String;
+    /// What `side` sees at `t`, next to `rival`.
+    fn board(&self, side: usize, rival: usize, t: f64) -> Board;
     /// Changes whenever time alone reveals something new, so the server pushes it.
     fn stamp(&self, _t: f64) -> u32 {
         0
     }
 }
 
-/// The contest that plays `game`, if it is one of these.
-pub fn create(game: Minigame, rng: &mut impl Rng) -> Option<Box<dyn Contest>> {
+/// The contest that plays `game` between `n` sides, if it is one of these.
+pub fn create(game: Minigame, n: usize, rng: &mut impl Rng) -> Option<Box<dyn Contest>> {
     Some(match game {
-        Minigame::Jawline => Box::new(Jawline::new(rng)),
-        Minigame::Posture => Box::new(Posture::new(rng)),
-        Minigame::FitCheck => Box::new(FitCheck::new(rng)),
-        Minigame::Hydration => Box::new(Hydration::new(rng)),
-        Minigame::Photo => Box::new(Photo::new(rng)),
-        Minigame::Status => Box::new(Status::new(rng)),
-        Minigame::Hair => Box::new(Hair::new(rng)),
-        Minigame::Brow => Box::new(Brow::new(rng)),
-        Minigame::ReverseMog => Box::new(ReverseMog::default()),
+        Minigame::Jawline => Box::new(Jawline::new(n, rng)),
+        Minigame::Posture => Box::new(Posture::new(n, rng)),
+        Minigame::FitCheck => Box::new(FitCheck::new(n, rng)),
+        Minigame::Hydration => Box::new(Hydration::new(n, rng)),
+        Minigame::Photo => Box::new(Photo::new(n, rng)),
+        Minigame::Status => Box::new(Status::new(n, rng)),
+        Minigame::Hair => Box::new(Hair::new(n, rng)),
+        Minigame::Brow => Box::new(Brow::new(n, rng)),
+        Minigame::ReverseMog => Box::new(ReverseMog { picks: vec![[None; RPS_THROWS]; n] }),
         _ => return None,
     })
 }
 
-/// Side with the larger value, if they differ.
-fn higher(a: f64, b: f64) -> Option<usize> {
-    if (a - b).abs() < 1e-9 {
-        None
-    } else if a > b {
-        Some(0)
-    } else {
-        Some(1)
-    }
-}
-
-/// Side with the smaller value, if they differ.
-fn lower(a: f64, b: f64) -> Option<usize> {
-    higher(b, a)
+/// A finish time as a key: earlier is better, never finishing is worst.
+fn earlier(done: Option<f64>) -> f64 {
+    -done.unwrap_or(f64::MAX)
 }
 
 fn secs(ms: f64) -> String {
@@ -67,15 +60,15 @@ fn secs(ms: f64) -> String {
 
 /// Scoring shared by the minigames where you react to what shows up.
 pub(super) struct Reflexes {
-    answered: [Vec<bool>; 2],
-    reactions: [Vec<f64>; 2],
-    score: [f64; 2],
-    mistakes: [u32; 2],
+    answered: Vec<Vec<bool>>,
+    reactions: Vec<Vec<f64>>,
+    score: Vec<f64>,
+    mistakes: Vec<u32>,
 }
 
 impl Reflexes {
-    pub(super) fn new(stimuli: usize) -> Reflexes {
-        Reflexes { answered: [vec![false; stimuli], vec![false; stimuli]], reactions: [Vec::new(), Vec::new()], score: [0.0; 2], mistakes: [0; 2] }
+    pub(super) fn new(n: usize, stimuli: usize) -> Reflexes {
+        Reflexes { answered: vec![vec![false; stimuli]; n], reactions: vec![Vec::new(); n], score: vec![0.0; n], mistakes: vec![0; n] }
     }
 
     /// A press on stimulus `i`, `reaction` ms after it showed; a wrong or inhumanly fast one costs `penalty`.
@@ -108,22 +101,25 @@ impl Reflexes {
         }
     }
 
-    /// More points wins, then the faster average; `won` follows the winner's name, `tied` opens a draw.
-    pub(super) fn result(&self, names: &[String; 2], won: &str, tied: &str) -> (Option<usize>, String) {
-        let avg = [mean(&self.reactions[0]), mean(&self.reactions[1])];
-        let line = |s: usize| match avg[s] {
+    /// More points wins, then the faster average (within half a ms it is a tie).
+    pub(super) fn standings(&self) -> Standings {
+        let keys = (0..self.score.len()).map(|s| vec![self.score[s], -mean(&self.reactions[s]).unwrap_or(f64::NAN)]).collect();
+        Standings::new(keys, &[EXACT, 0.5])
+    }
+
+    pub(super) fn line(&self, s: usize) -> String {
+        match mean(&self.reactions[s]) {
             Some(ms) => format!("{:.0} pontos, {ms:.0} ms em média", self.score[s]),
             None => format!("{:.0} pontos", self.score[s]),
-        };
-        let winner = higher(self.score[0], self.score[1]).or_else(|| match (avg[0], avg[1]) {
-            (Some(a), Some(b)) if (a - b).abs() >= 0.5 => lower(a, b),
-            _ => None,
-        });
-        let text = match winner {
-            Some(w) => format!("{} {won}: {} x {}.", names[w], line(w), line(1 - w)),
-            None => format!("{tied}: {}. Empate.", line(0)),
-        };
-        (winner, text)
+        }
+    }
+
+    /// `won` follows the winner's name, `tied` opens a draw.
+    pub(super) fn duo_text(&self, names: &[String], winner: Option<usize>, won: &str, tied: &str) -> String {
+        match winner {
+            Some(w) => format!("{} {won}: {} x {}.", names[w], self.line(w), self.line(1 - w)),
+            None => format!("{tied}: {}. Empate.", self.line(0)),
+        }
     }
 }
 
@@ -138,13 +134,13 @@ pub struct JawSide {
 
 pub struct Jawline {
     target: Vec<u8>,
-    heights: [Vec<u8>; 2],
-    cursor: [usize; 2],
-    done_ms: [Option<f64>; 2],
+    heights: Vec<Vec<u8>>,
+    cursor: Vec<usize>,
+    done_ms: Vec<Option<f64>>,
 }
 
 impl Jawline {
-    fn new(rng: &mut impl Rng) -> Jawline {
+    fn new(n: usize, rng: &mut impl Rng) -> Jawline {
         let top = JAW_LEVELS as i32 - 1;
         let mut h = rng.gen_range(1..top);
         let target: Vec<u8> = (0..JAW_POINTS)
@@ -162,7 +158,7 @@ impl Jawline {
                 }
             })
             .collect();
-        Jawline { target, heights: [start.clone(), start], cursor: [0, 0], done_ms: [None, None] }
+        Jawline { target, heights: vec![start; n], cursor: vec![0; n], done_ms: vec![None; n] }
     }
 
     fn error(&self, side: usize) -> u32 {
@@ -200,22 +196,26 @@ impl Contest for Jawline {
         self.done_ms.iter().all(Option::is_some)
     }
 
-    fn result(&self, names: &[String; 2], _end: f64) -> (Option<usize>, String) {
-        let e = [self.error(0), self.error(1)];
-        let done = |s: usize| self.done_ms[s].unwrap_or(f64::MAX);
-        let by_error = lower(e[0] as f64, e[1] as f64);
-        let winner = by_error.or_else(|| lower(done(0), done(1)));
-        let text = match (winner, by_error) {
-            (Some(w), Some(_)) if e[w] == 0 => format!("{} deixou o maxilar perfeito; {} ficou a {} de erro.", names[w], names[1 - w], e[1 - w]),
-            (Some(w), Some(_)) => format!("{} esculpiu melhor: {} x {} de erro.", names[w], e[w], e[1 - w]),
-            (Some(w), None) => format!("Os dois acertaram o maxilar; {} terminou antes.", names[w]),
-            (None, _) => format!("Maxilares iguais ({} de erro). Empate.", e[0]),
-        };
-        (winner, text)
+    fn standings(&self, _end: f64) -> Standings {
+        Standings::new((0..self.done_ms.len()).map(|s| vec![-(self.error(s) as f64), earlier(self.done_ms[s])]).collect(), &[])
     }
 
-    fn board(&self, side: usize, _t: f64) -> Board {
-        Board::Jawline { target: self.target.clone(), mine: self.side(side), theirs: self.side(1 - side) }
+    fn line(&self, side: usize, _end: f64) -> String {
+        format!("{} de erro", self.error(side))
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, by_first: bool, _end: f64) -> String {
+        let e = [self.error(0), self.error(1)];
+        match (winner, by_first) {
+            (Some(w), true) if e[w] == 0 => format!("{} deixou o maxilar perfeito; {} ficou a {} de erro.", names[w], names[1 - w], e[1 - w]),
+            (Some(w), true) => format!("{} esculpiu melhor: {} x {} de erro.", names[w], e[w], e[1 - w]),
+            (Some(w), false) => format!("Os dois acertaram o maxilar; {} terminou antes.", names[w]),
+            (None, _) => format!("Maxilares iguais ({} de erro). Empate.", e[0]),
+        }
+    }
+
+    fn board(&self, side: usize, rival: usize, _t: f64) -> Board {
+        Board::Jawline { target: self.target.clone(), mine: self.side(side), theirs: self.side(rival) }
     }
 }
 
@@ -269,15 +269,15 @@ pub struct PostureSide {
 
 pub struct Posture {
     drift: PostureWaves,
-    presses: [Vec<(f64, i8)>; 2],
+    presses: Vec<Vec<(f64, i8)>>,
 }
 
 impl Posture {
-    fn new(rng: &mut impl Rng) -> Posture {
+    fn new(n: usize, rng: &mut impl Rng) -> Posture {
         let phase = |rng: &mut dyn rand::RngCore| rng.gen_range(0.0..std::f64::consts::TAU);
         let waves = [(rng.gen_range(POSTURE_FREQ_SLOW), phase(rng)), (rng.gen_range(POSTURE_FREQ_FAST), phase(rng))];
         let lean = if rng.gen_bool(0.5) { POSTURE_LEAN } else { -POSTURE_LEAN };
-        Posture { drift: PostureWaves { waves, lean }, presses: [Vec::new(), Vec::new()] }
+        Posture { drift: PostureWaves { waves, lean }, presses: vec![Vec::new(); n] }
     }
 
     fn side(&self, s: usize, t: f64) -> PostureSide {
@@ -304,18 +304,24 @@ impl Contest for Posture {
         presses.insert(i, (t, dir));
     }
 
-    fn result(&self, names: &[String; 2], end: f64) -> (Option<usize>, String) {
-        let band = [0, 1].map(|s| self.drift.in_band_ms(&self.presses[s], end));
-        let winner = higher(band[0], band[1]);
-        let text = match winner {
-            Some(w) => format!("{} ficou mais tempo reto: {} x {}.", names[w], secs(band[w]), secs(band[1 - w])),
-            None => format!("Mesma postura ({}). Empate.", secs(band[0])),
-        };
-        (winner, text)
+    fn standings(&self, end: f64) -> Standings {
+        Standings::new(self.presses.iter().map(|p| vec![self.drift.in_band_ms(p, end)]).collect(), &[])
     }
 
-    fn board(&self, side: usize, t: f64) -> Board {
-        Board::Posture { drift: self.drift, mine: self.side(side, t), theirs: self.side(1 - side, t) }
+    fn line(&self, side: usize, end: f64) -> String {
+        format!("{} reto", secs(self.drift.in_band_ms(&self.presses[side], end)))
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, _by_first: bool, end: f64) -> String {
+        let band = [0, 1].map(|s| self.drift.in_band_ms(&self.presses[s], end));
+        match winner {
+            Some(w) => format!("{} ficou mais tempo reto: {} x {}.", names[w], secs(band[w]), secs(band[1 - w])),
+            None => format!("Mesma postura ({}). Empate.", secs(band[0])),
+        }
+    }
+
+    fn board(&self, side: usize, rival: usize, t: f64) -> Board {
+        Board::Posture { drift: self.drift, mine: self.side(side, t), theirs: self.side(rival, t) }
     }
 }
 
@@ -335,16 +341,16 @@ pub struct FitSide {
 pub struct FitCheck {
     target: Vec<u8>,
     offsets: Vec<u8>,
-    locked: [Vec<u8>; 2],
-    done_ms: [Option<f64>; 2],
+    locked: Vec<Vec<u8>>,
+    done_ms: Vec<Option<f64>>,
 }
 
 impl FitCheck {
-    fn new(rng: &mut impl Rng) -> FitCheck {
-        let n = FIT_COLORS.len() as u8;
-        let target = (0..FIT_PIECES.len()).map(|_| rng.gen_range(0..n)).collect();
-        let offsets = (0..FIT_PIECES.len()).map(|_| rng.gen_range(0..n)).collect();
-        FitCheck { target, offsets, locked: [Vec::new(), Vec::new()], done_ms: [None, None] }
+    fn new(n: usize, rng: &mut impl Rng) -> FitCheck {
+        let colors = FIT_COLORS.len() as u8;
+        let target = (0..FIT_PIECES.len()).map(|_| rng.gen_range(0..colors)).collect();
+        let offsets = (0..FIT_PIECES.len()).map(|_| rng.gen_range(0..colors)).collect();
+        FitCheck { target, offsets, locked: vec![Vec::new(); n], done_ms: vec![None; n] }
     }
 
     fn matches(&self, side: usize) -> usize {
@@ -372,23 +378,27 @@ impl Contest for FitCheck {
         self.done_ms.iter().all(Option::is_some)
     }
 
-    fn result(&self, names: &[String; 2], _end: f64) -> (Option<usize>, String) {
-        let m = [self.matches(0), self.matches(1)];
-        let n = FIT_PIECES.len();
-        let by_matches = higher(m[0] as f64, m[1] as f64);
-        let done = |s: usize| self.done_ms[s].unwrap_or(f64::MAX);
-        let winner = by_matches.or_else(|| lower(done(0), done(1)));
-        let text = match (winner, by_matches) {
-            (Some(w), Some(_)) => format!("{} montou o fit: {}/{n} x {}/{n} peças certas.", names[w], m[w], m[1 - w]),
-            (Some(w), None) => format!("Mesmo fit ({}/{n}); {} fechou o look antes.", m[w], names[w]),
-            (None, _) => format!("Fits iguais ({}/{n}). Empate.", m[0]),
-        };
-        (winner, text)
+    fn standings(&self, _end: f64) -> Standings {
+        Standings::new((0..self.done_ms.len()).map(|s| vec![self.matches(s) as f64, earlier(self.done_ms[s])]).collect(), &[])
     }
 
-    fn board(&self, side: usize, _t: f64) -> Board {
+    fn line(&self, side: usize, _end: f64) -> String {
+        format!("{}/{} peças", self.matches(side), FIT_PIECES.len())
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, by_first: bool, _end: f64) -> String {
+        let m = [self.matches(0), self.matches(1)];
+        let n = FIT_PIECES.len();
+        match (winner, by_first) {
+            (Some(w), true) => format!("{} montou o fit: {}/{n} x {}/{n} peças certas.", names[w], m[w], m[1 - w]),
+            (Some(w), false) => format!("Mesmo fit ({}/{n}); {} fechou o look antes.", m[w], names[w]),
+            (None, _) => format!("Fits iguais ({}/{n}). Empate.", m[0]),
+        }
+    }
+
+    fn board(&self, side: usize, rival: usize, _t: f64) -> Board {
         let of = |s: usize| FitSide { locked: self.locked[s].clone(), done: self.done_ms[s].is_some() };
-        Board::FitCheck { target: self.target.clone(), offsets: self.offsets.clone(), mine: of(side), theirs: of(1 - side) }
+        Board::FitCheck { target: self.target.clone(), offsets: self.offsets.clone(), mine: of(side), theirs: of(rival) }
     }
 }
 
@@ -408,14 +418,14 @@ pub struct HydrationSide {
 
 pub struct Hydration {
     target: i32,
-    level: [i32; 2],
-    at: [f64; 2],
-    locked: [Option<f64>; 2],
+    level: Vec<i32>,
+    at: Vec<f64>,
+    locked: Vec<Option<f64>>,
 }
 
 impl Hydration {
-    fn new(rng: &mut impl Rng) -> Hydration {
-        Hydration { target: rng.gen_range(HYDRATION_TARGET), level: [0; 2], at: [0.0; 2], locked: [None; 2] }
+    fn new(n: usize, rng: &mut impl Rng) -> Hydration {
+        Hydration { target: rng.gen_range(HYDRATION_TARGET), level: vec![0; n], at: vec![0.0; n], locked: vec![None; n] }
     }
 
     /// Final level and when the bottle was closed.
@@ -455,23 +465,31 @@ impl Contest for Hydration {
         self.locked.iter().all(Option::is_some)
     }
 
-    fn result(&self, names: &[String; 2], end: f64) -> (Option<usize>, String) {
-        let f = [self.finish(0, end), self.finish(1, end)];
-        let off = |s: usize| (f[s].0 - self.target).abs();
-        let by_off = lower(off(0) as f64, off(1) as f64);
-        let winner = by_off.or_else(|| lower(f[0].1, f[1].1));
-        let target = self.target;
-        let text = match (winner, by_off) {
-            (Some(w), Some(_)) => format!("{} acertou a hidratação: {}% x {}% (meta {target}%).", names[w], f[w].0, f[1 - w].0),
-            (Some(w), None) => format!("Mesma distância da meta {target}%; {} fechou a garrafa antes.", names[w]),
-            (None, _) => format!("Garrafas iguais ({}%, meta {target}%). Empate.", f[0].0),
+    fn standings(&self, end: f64) -> Standings {
+        let key = |s: usize| {
+            let (level, closed) = self.finish(s, end);
+            vec![-((level - self.target).abs() as f64), -closed]
         };
-        (winner, text)
+        Standings::new((0..self.level.len()).map(key).collect(), &[])
     }
 
-    fn board(&self, side: usize, _t: f64) -> Board {
+    fn line(&self, side: usize, end: f64) -> String {
+        format!("{}%", self.finish(side, end).0)
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, by_first: bool, end: f64) -> String {
+        let f = [self.finish(0, end), self.finish(1, end)];
+        let target = self.target;
+        match (winner, by_first) {
+            (Some(w), true) => format!("{} acertou a hidratação: {}% x {}% (meta {target}%).", names[w], f[w].0, f[1 - w].0),
+            (Some(w), false) => format!("Mesma distância da meta {target}%; {} fechou a garrafa antes.", names[w]),
+            (None, _) => format!("Garrafas iguais ({}%, meta {target}%). Empate.", f[0].0),
+        }
+    }
+
+    fn board(&self, side: usize, rival: usize, _t: f64) -> Board {
         let of = |s: usize| HydrationSide { level: self.level[s], at: self.at[s], locked: self.locked[s].is_some() };
-        Board::Hydration { target: self.target, mine: of(side), theirs: of(1 - side) }
+        Board::Hydration { target: self.target, mine: of(side), theirs: of(rival) }
     }
 }
 
@@ -482,11 +500,11 @@ pub fn photo_flash(shot: (f64, f64)) -> f64 {
 
 pub struct Photo {
     shots: Vec<(f64, f64)>,
-    errors: [Vec<Option<f64>>; 2],
+    errors: Vec<Vec<Option<f64>>>,
 }
 
 impl Photo {
-    fn new(rng: &mut impl Rng) -> Photo {
+    fn new(n: usize, rng: &mut impl Rng) -> Photo {
         let mut at = PHOTO_FIRST_MS;
         let shots = (0..PHOTO_SHOTS)
             .map(|_| {
@@ -495,7 +513,7 @@ impl Photo {
                 shot
             })
             .collect();
-        Photo { shots, errors: [vec![None; PHOTO_SHOTS], vec![None; PHOTO_SHOTS]] }
+        Photo { shots, errors: vec![vec![None; PHOTO_SHOTS]; n] }
     }
 
     fn average(&self, side: usize) -> f64 {
@@ -521,29 +539,35 @@ impl Contest for Photo {
         self.errors.iter().flatten().all(Option::is_some)
     }
 
-    fn result(&self, names: &[String; 2], _end: f64) -> (Option<usize>, String) {
-        let avg = [self.average(0), self.average(1)];
-        let winner = if (avg[0] - avg[1]).abs() < 0.5 { None } else { lower(avg[0], avg[1]) };
-        let text = match winner {
-            Some(w) => format!("{} saiu melhor na foto: {:.0} ms x {:.0} ms do flash, em média.", names[w], avg[w], avg[1 - w]),
-            None => format!("Fotos iguais ({:.0} ms do flash). Empate.", avg[0]),
-        };
-        (winner, text)
+    fn standings(&self, _end: f64) -> Standings {
+        Standings::new((0..self.errors.len()).map(|s| vec![-self.average(s)]).collect(), &[0.5])
     }
 
-    fn board(&self, side: usize, _t: f64) -> Board {
-        Board::Photo { shots: self.shots.clone(), mine: self.errors[side].clone(), theirs: self.errors[1 - side].clone() }
+    fn line(&self, side: usize, _end: f64) -> String {
+        format!("{:.0} ms do flash", self.average(side))
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, _by_first: bool, _end: f64) -> String {
+        let avg = [self.average(0), self.average(1)];
+        match winner {
+            Some(w) => format!("{} saiu melhor na foto: {:.0} ms x {:.0} ms do flash, em média.", names[w], avg[w], avg[1 - w]),
+            None => format!("Fotos iguais ({:.0} ms do flash). Empate.", avg[0]),
+        }
+    }
+
+    fn board(&self, side: usize, rival: usize, _t: f64) -> Board {
+        Board::Photo { shots: self.shots.clone(), mine: self.errors[side].clone(), theirs: self.errors[rival].clone() }
     }
 }
 
 pub struct Status {
     items: Vec<(&'static str, f64)>,
-    order: [Vec<usize>; 2],
-    done_ms: [Option<f64>; 2],
+    order: Vec<Vec<usize>>,
+    done_ms: Vec<Option<f64>>,
 }
 
 impl Status {
-    fn new(rng: &mut impl Rng) -> Status {
+    fn new(n: usize, rng: &mut impl Rng) -> Status {
         let mut catalog: Vec<_> = crate::items::CATALOG.iter().map(|d| (d.name, d.base_cost)).collect();
         catalog.shuffle(rng);
         let mut items: Vec<(&str, f64)> = Vec::new();
@@ -552,7 +576,7 @@ impl Status {
                 items.push(item);
             }
         }
-        Status { items, order: [Vec::new(), Vec::new()], done_ms: [None, None] }
+        Status { items, order: vec![Vec::new(); n], done_ms: vec![None; n] }
     }
 
     /// Item indexes from the most to the least expensive.
@@ -589,27 +613,31 @@ impl Contest for Status {
         self.done_ms.iter().all(Option::is_some)
     }
 
-    fn result(&self, names: &[String; 2], _end: f64) -> (Option<usize>, String) {
-        let s = [self.score(0), self.score(1)];
-        let n = self.items.len();
-        let by_score = higher(s[0] as f64, s[1] as f64);
-        let done = |side: usize| self.done_ms[side].unwrap_or(f64::MAX);
-        let winner = by_score.or_else(|| lower(done(0), done(1)));
-        let answer: Vec<&str> = self.correct().iter().map(|i| self.items[*i].0).collect();
-        let answer = answer.join(" > ");
-        let text = match (winner, by_score) {
-            (Some(w), Some(_)) => format!("{} conhece os preços: {}/{n} x {}/{n}. Certo: {answer}.", names[w], s[w], s[1 - w]),
-            (Some(w), None) => format!("Mesmos acertos ({}/{n}); {} ordenou antes. Certo: {answer}.", s[w], names[w]),
-            (None, _) => format!("Mesmos acertos ({}/{n}). Empate. Certo: {answer}.", s[0]),
-        };
-        (winner, text)
+    fn standings(&self, _end: f64) -> Standings {
+        Standings::new((0..self.done_ms.len()).map(|s| vec![self.score(s) as f64, earlier(self.done_ms[s])]).collect(), &[])
     }
 
-    fn board(&self, side: usize, _t: f64) -> Board {
+    fn line(&self, side: usize, _end: f64) -> String {
+        format!("{}/{} certos", self.score(side), self.items.len())
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, by_first: bool, _end: f64) -> String {
+        let s = [self.score(0), self.score(1)];
+        let n = self.items.len();
+        let answer: Vec<&str> = self.correct().iter().map(|i| self.items[*i].0).collect();
+        let answer = answer.join(" > ");
+        match (winner, by_first) {
+            (Some(w), true) => format!("{} conhece os preços: {}/{n} x {}/{n}. Certo: {answer}.", names[w], s[w], s[1 - w]),
+            (Some(w), false) => format!("Mesmos acertos ({}/{n}); {} ordenou antes. Certo: {answer}.", s[w], names[w]),
+            (None, _) => format!("Mesmos acertos ({}/{n}). Empate. Certo: {answer}.", s[0]),
+        }
+    }
+
+    fn board(&self, side: usize, rival: usize, _t: f64) -> Board {
         Board::Status {
             items: self.items.iter().map(|(name, _)| name.to_string()).collect(),
             mine: self.order[side].clone(),
-            theirs: self.order[1 - side].len(),
+            theirs: self.order[rival].len(),
         }
     }
 }
@@ -634,7 +662,7 @@ pub struct Hair {
 }
 
 impl Hair {
-    fn new(rng: &mut impl Rng) -> Hair {
+    fn new(n: usize, rng: &mut impl Rng) -> Hair {
         let mut at = HAIR_FIRST_MS;
         let strands: Vec<Strand> = (0..HAIR_STRANDS)
             .map(|i| {
@@ -645,7 +673,7 @@ impl Hair {
                 strand
             })
             .collect();
-        Hair { reflexes: Reflexes::new(strands.len()), strands }
+        Hair { reflexes: Reflexes::new(n, strands.len()), strands }
     }
 }
 
@@ -668,12 +696,20 @@ impl Contest for Hair {
         }
     }
 
-    fn result(&self, names: &[String; 2], _end: f64) -> (Option<usize>, String) {
-        self.reflexes.result(names, "domou o cabelo", "Cabelos iguais")
+    fn standings(&self, _end: f64) -> Standings {
+        self.reflexes.standings()
     }
 
-    fn board(&self, side: usize, _t: f64) -> Board {
-        Board::Hair { strands: self.strands.clone(), mine: self.reflexes.progress(side), theirs: self.reflexes.progress(1 - side) }
+    fn line(&self, side: usize, _end: f64) -> String {
+        self.reflexes.line(side)
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, _by_first: bool, _end: f64) -> String {
+        self.reflexes.duo_text(names, winner, "domou o cabelo", "Cabelos iguais")
+    }
+
+    fn board(&self, side: usize, rival: usize, _t: f64) -> Board {
+        Board::Hair { strands: self.strands.clone(), mine: self.reflexes.progress(side), theirs: self.reflexes.progress(rival) }
     }
 }
 
@@ -711,11 +747,11 @@ impl BrowMark {
 
 pub struct Brow {
     trials: Vec<BrowTrial>,
-    marks: [Vec<Option<BrowMark>>; 2],
+    marks: Vec<Vec<Option<BrowMark>>>,
 }
 
 impl Brow {
-    fn new(rng: &mut impl Rng) -> Brow {
+    fn new(n: usize, rng: &mut impl Rng) -> Brow {
         let mut at = BROW_FIRST_MS;
         let trials: Vec<BrowTrial> = (0..BROW_TRIALS)
             .map(|_| {
@@ -731,7 +767,7 @@ impl Brow {
                 trial
             })
             .collect();
-        Brow { marks: [vec![None; trials.len()], vec![None; trials.len()]], trials }
+        Brow { marks: vec![vec![None; trials.len()]; n], trials }
     }
 
     fn total(&self, side: usize) -> f64 {
@@ -758,18 +794,24 @@ impl Contest for Brow {
         self.marks.iter().flatten().all(Option::is_some)
     }
 
-    fn result(&self, names: &[String; 2], _end: f64) -> (Option<usize>, String) {
-        let total = [self.total(0), self.total(1)];
-        let winner = if (total[0] - total[1]).abs() < 0.5 { None } else { lower(total[0], total[1]) };
-        let text = match winner {
-            Some(w) => format!("{} pegou a sobrancelha: {:.0} ms x {:.0} ms no total.", names[w], total[w], total[1 - w]),
-            None => format!("Mesmo tempo ({:.0} ms). Empate.", total[0]),
-        };
-        (winner, text)
+    fn standings(&self, _end: f64) -> Standings {
+        Standings::new((0..self.marks.len()).map(|s| vec![-self.total(s)]).collect(), &[0.5])
     }
 
-    fn board(&self, side: usize, _t: f64) -> Board {
-        Board::Brow { trials: self.trials.clone(), mine: self.marks[side].clone(), theirs: self.marks[1 - side].clone() }
+    fn line(&self, side: usize, _end: f64) -> String {
+        format!("{:.0} ms no total", self.total(side))
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, _by_first: bool, _end: f64) -> String {
+        let total = [self.total(0), self.total(1)];
+        match winner {
+            Some(w) => format!("{} pegou a sobrancelha: {:.0} ms x {:.0} ms no total.", names[w], total[w], total[1 - w]),
+            None => format!("Mesmo tempo ({:.0} ms). Empate.", total[0]),
+        }
+    }
+
+    fn board(&self, side: usize, rival: usize, _t: f64) -> Board {
+        Board::Brow { trials: self.trials.clone(), mine: self.marks[side].clone(), theirs: self.marks[rival].clone() }
     }
 }
 
@@ -828,9 +870,9 @@ pub fn rps_revealed(t: f64) -> usize {
     (if open { i } else { i + 1 }).min(RPS_THROWS)
 }
 
-#[derive(Default)]
+/// Two sides only: it is never drawn for a group.
 pub struct ReverseMog {
-    picks: [[Option<Stance>; RPS_THROWS]; 2],
+    picks: Vec<[Option<Stance>; RPS_THROWS]>,
 }
 
 impl ReverseMog {
@@ -857,24 +899,30 @@ impl Contest for ReverseMog {
         }
     }
 
-    fn result(&self, names: &[String; 2], _end: f64) -> (Option<usize>, String) {
-        let w = self.wins();
-        let winner = higher(w[0] as f64, w[1] as f64);
-        let text = match winner {
-            Some(x) => format!("{} leu o rival: {} x {} jogadas.", names[x], w[x], w[1 - x]),
-            None => format!("Mesmas jogadas ganhas ({}). Empate.", w[0]),
-        };
-        (winner, text)
+    fn standings(&self, _end: f64) -> Standings {
+        Standings::new(self.wins().iter().map(|w| vec![*w as f64]).collect(), &[])
     }
 
-    fn board(&self, side: usize, t: f64) -> Board {
+    fn line(&self, side: usize, _end: f64) -> String {
+        format!("{} jogadas", self.wins()[side])
+    }
+
+    fn duo_text(&self, names: &[String], winner: Option<usize>, _by_first: bool, _end: f64) -> String {
+        let w = self.wins();
+        match winner {
+            Some(x) => format!("{} leu o rival: {} x {} jogadas.", names[x], w[x], w[1 - x]),
+            None => format!("Mesmas jogadas ganhas ({}). Empate.", w[0]),
+        }
+    }
+
+    fn board(&self, side: usize, rival: usize, t: f64) -> Board {
         let shown = rps_revealed(t);
         let (now, _) = rps_throw(t);
-        let theirs = self.picks[1 - side].iter().enumerate().map(|(i, p)| if i < shown { *p } else { None }).collect();
+        let theirs = self.picks[rival].iter().enumerate().map(|(i, p)| if i < shown { *p } else { None }).collect();
         Board::ReverseMog {
             mine: self.picks[side].to_vec(),
             theirs,
-            their_ready: self.picks[1 - side].get(now).is_some_and(Option::is_some),
+            their_ready: self.picks[rival].get(now).is_some_and(Option::is_some),
         }
     }
 

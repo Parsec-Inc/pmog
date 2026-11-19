@@ -533,14 +533,22 @@ pub struct Game {
     pub invites: Vec<InviteView>,
     pub outgoing: Option<InviteView>,
     pub queued: Option<f64>,
+    /// The queue entry waits for a group duel.
+    pub queued_group: bool,
     /// Selected bet in the stake picker, as an index of `STAKE_FRACTIONS`.
     pub stake_cursor: usize,
     /// Who the stake picker challenges; `None` means the queue.
     pub stake_target: Option<PlayerId>,
-    /// Focused row of the stake picker: the bet, then the minigame mode.
+    /// Focused row of the stake picker: the bet, the minigame mode, then the players.
     pub stake_row: usize,
     /// Each side picks the minigames instead of drawing them.
     pub stake_draft: bool,
+    /// Everyone the stake picker challenges (more than one makes a group duel).
+    pub stake_invited: Vec<PlayerId>,
+    /// Player under the cursor on the players row, as an index of `stake_candidates`.
+    pub stake_pick: usize,
+    /// The queue waits for a group duel instead of one rival.
+    pub stake_group: bool,
     /// Last measured round trip to the server.
     pub rtt: Duration,
     pub chat: crate::chat::ChatClient,
@@ -737,10 +745,14 @@ impl Game {
             invites: Vec::new(),
             outgoing: None,
             queued: None,
+            queued_group: false,
             stake_cursor: 1,
             stake_target: None,
             stake_row: 0,
             stake_draft: false,
+            stake_invited: Vec::new(),
+            stake_pick: 0,
+            stake_group: false,
             rtt: Duration::ZERO,
             chat: Default::default(),
             clan: Default::default(),
@@ -1015,42 +1027,83 @@ impl Game {
     /// Leaves the queue, or opens the bet picker to join it.
     pub fn toggle_queue(&mut self) {
         if self.queued.is_some() {
-            self.outbox.push(ClientMsg::Queue { fraction: None, draft: false });
+            self.outbox.push(ClientMsg::Queue { fraction: None, draft: false, group: false });
         } else {
             self.open_stake(None);
         }
     }
 
-    /// Opens the stake picker on the bet row, with drawn minigames.
+    /// Opens the stake picker on the bet row, with drawn minigames and only `target` invited.
     fn open_stake(&mut self, target: Option<PlayerId>) {
         self.stake_target = target;
+        self.stake_invited = target.into_iter().collect();
+        self.stake_pick = self.stake_candidates().iter().position(|p| Some(p.id) == target).unwrap_or(0);
         self.stake_row = 0;
         self.stake_draft = false;
+        self.stake_group = false;
         self.overlay = Overlay::Stake;
     }
 
-    /// Changes the bet, or the minigame mode on the second row.
-    pub fn stake_move(&mut self, delta: isize) {
-        if self.stake_row == 1 {
-            self.stake_draft = delta > 0;
-            return;
-        }
-        let len = STAKE_FRACTIONS.len() as isize;
-        self.stake_cursor = (self.stake_cursor as isize + delta).clamp(0, len - 1) as usize;
+    /// Players who can be invited to the duel being set up.
+    pub fn stake_candidates(&self) -> Vec<&Peer> {
+        self.peers.iter().filter(|p| !p.is_npc() && !p.in_duel).collect()
     }
 
-    /// Moves focus between the bet and the minigame mode rows.
+    /// A group duel is being set up: several players invited, or the group queue.
+    pub fn stake_is_group(&self) -> bool {
+        if self.stake_target.is_some() { self.stake_invited.len() > 1 } else { self.stake_group }
+    }
+
+    /// Changes the bet, the minigame mode, or the player under the cursor (the queue mode, for the queue).
+    pub fn stake_move(&mut self, delta: isize) {
+        match self.stake_row {
+            0 => {
+                let len = STAKE_FRACTIONS.len() as isize;
+                self.stake_cursor = (self.stake_cursor as isize + delta).clamp(0, len - 1) as usize;
+            }
+            1 => self.stake_draft = delta > 0,
+            _ if self.stake_target.is_none() => self.stake_group = delta > 0,
+            _ => {
+                let len = self.stake_candidates().len().max(1) as isize;
+                self.stake_pick = (self.stake_pick as isize + delta).rem_euclid(len) as usize;
+            }
+        }
+    }
+
+    /// Moves focus between the bet, minigame mode and players rows.
     pub fn stake_row_move(&mut self, delta: isize) {
-        self.stake_row = (self.stake_row as isize + delta).clamp(0, 1) as usize;
+        self.stake_row = (self.stake_row as isize + delta).clamp(0, 2) as usize;
+    }
+
+    /// Invites or drops the player under the cursor, up to a full group.
+    pub fn stake_toggle(&mut self) {
+        let Some(id) = self.stake_candidates().get(self.stake_pick).map(|p| p.id) else { return };
+        if let Some(i) = self.stake_invited.iter().position(|p| *p == id) {
+            self.stake_invited.remove(i);
+        } else if self.stake_invited.len() + 1 < DUEL_MAX_PLAYERS {
+            self.stake_invited.push(id);
+        }
+    }
+
+    /// Space: ticks a player on the players row, confirms anywhere else.
+    pub fn stake_space(&mut self) {
+        if self.stake_row == 2 && self.stake_target.is_some() {
+            self.stake_toggle();
+        } else {
+            self.confirm_stake();
+        }
     }
 
     /// Sends the challenge or joins the queue with the chosen bet.
     pub fn confirm_stake(&mut self) {
         let fraction = STAKE_FRACTIONS[self.stake_cursor.min(STAKE_FRACTIONS.len() - 1)];
-        self.outbox.push(match self.stake_target {
-            Some(target) => ClientMsg::Challenge { target, fraction, draft: self.stake_draft },
-            None => ClientMsg::Queue { fraction: Some(fraction), draft: self.stake_draft },
-        });
+        let draft = self.stake_draft && !self.stake_is_group();
+        let msg = match self.stake_target {
+            Some(_) if self.stake_invited.is_empty() => return self.log(Tone::Info, "Marque ao menos um jogador (ESPAÇO)."),
+            Some(_) => ClientMsg::Challenge { targets: self.stake_invited.clone(), fraction, draft },
+            None => ClientMsg::Queue { fraction: Some(fraction), draft, group: self.stake_group },
+        };
+        self.outbox.push(msg);
         self.overlay = Overlay::None;
     }
 
@@ -1298,6 +1351,7 @@ impl Game {
         self.invites = view.invites;
         self.outgoing = view.outgoing;
         self.queued = view.queued;
+        self.queued_group = view.queued_group;
         self.clan_tag = view.clan_tag;
 
         let selected_id = self.peers.get(self.selected).map(|p| p.id);

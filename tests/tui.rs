@@ -43,6 +43,7 @@ fn playing() -> App {
         invites: Vec::new(),
         outgoing: None,
         queued: None,
+        queued_group: false,
         rtt_ms: 0.0,
         clan_tag: None,
         mood: None,
@@ -222,7 +223,7 @@ fn help_numbers_follow_constants_and_player() {
     let screen = render(&a, 200, 80);
     assert!(screen.contains("x1,6"), "perfect multiplier");
     assert!(screen.contains("até x1,18"), "best non-perfect multiplier");
-    assert!(screen.contains("máximo 5,0k"), "pt-BR decimal comma");
+    assert!(screen.contains("mínimo 5,0k"), "pt-BR decimal comma");
     assert!(screen.contains("Poder 20"), "player attack with 2 Mid-Fades");
 }
 
@@ -504,6 +505,7 @@ fn state_with(app: &mut App, edit: impl FnOnce(&mut StateView)) {
         invites: Vec::new(),
         outgoing: None,
         queued: None,
+        queued_group: false,
         rtt_ms: 0.0,
         clan_tag: None,
         mood: None,
@@ -531,6 +533,8 @@ fn duel_view(game: Minigame, phase: Phase, board: Board) -> DuelView {
         board,
         seq: 0,
         lineup: Vec::new(),
+        standings: Vec::new(),
+        winner: None,
     }
 }
 
@@ -619,11 +623,11 @@ fn challenging_through_the_bet_picker() {
     let screen = render(&a, 120, 30);
     assert!(screen.contains("Desafiar Rival") && screen.contains("Cada um aposta 12 MP"), "{screen}");
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.25, draft: false }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { targets: vec![2], fraction: 0.25, draft: false }));
     assert_eq!(a.game.overlay, Overlay::None);
 
     state_with(&mut a, |s| {
-        s.outgoing = Some(InviteView { peer: 2, name: "Rival".into(), fraction: 0.25, stake: 12.0, expires_ms: 9_500, draft: false })
+        s.outgoing = Some(InviteView { peer: 2, name: "Rival".into(), fraction: 0.25, stake: 12.0, expires_ms: 9_500, draft: false, others: Vec::new() })
     });
     assert!(render(&a, 150, 42).contains("Desafio para Rival · 12 MP · expira em 10 s"));
     press(&mut a, KeyCode::Char('x'));
@@ -636,7 +640,7 @@ fn challenging_through_the_bet_picker() {
     press(&mut a, KeyCode::Left);
     press(&mut a, KeyCode::Left);
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: Some(0.0), draft: false }), "random is the default");
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: Some(0.0), draft: false, group: false }), "random is the default");
 
     press(&mut a, KeyCode::Char('d'));
     press(&mut a, KeyCode::Down);
@@ -645,20 +649,20 @@ fn challenging_through_the_bet_picker() {
     press(&mut a, KeyCode::Up);
     press(&mut a, KeyCode::Right);
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.1, draft: true }), "second row picks the draft");
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { targets: vec![2], fraction: 0.1, draft: true }), "second row picks the draft");
     press(&mut a, KeyCode::Char('d'));
     assert!(!a.game.stake_draft, "reopening goes back to random");
     press(&mut a, KeyCode::Esc);
     state_with(&mut a, |s| s.queued = Some(0.0));
     assert!(render(&a, 150, 42).contains("Na fila de duelo"));
     press(&mut a, KeyCode::Char('f'));
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: None, draft: false }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: None, draft: false, group: false }));
 }
 
 #[test]
 fn invitations_can_be_answered() {
     let mut a = playing();
-    let invite = InviteView { peer: 2, name: "Rival".into(), fraction: 0.5, stake: 25.0, expires_ms: 14_000, draft: false };
+    let invite = InviteView { peer: 2, name: "Rival".into(), fraction: 0.5, stake: 25.0, expires_ms: 14_000, draft: false, others: Vec::new() };
     state_with(&mut a, |s| s.invites = vec![invite.clone(), InviteView { peer: 3, ..invite.clone() }]);
     let screen = render(&a, 150, 42);
     assert!(screen.contains("te desafiou para um duelo") && screen.contains("25 MP"), "{screen}");

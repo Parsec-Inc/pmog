@@ -68,8 +68,20 @@ fn duels() -> Vec<Line<'static>> {
         key("D", "desafia o jogador selecionado (escolha a aposta e aperte Enter; ↓ troca Aleatório por Escolher)"),
         key("F", &format!("entra na fila: junta você com alguém até 1 rank de distância (depois de {} s esperando, com qualquer um)", QUEUE_RELAX.as_secs())),
         key("A / R", "aceita ou recusa um desafio recebido"),
+        key("Espaço", "no seletor de aposta, na linha Jogadores, marca quem chamar (D) ou troca 1 contra 1 por Em grupo (F)"),
         key("X", "cancela o desafio que você mandou"),
         key("Esc", "dentro do duelo, desiste (perde a aposta)"),
+        gap(),
+        title("Duelo em grupo"),
+        bullet(format!(
+            "Até {DUEL_MAX_PLAYERS} jogadores no mesmo duelo. No D, marque vários na linha Jogadores: começa com quem aceitou assim que todos responderem (ou o convite expirar)."
+        )),
+        bullet(format!(
+            "Na fila Em grupo, começa com {DUEL_MAX_PLAYERS} na fila, ou com {DUEL_GROUP_MIN} depois de {} s esperando. A fila nunca junta colegas de clã numa aposta.",
+            GROUP_QUEUE_WAIT.as_secs()
+        )),
+        bullet("Cada rodada dá 1 ponto por rival que você superou (1º de 5 leva 4, o último 0). Quem tem mais pontos no fim leva o pote inteiro."),
+        bullet("Em grupo os minigames são sempre sorteados, e os de 1 contra 1 (como o Mog Reverso) ficam de fora. Quem desiste sai do duelo e deixa a aposta no pote."),
         gap(),
         title("Escolha e rodadas"),
         bullet("Por padrão os minigames são sorteados. Para escolher, desça para a linha Minigames no seletor de aposta e marque Escolher. Na fila, só vale se os dois marcarem."),
@@ -82,9 +94,9 @@ fn duels() -> Vec<Line<'static>> {
         bullet(format!("Empatou depois de {DUEL_ROUNDS}? Morte súbita com um minigame sorteado que ainda não saiu, até alguém vencer uma rodada (no máximo {DUEL_MAX_ROUNDS} rodadas no total).")),
         gap(),
         title("Aposta"),
-        bullet("A aposta é uma parte do MP do mais pobre dos dois: amistoso (0), 10%, 25%, 50% ou tudo."),
-        bullet("As duas apostas ficam guardadas no servidor durante o duelo. Quem vence leva as duas (é MP de outro jogador, então não conta para o rank)."),
-        bullet(format!("Empate depois de {DUEL_MAX_ROUNDS} rodadas, ou servidor desligado no meio: cada um recebe a sua de volta.")),
+        bullet("A aposta é uma parte do MP do mais pobre do duelo: amistoso (0), 10%, 25%, 50% ou tudo. Todos apostam o mesmo."),
+        bullet("As apostas ficam guardadas no servidor durante o duelo. Quem vence leva todas (é MP de outro jogador, então não conta para o rank)."),
+        bullet(format!("Empate depois de {DUEL_MAX_ROUNDS} rodadas: o pote é dividido entre quem ficou até o fim. Servidor desligado no meio: cada um recebe a sua de volta.")),
         bullet("Sair do jogo ou cair no meio do duelo conta como desistência."),
         bullet(format!("Um desafio expira em {} s. Na fila, vale a menor das duas apostas.", INVITE_TTL.as_secs())),
         bullet("Duelo amistoso, ou desistência antes de terminar a primeira rodada, não conta no placar nem para conquistas."),
@@ -250,9 +262,10 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
         gap(),
         title("Resultados de um mog seu"),
         bullet(format!(
-            "Vitória contra jogador: você tira {} + {} do MP dele (máximo {}), multiplicado pelo timing. Ele perde exatamente o que você ganha.",
+            "Vitória contra jogador: você tira {} + {} do MP dele, multiplicado pelo timing. O teto é {} do limiar do menor rank entre vocês (no mínimo {}). Ele perde exatamente o que você ganha.",
             n(STAKE_FLAT),
             pct(STAKE_RATIO),
+            pct(STAKE_CAP_RANK_RATIO),
             format_mp(STAKE_CAP)
         )),
         bullet(format!(

@@ -100,15 +100,15 @@ fn handle(world: &mut World, id: PlayerId, msg: ClientMsg, now: Instant, stats: 
         ClientMsg::Rename { name } => world.rename(id, &name),
         ClientMsg::BuyPart { part } => world.buy_part(id, part),
         ClientMsg::WearPart { part } => world.wear_part(id, part),
-        ClientMsg::Challenge { target, fraction, draft } => {
+        ClientMsg::Challenge { targets, fraction, draft } => {
             stats.invites_sent += 1;
-            world.challenge(id, target, fraction, draft, now)
+            world.challenge(id, targets, fraction, draft, now)
         }
         ClientMsg::Answer { from, accept } => world.answer(id, from, accept, now),
         ClientMsg::CancelChallenge => world.cancel_challenge(id),
-        ClientMsg::Queue { fraction, draft } => {
+        ClientMsg::Queue { fraction, draft, group } => {
             stats.queue_joins += fraction.is_some() as u32;
-            world.queue(id, fraction, draft, now)
+            world.queue(id, fraction, draft, group, now)
         }
         ClientMsg::Duel { key, at_ms } => world.duel_input(id, key, at_ms, 0.0, now),
         ClientMsg::Pong { .. } | ClientMsg::Chat(_) | ClientMsg::Clan(_) => {}

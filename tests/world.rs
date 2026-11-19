@@ -1081,3 +1081,22 @@ fn breaking_a_streak_pays_a_bounty_and_ends_it() {
     assert!(texts(&w, 1).iter().any(|t| t.contains("quebrou o streak 4")));
     assert!(texts(&w, 2).iter().any(|t| t.contains("seu streak 4 acabou")));
 }
+
+#[test]
+fn stake_cap_follows_the_lower_rank_of_the_two() {
+    let now = Instant::now();
+    let loss = |a: Rank, b: Rank| {
+        let mut w = world(2, now);
+        w.crit_override = Some(1.0);
+        w.slot_mut(1).unwrap().player.lifetime = a.threshold();
+        w.slot_mut(2).unwrap().player.lifetime = b.threshold();
+        w.slot_mut(2).unwrap().player.mp = 1e10;
+        w.mog(1, 2, 0.0, now);
+        1e10 - player(&w, 2).mp
+    };
+    let low = loss(Rank::Chad, Rank::Chad);
+    let cosmic = loss(Rank::Cosmic, Rank::Cosmic);
+    let cap = Rank::Cosmic.threshold() * STAKE_CAP_RANK_RATIO;
+    assert!((cosmic / low - cap / STAKE_CAP).abs() < 1e-6, "Chad keeps the floor, Cósmico takes {cap} before multipliers");
+    assert!((loss(Rank::Cosmic, Rank::GreekGod) / cosmic - Rank::GreekGod.threshold() / Rank::Cosmic.threshold()).abs() < 1e-6, "the lower rank sets the cap");
+}

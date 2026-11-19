@@ -174,19 +174,42 @@ pub struct World {
     /// Clan of each online player: (clan id, tag). Kept in sync by the server's clan hub.
     clan_of: HashMap<PlayerId, (i64, String)>,
     active: Vec<Duel>,
-    invites: Vec<Invite>,
-    /// Players waiting for a duel, with the bet fraction they accept.
-    queue: Vec<(PlayerId, f64, bool, Instant)>,
+    lobbies: Vec<Lobby>,
+    /// Players waiting for a duel.
+    queue: Vec<Queued>,
     /// Fixed critical chance instead of the attack/defense formula, for exact payouts in tests.
     pub crit_override: Option<f64>,
 }
 
-struct Invite {
-    from: PlayerId,
-    to: PlayerId,
+/// A duel challenge from `host`: it starts once nobody is left to answer, with whoever accepted.
+struct Lobby {
+    host: PlayerId,
+    pending: Vec<PlayerId>,
+    accepted: Vec<PlayerId>,
     fraction: f64,
     draft: bool,
     expires: Instant,
+}
+
+impl Lobby {
+    /// The host first, then everyone invited.
+    fn members(&self) -> impl Iterator<Item = PlayerId> + '_ {
+        std::iter::once(self.host).chain(self.guests())
+    }
+
+    fn guests(&self) -> impl Iterator<Item = PlayerId> + '_ {
+        self.accepted.iter().chain(&self.pending).copied()
+    }
+}
+
+/// A player waiting in the duel queue with the bet fraction they accept; `group` waits for a group duel.
+#[derive(Clone, Copy)]
+struct Queued {
+    id: PlayerId,
+    fraction: f64,
+    draft: bool,
+    group: bool,
+    since: Instant,
 }
 
 const CLAN_BET_REFUSED: &str = "Clãs não apostam entre si: só duelo amistoso.";
@@ -264,7 +287,7 @@ impl World {
         }
         self.forfeit(id, now);
         self.drop_invites_of(id, "saiu do servidor");
-        self.queue.retain(|(q, ..)| *q != id);
+        self.queue.retain(|q| q.id != id);
         let slot = self.slots.remove(&id)?;
         self.clan_of.remove(&id);
         self.announce(&[id], Tone::Info, &format!("{} saiu do servidor.", slot.player.name));
@@ -609,7 +632,8 @@ impl World {
         let punch = self.punch_down(id, target);
         let (up, down) = (self.rank_index(target).saturating_sub(self.rank_index(id)), self.rank_index(id).saturating_sub(self.rank_index(target)));
         let upset = self.rank_ratio(target, id);
-        let (outcome, won, lost) = match self.defend(target, &attacker_name, power, take_mult * punch * upset, crit, now) {
+        let cap = self.stake_cap(id, target);
+        let (outcome, won, lost) = match self.defend(target, &attacker_name, power, take_mult * punch * upset, cap, crit, now) {
             Defense::Won { loss, broken } => {
                 if punch < 1.0 {
                     let text = format!("{defender_name} está muito abaixo do seu rank: o mog rendeu pouco e não conta para o streak.");
@@ -756,8 +780,15 @@ impl World {
         penalty
     }
 
-    /// `take_mult` scales how much of the defender's stake the attacker takes; a `crit` goes through any defense.
-    fn defend(&mut self, id: PlayerId, attacker: &str, power: f64, take_mult: f64, crit: bool, now: Instant) -> Defense {
+    /// Most a single mog can take before multipliers: grows with the lower rank of the two players.
+    fn stake_cap(&self, a: PlayerId, b: PlayerId) -> f64 {
+        let lower = self.rank_index(a).min(self.rank_index(b));
+        STAKE_CAP.max(Rank::ALL[lower].threshold() * STAKE_CAP_RANK_RATIO)
+    }
+
+    /// `take_mult` scales how much of the defender's stake the attacker takes, up to `cap`; a `crit` goes through any defense.
+    #[allow(clippy::too_many_arguments)]
+    fn defend(&mut self, id: PlayerId, attacker: &str, power: f64, take_mult: f64, cap: f64, crit: bool, now: Instant) -> Defense {
         let slot = self.slots.get_mut(&id).expect("defender online");
         slot.dirty = true;
         if slot.player.shield_armed {
@@ -775,7 +806,7 @@ impl World {
             slot.player.nemesis = Some(attacker.to_string());
             let broken = std::mem::take(&mut slot.streak).min(STREAK_CAP);
             let bounty = 1.0 + STREAK_BOUNTY * broken as f64;
-            let stake = (STAKE_FLAT + mp * STAKE_RATIO).min(STAKE_CAP) * take_mult * bounty;
+            let stake = (STAKE_FLAT + mp * STAKE_RATIO).min(cap) * take_mult * bounty;
             let loss = (stake * (1.0 - stats.loss_shield)).min(mp);
             slot.player.mp -= loss;
             slot.player.defends_lost += 1;
@@ -852,21 +883,32 @@ impl World {
         let duel = self.duel_index(id).map(|i| {
             let d = &self.active[i];
             let side = d.side(id).expect("found by id");
-            let opponent = self.slots.get(&d.players[1 - side]).map_or(0.0, |s| s.player.lifetime);
-            let other = d.players[1 - side];
-            DuelView { opponent_tag: self.clan_of.get(&other).map(|(_, tag)| tag.clone()), ..d.view(side, opponent, now) }
+            let rival = d.players[d.rival(side)];
+            let lifetime = self.slots.get(&rival).map_or(0.0, |s| s.player.lifetime);
+            DuelView { opponent_tag: self.clan_of.get(&rival).map(|(_, tag)| tag.clone()), ..d.view(side, lifetime, now) }
         });
-        let invite_view = |inv: &Invite, peer: PlayerId| InviteView {
+        let invite_view = |l: &Lobby, peer: PlayerId, name: String, others: Vec<String>| InviteView {
             peer,
-            name: self.slots.get(&peer).map_or(String::new(), |s| s.player.name.clone()),
-            fraction: inv.fraction,
-            stake: self.stake_for(inv.from, inv.to, inv.fraction),
-            expires_ms: remaining_ms(inv.expires, now),
-            draft: inv.draft,
+            name,
+            fraction: l.fraction,
+            stake: self.stake_for(l.members(), l.fraction),
+            expires_ms: remaining_ms(l.expires, now),
+            draft: l.draft,
+            others,
         };
-        let invites = self.invites.iter().filter(|i| i.to == id).map(|i| invite_view(i, i.from)).collect();
-        let outgoing = self.invites.iter().find(|i| i.from == id).map(|i| invite_view(i, i.to));
-        let queued = self.queue.iter().find(|(q, ..)| *q == id).map(|(_, f, ..)| *f);
+        let invites = self
+            .lobbies
+            .iter()
+            .filter(|l| l.pending.contains(&id))
+            .map(|l| invite_view(l, l.host, self.name_of(l.host), l.guests().filter(|g| *g != id).map(|g| self.name_of(g)).collect()))
+            .collect();
+        let outgoing = self.lobbies.iter().find(|l| l.host == id).map(|l| {
+            let waiting = if l.pending.is_empty() { self.names_of(&l.accepted) } else { self.names_of(&l.pending) };
+            invite_view(l, l.guests().next().unwrap_or(id), waiting, l.accepted.iter().map(|g| self.name_of(*g)).collect())
+        });
+        let queue = self.queue.iter().find(|q| q.id == id);
+        let queued = queue.map(|q| q.fraction);
+        let queued_group = queue.is_some_and(|q| q.group);
         Some(StateView {
             me: slot.player.clone(),
             streak: slot.streak,
@@ -883,6 +925,7 @@ impl World {
             invites,
             outgoing,
             queued,
+            queued_group,
             rtt_ms: 0.0,
             clan_tag: self.clan_of.get(&id).map(|(_, tag)| tag.clone()),
             mood: slot.mood_view(now),
@@ -891,8 +934,9 @@ impl World {
 }
 
 impl World {
+    /// The duel `id` is in; a player who gave up a group duel is free again (one against one, it ends the duel).
     fn duel_index(&self, id: PlayerId) -> Option<usize> {
-        self.active.iter().position(|d| d.side(id).is_some())
+        self.active.iter().position(|d| d.side(id).is_some_and(|s| !d.out[s] || d.players.len() == 2))
     }
 
     /// True while the player is in a duel or looking at its result.
@@ -904,14 +948,23 @@ impl World {
         self.active.len()
     }
 
-    /// MP each side bets: a share of the poorer player's MP.
-    fn stake_for(&self, a: PlayerId, b: PlayerId, fraction: f64) -> f64 {
+    /// MP each player bets: a share of the poorest player's MP.
+    fn stake_for(&self, players: impl IntoIterator<Item = PlayerId>, fraction: f64) -> f64 {
         let mp = |id: PlayerId| self.slots.get(&id).map_or(0.0, |s| s.player.mp.max(0.0));
-        (fraction * mp(a).min(mp(b))).floor()
+        (fraction * players.into_iter().map(mp).fold(f64::INFINITY, f64::min)).floor()
     }
 
     fn name_of(&self, id: PlayerId) -> String {
         self.slots.get(&id).map_or_else(|| "?".into(), |s| s.player.name.clone())
+    }
+
+    /// Names joined for a sentence: "A, B e C".
+    fn names_of(&self, ids: &[PlayerId]) -> String {
+        let names: Vec<String> = ids.iter().map(|id| self.name_of(*id)).collect();
+        match names.split_last() {
+            Some((last, rest)) if !rest.is_empty() => format!("{} e {last}", rest.join(", ")),
+            _ => names.join(""),
+        }
     }
 
     /// Why `id` can't duel `target` right now, if anything.
@@ -927,84 +980,134 @@ impl World {
         }
     }
 
-    pub fn challenge(&mut self, id: PlayerId, target: PlayerId, fraction: f64, draft: bool, now: Instant) {
+    /// Whether any two of `players` share a clan.
+    fn clan_clash(&self, players: &[PlayerId]) -> bool {
+        players.iter().enumerate().any(|(i, a)| players[i + 1..].iter().any(|b| self.same_clan(*a, *b)))
+    }
+
+    /// Invites `targets` to a duel; with more than one it is a group duel with drawn minigames.
+    pub fn challenge(&mut self, id: PlayerId, targets: Vec<PlayerId>, fraction: f64, draft: bool, now: Instant) {
         if !self.slots.contains_key(&id) {
+            return;
+        }
+        let mut targets = targets;
+        targets.sort_unstable();
+        targets.dedup();
+        if targets.is_empty() || targets.len() >= DUEL_MAX_PLAYERS {
+            self.event(id, Tone::Info, format!("Um duelo tem de 2 a {DUEL_MAX_PLAYERS} jogadores."), None, false);
             return;
         }
         if !valid_fraction(fraction) {
             self.event(id, Tone::Bad, "Aposta inválida.", None, false);
             return;
         }
-        if let Some(reason) = self.duel_blocker(id, target) {
+        if let Some(reason) = targets.iter().find_map(|t| self.duel_blocker(id, *t)) {
             self.event(id, Tone::Info, reason, None, false);
             return;
         }
-        if fraction > 0.0 && self.same_clan(id, target) {
+        let members: Vec<PlayerId> = std::iter::once(id).chain(targets.iter().copied()).collect();
+        if fraction > 0.0 && self.clan_clash(&members) {
             self.event(id, Tone::Info, CLAN_BET_REFUSED, None, false);
             return;
         }
-        if self.invites.iter().any(|i| i.from == target && i.to == id) {
+        if let [target] = targets[..]
+            && self.lobbies.iter().any(|l| l.host == target && l.pending == [id] && l.accepted.is_empty())
+        {
             self.event(id, Tone::Info, format!("{} já te desafiou: aceite com A.", self.name_of(target)), None, false);
             return;
         }
         self.cancel_challenge(id);
-        self.queue.retain(|(q, ..)| *q != id);
-        self.invites.push(Invite { from: id, to: target, fraction, draft, expires: now + INVITE_TTL });
-        let stake = format_mp(self.stake_for(id, target, fraction));
-        let (me, them) = (self.name_of(id), self.name_of(target));
+        self.queue.retain(|q| q.id != id);
+        let group = targets.len() > 1;
+        let draft = draft && !group;
+        let stake = format_mp(self.stake_for(members.iter().copied(), fraction));
         let mode = if draft { ", escolhendo os minigames" } else { "" };
-        self.event(id, Tone::Info, format!("Desafio enviado para {them} valendo {stake} MP{mode}. Esperando resposta..."), None, false);
-        self.event(
-            target,
-            Tone::Epic,
-            format!("{me} te desafiou para um duelo valendo {stake} MP{mode}! A aceita, R recusa."),
-            Some(format!("DESAFIO DE {}", me.to_uppercase())),
-            false,
-        );
-        self.push.extend([id, target]);
+        let me = self.name_of(id);
+        self.event(id, Tone::Info, format!("Desafio enviado para {} valendo {stake} MP{mode}. Esperando resposta...", self.names_of(&targets)), None, false);
+        for target in &targets {
+            let text = if group {
+                let others: Vec<PlayerId> = targets.iter().copied().filter(|t| t != target).collect();
+                format!("{me} te chamou para um duelo em grupo com {} valendo {stake} MP! A aceita, R recusa.", self.names_of(&others))
+            } else {
+                format!("{me} te desafiou para um duelo valendo {stake} MP{mode}! A aceita, R recusa.")
+            };
+            self.event(*target, Tone::Epic, text, Some(format!("DESAFIO DE {}", me.to_uppercase())), false);
+        }
+        self.push.extend(members);
+        self.lobbies.push(Lobby { host: id, pending: targets, accepted: Vec::new(), fraction, draft, expires: now + INVITE_TTL });
     }
 
     pub fn cancel_challenge(&mut self, id: PlayerId) {
-        let Some(pos) = self.invites.iter().position(|i| i.from == id) else { return };
-        let invite = self.invites.remove(pos);
+        let Some(pos) = self.lobbies.iter().position(|l| l.host == id) else { return };
+        let lobby = self.lobbies.remove(pos);
         let me = self.name_of(id);
-        self.event(invite.to, Tone::Info, format!("{me} cancelou o desafio."), None, false);
-        self.push.extend([id, invite.to]);
+        for other in lobby.guests() {
+            self.event(other, Tone::Info, format!("{me} cancelou o desafio."), None, false);
+            self.push.push(other);
+        }
+        self.push.push(id);
     }
 
     pub fn answer(&mut self, id: PlayerId, from: PlayerId, accept: bool, now: Instant) {
-        let Some(pos) = self.invites.iter().position(|i| i.from == from && i.to == id) else {
+        let Some(i) = self.lobbies.iter().position(|l| l.host == from && l.pending.contains(&id)) else {
             self.event(id, Tone::Info, "Esse desafio não existe mais.", None, false);
             return;
         };
-        let invite = self.invites.remove(pos);
+        self.lobbies[i].pending.retain(|p| *p != id);
         self.push.extend([id, from]);
         let me = self.name_of(id);
-        if !accept {
-            self.event(from, Tone::Info, format!("{me} recusou o duelo."), None, false);
-            self.event(id, Tone::Info, "Desafio recusado.", None, false);
-            return;
+        let members: Vec<PlayerId> = self.lobbies[i].members().chain([id]).collect();
+        let blocker = if !accept {
+            None
+        } else if let Some(reason) = self.duel_blocker(id, from) {
+            Some(reason)
+        } else {
+            (self.lobbies[i].fraction > 0.0 && self.clan_clash(&members)).then(|| CLAN_BET_REFUSED.to_string())
+        };
+        match (accept, blocker) {
+            (true, Some(reason)) => self.event(id, Tone::Info, reason, None, false),
+            (true, None) => {
+                self.lobbies[i].accepted.push(id);
+                if self.lobbies[i].accepted.len() + self.lobbies[i].pending.len() > 1 {
+                    self.event(from, Tone::Info, format!("{me} aceitou o duelo."), None, false);
+                }
+            }
+            (false, _) => {
+                self.event(from, Tone::Info, format!("{me} recusou o duelo."), None, false);
+                self.event(id, Tone::Info, "Desafio recusado.", None, false);
+            }
         }
-        if let Some(reason) = self.duel_blocker(id, from) {
-            self.event(id, Tone::Info, reason, None, false);
-            return;
+        self.start_ready_lobbies(now);
+    }
+
+    /// Starts every challenge nobody still has to answer, with whoever accepted.
+    fn start_ready_lobbies(&mut self, now: Instant) {
+        while let Some(i) = self.lobbies.iter().position(|l| l.pending.is_empty()) {
+            let lobby = self.lobbies.remove(i);
+            if lobby.accepted.is_empty() {
+                continue;
+            }
+            let players: Vec<PlayerId> = lobby.members().filter(|p| self.slots.contains_key(p) && !self.in_duel(*p)).collect();
+            if players.len() < 2 || players[0] != lobby.host {
+                for p in lobby.members() {
+                    self.event(p, Tone::Info, "O duelo não pôde começar: faltou gente.", None, false);
+                }
+                continue;
+            }
+            self.start_duel(players, lobby.fraction, lobby.draft && lobby.accepted.len() == 1, now);
         }
-        if invite.fraction > 0.0 && self.same_clan(id, from) {
-            self.event(id, Tone::Info, CLAN_BET_REFUSED, None, false);
-            return;
-        }
-        self.start_duel(from, id, invite.fraction, invite.draft, now);
     }
 
     /// Joins the queue with a bet, or leaves it with `None`; the draft needs both sides asking for it.
-    pub fn queue(&mut self, id: PlayerId, fraction: Option<f64>, draft: bool, now: Instant) {
+    /// `group` waits for 3 to 5 players instead of one rival.
+    pub fn queue(&mut self, id: PlayerId, fraction: Option<f64>, draft: bool, group: bool, now: Instant) {
         if !self.slots.contains_key(&id) {
             return;
         }
         self.push.push(id);
         let Some(fraction) = fraction else {
-            if self.queue.iter().any(|(q, ..)| *q == id) {
-                self.queue.retain(|(q, ..)| *q != id);
+            if self.queue.iter().any(|q| q.id == id) {
+                self.queue.retain(|q| q.id != id);
                 self.event(id, Tone::Info, "Você saiu da fila de duelo.", None, false);
             }
             return;
@@ -1018,11 +1121,16 @@ impl World {
             return;
         }
         self.cancel_challenge(id);
-        match self.queue.iter_mut().find(|(q, ..)| *q == id) {
-            Some(entry) => (entry.1, entry.2) = (fraction, draft),
-            None => self.queue.push((id, fraction, draft, now)),
+        match self.queue.iter_mut().find(|q| q.id == id) {
+            Some(entry) => (entry.fraction, entry.draft, entry.group) = (fraction, draft, group),
+            None => self.queue.push(Queued { id, fraction, draft, group, since: now }),
         }
-        self.event(id, Tone::Info, "Na fila de duelo. Esperando outro jogador...", None, false);
+        let text = if group {
+            format!("Na fila de duelo em grupo. Começa com {DUEL_MAX_PLAYERS} jogadores, ou com {DUEL_GROUP_MIN} depois de {} s.", GROUP_QUEUE_WAIT.as_secs())
+        } else {
+            "Na fila de duelo. Esperando outro jogador...".into()
+        };
+        self.event(id, Tone::Info, text, None, false);
         self.matchmake(now);
     }
 
@@ -1031,71 +1139,123 @@ impl World {
         Rank::ALL.iter().position(|r| *r == rank).unwrap_or(0)
     }
 
-    /// Pairs queued players of close rank; anyone goes once someone waited long enough.
+    /// Pairs queued players of close rank (anyone once someone waited long enough), and fills group duels.
     fn matchmake(&mut self, now: Instant) {
         'search: loop {
             for i in 0..self.queue.len() {
-                let (a, fa, da, since_a) = self.queue[i];
+                let a = self.queue[i];
+                if a.group {
+                    continue;
+                }
+                let rank_a = self.rank_index(a.id);
                 let best = self
                     .queue
                     .iter()
                     .enumerate()
-                    .filter(|(j, (b, ..))| *j != i && !self.same_clan(a, *b))
-                    .map(|(j, &(b, fb, db, since_b))| (j, b, fb, db, since_b, self.rank_index(a).abs_diff(self.rank_index(b))))
+                    .filter(|(j, b)| *j != i && !b.group && !self.same_clan(a.id, b.id))
+                    .map(|(j, b)| (j, *b, rank_a.abs_diff(self.rank_index(b.id))))
                     .min_by_key(|(.., gap)| *gap);
-                let Some((j, b, fb, db, since_b, gap)) = best else { continue };
+                let Some((j, b, gap)) = best else { continue };
                 let waited = |since: Instant| now.saturating_duration_since(since) >= QUEUE_RELAX;
-                if gap <= QUEUE_RANK_GAP || waited(since_a) || waited(since_b) {
-                    let (first, second) = if i < j { (a, b) } else { (b, a) };
-                    self.queue.retain(|(q, ..)| *q != a && *q != b);
-                    self.start_duel(first, second, fa.min(fb), da && db, now);
+                if gap <= QUEUE_RANK_GAP || waited(a.since) || waited(b.since) {
+                    let players = if i < j { vec![a.id, b.id] } else { vec![b.id, a.id] };
+                    self.start_duel(players, a.fraction.min(b.fraction), a.draft && b.draft, now);
                     continue 'search;
                 }
             }
             break;
         }
+        // Group queue: the longest waiting first, skipping anyone who shares a clan with a player already in.
+        let mut group: Vec<Queued> = Vec::new();
+        for q in self.queue.iter().filter(|q| q.group) {
+            if group.len() < DUEL_MAX_PLAYERS && group.iter().all(|g| !self.same_clan(g.id, q.id)) {
+                group.push(*q);
+            }
+        }
+        let waited = group.first().is_some_and(|q| now.saturating_duration_since(q.since) >= GROUP_QUEUE_WAIT);
+        if group.len() == DUEL_MAX_PLAYERS || (group.len() >= DUEL_GROUP_MIN && waited) {
+            let fraction = group.iter().map(|q| q.fraction).fold(f64::INFINITY, f64::min);
+            self.start_duel(group.iter().map(|q| q.id).collect(), fraction, false, now);
+        }
     }
 
+    /// Takes `id` out of every challenge it is in, telling the others why.
     fn drop_invites_of(&mut self, id: PlayerId, why: &str) {
         let name = self.name_of(id);
-        let gone: Vec<Invite> = self.invites.extract_if(.., |i| i.from == id || i.to == id).collect();
-        for invite in gone {
-            let other = if invite.from == id { invite.to } else { invite.from };
-            self.event(other, Tone::Info, format!("{name} {why}; o desafio foi cancelado."), None, false);
-            self.push.push(other);
+        let hosted: Vec<Lobby> = self.lobbies.extract_if(.., |l| l.host == id).collect();
+        for lobby in hosted {
+            for other in lobby.guests() {
+                self.event(other, Tone::Info, format!("{name} {why}; o desafio foi cancelado."), None, false);
+                self.push.push(other);
+            }
+        }
+        let mut hosts = Vec::new();
+        for lobby in self.lobbies.iter_mut().filter(|l| l.pending.contains(&id) || l.accepted.contains(&id)) {
+            lobby.pending.retain(|p| *p != id);
+            lobby.accepted.retain(|p| *p != id);
+            hosts.push(lobby.host);
+        }
+        for host in hosts {
+            self.event(host, Tone::Info, format!("{name} {why}; saiu do desafio."), None, false);
+            self.push.push(host);
         }
     }
 
+    /// Times out challenges: the ones with someone who accepted start without the rest.
     fn expire_invites(&mut self, now: Instant) {
-        let expired: Vec<Invite> = self.invites.extract_if(.., |i| now >= i.expires).collect();
-        for invite in expired {
-            let (from, to) = (self.name_of(invite.from), self.name_of(invite.to));
-            self.event(invite.from, Tone::Info, format!("{to} não respondeu ao desafio."), None, false);
-            self.event(invite.to, Tone::Info, format!("O desafio de {from} expirou."), None, false);
-            self.push.extend([invite.from, invite.to]);
+        let mut ready = false;
+        let expired: Vec<(PlayerId, Vec<PlayerId>, bool)> = self
+            .lobbies
+            .iter_mut()
+            .filter(|l| now >= l.expires && !l.pending.is_empty())
+            .map(|l| (l.host, std::mem::take(&mut l.pending), !l.accepted.is_empty()))
+            .collect();
+        for (host, silent, starts) in expired {
+            let from = self.name_of(host);
+            self.event(host, Tone::Info, format!("{} não respondeu ao desafio.", self.names_of(&silent)), None, false);
+            for p in &silent {
+                self.event(*p, Tone::Info, format!("O desafio de {from} expirou."), None, false);
+            }
+            self.push.push(host);
+            self.push.extend(silent);
+            ready |= starts;
+        }
+        self.lobbies.retain(|l| !(l.pending.is_empty() && l.accepted.is_empty()));
+        if ready {
+            self.start_ready_lobbies(now);
         }
     }
 
-    /// Takes both bets in escrow and starts the duel.
-    fn start_duel(&mut self, a: PlayerId, b: PlayerId, fraction: f64, draft: bool, now: Instant) {
-        let stake = self.stake_for(a, b, fraction);
-        for id in [a, b] {
-            if let Some(slot) = self.slots.get_mut(&id) {
+    /// Takes every bet in escrow and starts the duel; `players[0]` is the host or the first in line.
+    fn start_duel(&mut self, players: Vec<PlayerId>, fraction: f64, draft: bool, now: Instant) {
+        let stake = self.stake_for(players.iter().copied(), fraction);
+        for id in &players {
+            if let Some(slot) = self.slots.get_mut(id) {
                 slot.player.mp -= stake;
                 slot.dirty = true;
             }
         }
-        self.drop_invites_of(a, "entrou num duelo");
-        self.drop_invites_of(b, "entrou num duelo");
-        self.queue.retain(|(q, ..)| *q != a && *q != b);
-        let names = [self.name_of(a), self.name_of(b)];
-        let mode = if draft { format!("cada um escolhe {} minigames", DUEL_ROUNDS / 2) } else { "minigames sorteados".into() };
-        for (me, other) in [(a, &names[1]), (b, &names[0])] {
-            let text = format!("Duelo contra {other} valendo {} MP! {DUEL_ROUNDS} rodadas, {mode}.", format_mp(stake));
-            self.event(me, Tone::Epic, text, Some("DUELO!".into()), false);
+        for id in &players {
+            self.drop_invites_of(*id, "entrou num duelo");
         }
-        self.active.push(Duel::new([a, b], names, stake, draft, now, &mut rand::thread_rng()));
-        self.push.extend([a, b]);
+        self.queue.retain(|q| !players.contains(&q.id));
+        let names: Vec<String> = players.iter().map(|id| self.name_of(*id)).collect();
+        let mode = if draft { format!("cada um escolhe {} minigames", DUEL_ROUNDS / 2) } else { "minigames sorteados".into() };
+        for id in &players {
+            let others: Vec<PlayerId> = players.iter().copied().filter(|p| p != id).collect();
+            let text = if players.len() == 2 {
+                format!("Duelo contra {} valendo {} MP! {DUEL_ROUNDS} rodadas, {mode}.", self.names_of(&others), format_mp(stake))
+            } else {
+                format!(
+                    "Duelo em grupo contra {} valendo {} MP cada! {DUEL_ROUNDS} rodadas, {mode}. Pontos por colocação, o vencedor leva tudo.",
+                    self.names_of(&others),
+                    format_mp(stake)
+                )
+            };
+            self.event(*id, Tone::Epic, text, Some("DUELO!".into()), false);
+        }
+        self.push.extend(players.iter().copied());
+        self.active.push(Duel::new(players, names, stake, draft, now, &mut rand::thread_rng()));
     }
 
     /// `at_ms` is the client's own timing; `rtt_max_ms` bounds how far back it may reach.
@@ -1128,12 +1288,13 @@ impl World {
         &self.active
     }
 
+    /// `at_ms` is the client's own timing; `rtt_max_ms` bounds how far back it may reach.
     pub fn duel_input(&mut self, id: PlayerId, key: DuelKey, at_ms: Option<f64>, rtt_max_ms: f64, now: Instant) {
         let Some(i) = self.duel_index(id) else { return };
         let duel = &mut self.active[i];
         let side = duel.side(id).expect("found by id");
         duel.input(side, key, at_ms, rtt_max_ms, now, &mut rand::thread_rng());
-        self.push.extend(duel.players);
+        self.push.extend(duel.players.iter().copied());
         self.settle(i);
     }
 
@@ -1142,7 +1303,11 @@ impl World {
         let duel = &mut self.active[i];
         let side = duel.side(id).expect("found by id");
         duel.forfeit(side, now);
-        self.push.extend(duel.players);
+        self.push.extend(duel.players.iter().copied());
+        if duel.outcome.is_none() {
+            let lost = format_mp(duel.stake);
+            self.event(id, Tone::Bad, format!("Você desistiu do duelo em grupo e deixou {lost} MP no pote."), None, false);
+        }
         self.settle(i);
     }
 
@@ -1154,7 +1319,7 @@ impl World {
             let before = duel.revision(now);
             let done = duel.tick(now, &mut rng);
             if duel.revision(now) != before || done {
-                self.push.extend(duel.players);
+                self.push.extend(duel.players.iter().copied());
             }
             self.settle(i);
             if done {
@@ -1168,9 +1333,11 @@ impl World {
     /// Updates the duel records behind achievements, for a duel worth MP.
     fn record_duel(&mut self, i: usize, outcome: Option<usize>) {
         let duel = &self.active[i];
-        let (players, history, stake, wins, rounds) = (duel.players, duel.history.clone(), duel.stake, duel.wins, duel.rounds);
-        for side in 0..2 {
-            let Some(slot) = self.slots.get_mut(&players[side]) else { continue };
+        let (players, history, pot, wins, rounds) = (duel.players.clone(), duel.history.clone(), duel.pot(), duel.wins.clone(), duel.rounds);
+        let best_others: Vec<u32> = (0..players.len()).map(|side| wins[duel.rival(side)]).collect();
+        let rivals = players.len() as u32 - 1;
+        for (side, id) in players.iter().enumerate() {
+            let Some(slot) = self.slots.get_mut(id) else { continue };
             let p = &mut slot.player;
             for (game, _) in history.iter().filter(|(_, w)| *w == Some(side)) {
                 p.duel_rounds_won += 1;
@@ -1178,10 +1345,11 @@ impl World {
                     p.minigames_won.push(*game);
                 }
             }
-            if outcome == Some(side) && wins[side] > wins[1 - side] {
-                p.flawless_duels += (wins[1 - side] == 0 && wins[side] > DUEL_ROUNDS / 2) as u32;
+            let best_other = best_others[side];
+            if outcome == Some(side) && wins[side] > best_other {
+                p.flawless_duels += (best_other == 0 && wins[side] > DUEL_ROUNDS / 2 * rivals) as u32;
                 p.sudden_death_wins += (rounds > DUEL_ROUNDS) as u32;
-                p.best_duel_pot = p.best_duel_pot.max(2.0 * stake);
+                p.best_duel_pot = p.best_duel_pot.max(pot);
             }
             slot.dirty = true;
         }
@@ -1191,7 +1359,7 @@ impl World {
     fn settle(&mut self, i: usize) {
         let Some(outcome) = self.active[i].take_settlement() else { return };
         let duel = &self.active[i];
-        let (players, names, stake, rounds) = (duel.players, duel.names.clone(), duel.stake, duel.rounds);
+        let (players, names, stake, pot, rounds, out) = (duel.players.clone(), duel.names.clone(), duel.stake, duel.pot(), duel.rounds, duel.out.clone());
         // Friendly duels and walkovers before any round was played never count for records or achievements.
         let ranked = stake > 0.0 && duel.played > 0;
         if ranked {
@@ -1199,28 +1367,32 @@ impl World {
         }
         let unranked_note = if ranked { "" } else { " Não conta para o placar." };
         let (gain, loss, worth) = if stake > 0.0 {
-            let pot = format_mp(stake);
-            (format!(" +{pot} MP"), format!(" -{pot} MP"), format!(" valendo {pot} MP"))
+            (format!(" +{} MP", format_mp(pot - stake)), format!(" -{} MP", format_mp(stake)), format!(" valendo {} MP", format_mp(pot)))
         } else {
             (" (amistoso)".to_string(), " (amistoso)".to_string(), " amistoso".to_string())
         };
         match outcome {
             Some(w) => {
-                let (winner, loser) = (players[w], players[1 - w]);
+                let winner = players[w];
+                let losers: Vec<PlayerId> = players.iter().copied().filter(|p| *p != winner).collect();
                 if let Some(slot) = self.slots.get_mut(&winner) {
                     // A transfer between players, so it never counts toward the rank.
-                    slot.player.mp += 2.0 * stake;
+                    slot.player.mp += pot;
                     slot.player.duels_won += ranked as u32;
                     slot.dirty = true;
                 }
-                if let Some(slot) = self.slots.get_mut(&loser) {
-                    slot.player.duels_lost += ranked as u32;
-                    slot.dirty = true;
+                for loser in &losers {
+                    if let Some(slot) = self.slots.get_mut(loser) {
+                        slot.player.duels_lost += ranked as u32;
+                        slot.dirty = true;
+                    }
                 }
-                let (wn, ln) = (&names[w], &names[1 - w]);
+                let (wn, ln) = (&names[w], self.names_of(&losers));
                 let won_text = format!("Você venceu o duelo contra {ln}!{gain}{unranked_note}");
                 self.event(winner, Tone::Epic, won_text, Some("VITÓRIA NO DUELO".into()), false);
-                self.event(loser, Tone::Bad, format!("{wn} venceu o duelo.{loss}{unranked_note}"), Some("DERROTA NO DUELO".into()), true);
+                for loser in &losers {
+                    self.event(*loser, Tone::Bad, format!("{wn} venceu o duelo.{loss}{unranked_note}"), Some("DERROTA NO DUELO".into()), true);
+                }
                 let others: Vec<PlayerId> = if stake >= DUEL_ANNOUNCE_MIN {
                     self.slots.keys().copied().filter(|id| !players.contains(id)).collect()
                 } else {
@@ -1231,12 +1403,15 @@ impl World {
                 }
             }
             None => {
-                for id in players {
-                    if let Some(slot) = self.slots.get_mut(&id) {
-                        slot.player.mp += stake;
+                // A draw gives the pot back to whoever stayed; bets left by quitters are shared too.
+                let stayed: Vec<PlayerId> = players.iter().zip(&out).filter(|(_, out)| !**out).map(|(p, _)| *p).collect();
+                let text = if stayed.len() == players.len() { "Duelo empatado. As apostas voltaram." } else { "Duelo empatado. O pote foi dividido entre quem ficou." };
+                for id in &stayed {
+                    if let Some(slot) = self.slots.get_mut(id) {
+                        slot.player.mp += pot / stayed.len() as f64;
                         slot.dirty = true;
                     }
-                    self.event(id, Tone::Info, "Duelo empatado. As apostas voltaram.", Some("EMPATE".into()), false);
+                    self.event(*id, Tone::Info, text, Some("EMPATE".into()), false);
                 }
             }
         }
@@ -1247,6 +1422,7 @@ impl World {
             stake,
             rounds,
             ranked,
+            players: players.len() as u32,
         });
     }
 

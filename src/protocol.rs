@@ -48,21 +48,23 @@ pub enum ClientMsg {
     /// Wears a face part already owned.
     WearPart { part: crate::avatar::Part },
     Rename { name: String },
-    /// Invites `target` to a duel betting `fraction` of the poorer player's MP.
-    /// `draft` asks for each side to pick minigames instead of drawing them.
+    /// Invites `targets` (one, or up to four for a group duel) betting `fraction` of the poorest player's MP.
+    /// `draft` asks for each side to pick minigames instead of drawing them (one against one only).
     Challenge {
-        target: PlayerId,
+        targets: Vec<PlayerId>,
         fraction: f64,
         #[serde(default)]
         draft: bool,
     },
     Answer { from: PlayerId, accept: bool },
     CancelChallenge,
-    /// Joins the duel queue, or leaves it with `None`.
+    /// Joins the duel queue, or leaves it with `None`; `group` waits for a group duel.
     Queue {
         fraction: Option<f64>,
         #[serde(default)]
         draft: bool,
+        #[serde(default)]
+        group: bool,
     },
     /// `at_ms` is when the key was pressed, in ms since the phase started on this client's aligned clock.
     Duel {
@@ -107,7 +109,7 @@ pub struct PeerView {
     pub mood: Option<(crate::avatar::Mood, u64)>,
 }
 
-/// A duel invitation; `peer` is the other player.
+/// A duel invitation; `peer` is the other player (the host, for one received).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InviteView {
     pub peer: PlayerId,
@@ -119,6 +121,9 @@ pub struct InviteView {
     /// Each side picks minigames instead of drawing them.
     #[serde(default)]
     pub draft: bool,
+    /// Everyone else in a group duel.
+    #[serde(default)]
+    pub others: Vec<String>,
 }
 
 /// Everything a client needs to draw its screen.
@@ -147,6 +152,9 @@ pub struct StateView {
     pub outgoing: Option<InviteView>,
     /// Bet fraction while waiting in the duel queue.
     pub queued: Option<f64>,
+    /// The queue entry waits for a group duel.
+    #[serde(default)]
+    pub queued_group: bool,
     /// Average round trip to the server, in ms.
     #[serde(default)]
     pub rtt_ms: f64,

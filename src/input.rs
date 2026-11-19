@@ -230,7 +230,8 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
             KeyCode::Right | KeyCode::Char('l') => game.stake_move(1),
             KeyCode::Up | KeyCode::Char('k') => game.stake_row_move(-1),
             KeyCode::Down | KeyCode::Tab | KeyCode::Char('j') => game.stake_row_move(1),
-            KeyCode::Enter | KeyCode::Char(' ') => game.confirm_stake(),
+            KeyCode::Enter => game.confirm_stake(),
+            KeyCode::Char(' ') => game.stake_space(),
             KeyCode::Esc | KeyCode::Char('q') => game.overlay = Overlay::None,
             _ => {}
         },

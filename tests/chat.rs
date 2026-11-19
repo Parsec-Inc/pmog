@@ -582,6 +582,7 @@ fn playing() -> App {
         invites: Vec::new(),
         outgoing: None,
         queued: None,
+        queued_group: false,
         rtt_ms: 0.0,
         clan_tag: None,
         mood: None,
