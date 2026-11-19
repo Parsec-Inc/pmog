@@ -403,9 +403,9 @@ fn elevation_command(binary: &Path, exe: &Path, signature: &Path, sig: &Path, _s
 fn elevation_command(binary: &Path, exe: &Path, signature: &Path, sig: &Path, staging: &Path) -> io::Result<Command> {
     let script = staging.join("swap.cmd");
     fs::write(&script, windows_swap_script(binary, exe, signature, sig))?;
-    let mut command = Command::new("powershell");
+    let mut command = crate::utils::hidden_powershell();
     command
-        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command"])
+        .arg("-Command")
         .arg("$p = Start-Process -FilePath $env:PMOG_SWAP -Verb RunAs -Wait -PassThru -WindowStyle Hidden; exit $p.ExitCode")
         .env("PMOG_SWAP", &script);
     Ok(command)

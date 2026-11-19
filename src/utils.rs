@@ -138,3 +138,12 @@ pub fn data_dir_in(base: &std::path::Path) -> std::path::PathBuf {
     }
     dir
 }
+
+/// PowerShell on its own hidden console, so it can never hide or close the game's terminal window.
+#[cfg(windows)]
+pub fn hidden_powershell() -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    let mut command = std::process::Command::new("powershell");
+    command.args(["-NoProfile", "-NonInteractive"]).creation_flags(crate::constants::WINDOWS_CREATE_NO_WINDOW);
+    command
+}

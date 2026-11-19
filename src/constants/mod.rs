@@ -266,3 +266,6 @@ pub const GITHUB_ACCEPT: &str = "Accept: application/vnd.github+json";
 pub const UPDATE_USER_AGENT: &str = "pmog-updater";
 /// How long a whole download from the internet may take.
 pub const WEB_UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Windows process flag: the child gets its own invisible console instead of sharing the game's.
+pub const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;
