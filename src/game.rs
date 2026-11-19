@@ -359,6 +359,8 @@ pub enum Overlay {
     Ranks,
     Help,
     Server,
+    /// Owned items by category, full screen.
+    Inventory,
     /// Choosing how much to bet before a challenge or the queue.
     Stake,
     /// Own face: try on, buy and wear parts.
@@ -515,6 +517,10 @@ pub struct Game {
     pub shop_pending: Option<ItemId>,
     /// Last purchase outcome shown in the shop: (ok, text, when).
     pub shop_result: Option<(bool, String, Instant)>,
+    /// Category shown in the inventory screen.
+    pub inventory_tab: Category,
+    /// Catalog index of the item picked in the inventory screen.
+    pub inventory_cursor: usize,
     pub help_page: usize,
     pub help_scroll: u16,
     /// Scroll of the achievements and ranks lists.
@@ -733,6 +739,8 @@ impl Game {
             shop_confirm: None,
             shop_pending: None,
             shop_result: None,
+            inventory_tab: Category::ALL[0],
+            inventory_cursor: 0,
             help_page: 0,
             help_scroll: 0,
             list_scroll: 0,
@@ -945,6 +953,48 @@ impl Game {
     }
 
     /// Tab of the item under the shop cursor.
+    /// Owned items of the open inventory tab, as catalog indexes.
+    pub fn inventory_items(&self) -> Vec<usize> {
+        self.inventory_tab.items().filter(|i| self.player.level(CATALOG[*i].id) > 0).collect()
+    }
+
+    /// Item picked in the inventory; falls back to the tab's first one when the pick ran out.
+    pub fn inventory_selected(&self) -> Option<usize> {
+        let items = self.inventory_items();
+        items.iter().copied().find(|i| *i == self.inventory_cursor).or(items.first().copied())
+    }
+
+    pub fn open_inventory(&mut self) {
+        self.overlay = Overlay::Inventory;
+        if self.inventory_items().is_empty()
+            && let Some(tab) = Category::ALL.into_iter().find(|c| c.items().any(|i| self.player.level(CATALOG[i].id) > 0))
+        {
+            self.inventory_tab = tab;
+        }
+        self.inventory_cursor = self.inventory_selected().unwrap_or(0);
+    }
+
+    pub fn inventory_move(&mut self, delta: isize) {
+        let items = self.inventory_items();
+        if let Some(current) = self.inventory_selected() {
+            let at = items.iter().position(|i| *i == current).unwrap_or(0) as isize;
+            self.inventory_cursor = items[(at + delta).rem_euclid(items.len() as isize) as usize];
+        }
+    }
+
+    pub fn inventory_turn(&mut self, delta: isize) {
+        let at = Category::ALL.iter().position(|c| *c == self.inventory_tab).unwrap_or(0) as isize;
+        self.inventory_tab = Category::ALL[(at + delta).rem_euclid(Category::ALL.len() as isize) as usize];
+        self.inventory_cursor = self.inventory_items().first().copied().unwrap_or(0);
+    }
+
+    /// Uses the picked item when it is a consumable.
+    pub fn inventory_use(&mut self) {
+        if let Some(def) = self.inventory_selected().map(|i| &CATALOG[i]).filter(|d| d.consumable()) {
+            self.use_item(def.id);
+        }
+    }
+
     pub fn shop_category(&self) -> Category {
         CATALOG[self.shop_cursor.min(CATALOG.len() - 1)].category()
     }
@@ -958,6 +1008,11 @@ impl Game {
         let Some(target) = self.peers.get(self.selected) else { return };
         if let Some(left) = target.immune_left(now) {
             let text = format!("{} se recupera em {}", target.name, crate::utils::format_wait(left));
+            self.flash(now, Tone::Info, text);
+            return;
+        }
+        if target.in_duel {
+            let text = format!("{} está num duelo agora.", target.name);
             self.flash(now, Tone::Info, text);
             return;
         }

@@ -2,7 +2,9 @@
 
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::process::{Command, Stdio};
+#[cfg(not(windows))]
+use std::process::Command;
+use std::process::Stdio;
 use std::thread;
 use std::time::Instant;
 
@@ -145,8 +147,8 @@ impl SystemSink {
     /// Shows a Windows toast through PowerShell; the text travels in environment variables, never in the script.
     #[cfg(windows)]
     fn spawn(notice: &Notice, _urgency: Urgency) -> io::Result<()> {
-        let mut child = Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", WINDOWS_TOAST_SCRIPT])
+        let mut child = crate::utils::hidden_powershell()
+            .args(["-Command", WINDOWS_TOAST_SCRIPT])
             .env("PMOG_TITLE", &notice.title)
             .env("PMOG_BODY", &notice.body)
             .stdin(Stdio::null())

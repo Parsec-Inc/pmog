@@ -101,8 +101,10 @@ pub struct App {
     /// Set when the name changed and should be written to the local config.
     pub name_changed: bool,
     pub notifier: Notifier,
-    /// Set when the notification toggle changed and should be written to the local config.
-    pub notifications_changed: bool,
+    /// Set when a toggle (notifications, inventory panel) changed and should be written to the local config.
+    pub settings_changed: bool,
+    /// Whether the inventory panel sits under the feed.
+    pub inventory_panel: bool,
     /// This build's release number; updates are off when it is 0.
     pub release: u64,
     /// Newest release the player said no to, so the question is not repeated.
@@ -150,7 +152,8 @@ impl App {
             quit: false,
             name_changed: false,
             notifier: Notifier::silent(now),
-            notifications_changed: false,
+            settings_changed: false,
+            inventory_panel: true,
             release: if update::enabled() { update::release() } else { 0 },
             update_declined: 0,
             update_job: None,
@@ -633,7 +636,12 @@ impl App {
 
     pub fn toggle_notifications(&mut self) {
         self.notifier.enabled = !self.notifier.enabled;
-        self.notifications_changed = true;
+        self.settings_changed = true;
+    }
+
+    pub fn toggle_inventory_panel(&mut self) {
+        self.inventory_panel = !self.inventory_panel;
+        self.settings_changed = true;
     }
 
     /// Network in, actions out; call once per frame.
