@@ -1,6 +1,6 @@
-//! Cadeia: the parallel title track from the "O sabonete" series, earned by soaps made and kept off the forehead.
+//! Cadeia titles: the cell hierarchy from the series, earned by soaps made and kept off the forehead.
 
-use crate::constants::{PRISON_TITLE_MARKS, ZERO_TITLE_MARKS};
+use crate::constants::prison::{PRISON_TITLE_MARKS, ZERO_TITLE_MARKS};
 
 /// Prison standing, weakest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

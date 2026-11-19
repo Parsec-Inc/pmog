@@ -6,7 +6,7 @@ use crate::constants::*;
 use crate::game::{Achievement, CATALOG, Game, Rank};
 use crate::utils::format_mp;
 
-pub const PAGES: [&str; 8] = ["Básico", "Combate", "Economia", "Ranks", "Loja", "Duelos", "Social", "Glossário"];
+pub const PAGES: [&str; 9] = ["Básico", "Combate", "Economia", "Ranks", "Loja", "Duelos", "Social", "DLCs", "Glossário"];
 
 /// Lines of one help page.
 pub fn page(index: usize, g: &Game) -> Vec<Line<'static>> {
@@ -18,6 +18,7 @@ pub fn page(index: usize, g: &Game) -> Vec<Line<'static>> {
         4 => shop(),
         5 => duels(),
         6 => social(),
+        7 => dlcs(),
         _ => glossary(),
     }
 }
@@ -387,7 +388,7 @@ fn ranks(g: &Game) -> Vec<Line<'static>> {
     lines.push(gap());
     lines.push(title("Conquistas"));
     lines.push(text("Marcos que ficam salvos no seu perfil (tecla C para ver as suas e o progresso). Algumas são secretas."));
-    for a in Achievement::ALL.into_iter().filter(|a| !a.secret()) {
+    for a in Achievement::all().iter().copied().filter(|a| !a.secret()) {
         lines.push(term(a.name(), a.desc()));
     }
     lines
@@ -396,7 +397,7 @@ fn ranks(g: &Game) -> Vec<Line<'static>> {
 fn shop() -> Vec<Line<'static>> {
     let mut lines = vec![
         title("Como a loja funciona"),
-        bullet("Abra com L. ← → trocam de categoria (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), ↑ ↓ escolhem o item e Enter compra."),
+        bullet("Abra com L. ← → trocam de categoria (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, uma aba por DLC, Consumíveis), ↑ ↓ escolhem o item e Enter compra."),
         bullet("O número ao lado da categoria diz quantos itens dela você já pode comprar."),
         bullet("O painel da direita mostra o que o item faz e quanto seus números mudam com a compra."),
         bullet(format!(
@@ -407,7 +408,7 @@ fn shop() -> Vec<Line<'static>> {
         bullet("Consumíveis têm preço fixo, ficam no inventário e são usados com as teclas 1 a 9 e 0."),
         bullet("Escudo, Foto no Ângulo, Espelho, Fita de Mandíbula e Combo 6-7 ficam preparados até serem gastos, mesmo se você fechar o jogo."),
     ];
-    for category in crate::items::Category::ALL {
+    for category in crate::items::Category::all() {
         lines.push(gap());
         lines.push(title(category.label()));
         for def in category.items().map(|i| &CATALOG[i]) {
@@ -418,6 +419,22 @@ fn shop() -> Vec<Line<'static>> {
             };
             lines.push(term(def.name, &text));
         }
+    }
+    lines
+}
+
+fn dlcs() -> Vec<Line<'static>> {
+    let mut lines = vec![
+        title("Expansões"),
+        bullet("Cada DLC é comprada uma vez na loja, na aba com o nome dela, e libera os itens, regras e conquistas daquela expansão."),
+        bullet("Quem não tem a DLC continua jogando com todo mundo e pode receber os efeitos dela."),
+    ];
+    for d in crate::dlc::ALL {
+        let unlock = crate::items::def(d.unlock_item());
+        lines.push(gap());
+        lines.push(title(&format!("DLC {}", d.name())));
+        lines.push(bullet(format!("{} MP, a partir do rank {}. Libera {}.", format_mp(unlock.base_cost), unlock.min_rank.label(), d.unlocks())));
+        lines.extend(d.help().into_iter().map(bullet));
     }
     lines
 }

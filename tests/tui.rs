@@ -38,7 +38,7 @@ fn playing() -> App {
         aura_farm_ms: 0,
         statuses: vec![],
         meter_ms: 0,
-        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), forehead: 0, marks: 0 }],
+        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default() }],
         duel: None,
         invites: Vec::new(),
         outgoing: None,
@@ -183,7 +183,7 @@ fn locked_item_sprite_is_grayscale() {
 fn help_has_every_page_and_scrolls() {
     let mut a = playing();
     press(&mut a, KeyCode::Char('?'));
-    let expected = ["OBJETIVO", "UM MOG, PASSO A PASSO", "MOGGING POINTS", "RANKS", "COMO A LOJA FUNCIONA", "DUELO DIRETO", "CHAT (T)", "GÍRIAS DO JOGO"];
+    let expected = ["OBJETIVO", "UM MOG, PASSO A PASSO", "MOGGING POINTS", "RANKS", "COMO A LOJA FUNCIONA", "DUELO DIRETO", "CHAT (T)", "EXPANSÕES", "GÍRIAS DO JOGO"];
     for (i, needle) in expected.iter().enumerate() {
         assert_eq!(a.game.help_page, i);
         let screen = render(&a, 120, 40);
@@ -498,7 +498,7 @@ fn state_with(app: &mut App, edit: impl FnOnce(&mut StateView)) {
         aura_farm_ms: 0,
         statuses: vec![],
         meter_ms: 0,
-        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), forehead: 0, marks: 0 }],
+        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default() }],
         duel: None,
         invites: Vec::new(),
         outgoing: None,
@@ -1008,7 +1008,7 @@ fn shop_tabs_group_items_and_move_between_them() {
     let mut a = playing();
     press(&mut a, KeyCode::Char('l'));
     let screen = render(&a, 150, 42);
-    for c in Category::ALL {
+    for c in Category::all().iter().copied() {
         assert!(screen.contains(c.label()), "tab {} missing:\n{screen}", c.label());
     }
     assert!(screen.contains("Tutorial de Mewing") && !screen.contains("Energético"), "only the current tab is listed");

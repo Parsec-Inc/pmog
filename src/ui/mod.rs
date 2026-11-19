@@ -2,8 +2,8 @@
 
 pub mod chat;
 pub mod clan;
-mod burst;
-mod consume;
+pub(crate) mod burst;
+pub(crate) mod consume;
 mod duel;
 mod duelfx;
 mod fx;
@@ -24,7 +24,7 @@ use crate::duel::Minigame;
 use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, Status, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
-use crate::prison::PrisonTitle;
+use crate::dlc::{self, DlcPublic};
 use crate::sprites;
 use crate::utils::{decimal, format_count, format_mp, format_wait};
 
@@ -66,7 +66,7 @@ fn tone_color(tone: Tone) -> Color {
     }
 }
 
-fn fg(color: Color) -> Style {
+pub(crate) fn fg(color: Color) -> Style {
     Style::new().fg(color)
 }
 
@@ -220,8 +220,7 @@ fn header_lines(app: &App, now: Instant, narrow: bool, compact: bool) -> Vec<Lin
     let mut name = flair::tagged_spans(g.clan_tag.as_deref(), &p.name, rank, now);
     name.push(Span::raw(" "));
     name.push(Span::styled(format!("[{}]", rank.label()), fg(rank_color(rank)).bold()));
-    let fresh = g.active_statuses(now).iter().any(|(st, _)| *st == Status::Sabonete);
-    name.extend(prison_spans(p.marks, p.forehead, fresh));
+    name.extend(dlc_tags(&dlc::public(p), g.active_statuses(now).into_iter().map(|(st, _)| st)));
     let mut numbers = vec![
         Span::styled(pair("MP", String::new()), Style::new()),
         Span::styled(format_mp(p.mp), fg(Color::Yellow).bold()),
@@ -242,7 +241,7 @@ fn header_lines(app: &App, now: Instant, narrow: bool, compact: bool) -> Vec<Lin
     );
     let mut badges = Vec::new();
     for (buff, left) in g.buffs(now) {
-        badges.push(Span::styled(format!(" {} {}{} ", buff.label(), buff.effect(), buff_left(left)).replace(' ', "\u{a0}"), buff_style(buff)));
+        badges.push(Span::styled(crate::utils::nbsp(&format!(" {} {}{} ", buff.label(), buff.effect(), buff_left(left))), buff_style(buff)));
         badges.push(" ".into());
     }
     if now < g.immune_until {
@@ -322,8 +321,7 @@ fn draw_peers(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
             let mut title = flair::tagged_spans(peer.clan_tag.as_deref(), &peer.name, rank, now);
             title.push("  ".into());
             title.push(Span::styled(rank.label(), fg(rank_color(rank))));
-            let fresh = peer.statuses.iter().any(|(st, until)| *st == Status::Sabonete && now < *until);
-            title.extend(prison_spans(peer.marks, peer.forehead, fresh));
+            title.extend(dlc_tags(&peer.dlc, peer.statuses.iter().filter(|(_, until)| now < *until).map(|(st, _)| *st)));
             if peer.in_duel {
                 title.push(Span::styled("  ⚔ em duelo", fg(Color::Yellow)));
             } else if let Some(left) = peer.immune_left(now) {
@@ -530,30 +528,11 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant, phone: bool) {
 }
 
 const BUFF_GOLD: Color = Color::Rgb(255, 200, 40);
-const SOAP_PINK: Color = Color::Rgb(250, 160, 200);
 
-fn prison_color(title: PrisonTitle) -> Color {
-    match title {
-        PrisonTitle::X9 => Color::Gray,
-        PrisonTitle::Frangolino => Color::Rgb(230, 210, 160),
-        PrisonTitle::SixSeven => Color::Rgb(120, 255, 120),
-        PrisonTitle::Cenoura => Color::Rgb(245, 130, 35),
-        PrisonTitle::Pera => Color::Rgb(190, 220, 90),
-        PrisonTitle::Mil => Color::Rgb(185, 230, 245),
-        PrisonTitle::Zero => Color::Rgb(255, 215, 90),
-    }
-}
-
-/// Cadeia title after a name, plus the number on the forehead while it is fresh.
-fn prison_spans(marks: u32, forehead: u32, fresh: bool) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    if let Some(title) = PrisonTitle::of(marks, forehead) {
-        spans.push(Span::styled(format!("  «{}»", title.label()).replace(' ', "\u{a0}"), fg(prison_color(title))));
-    }
-    if fresh {
-        spans.push(Span::styled(format!("  testa\u{a0}{forehead}"), fg(SOAP_PINK).bold()));
-    }
-    spans
+/// Every DLC's tags after a name, from what everyone sees and the statuses running on them.
+fn dlc_tags(public: &DlcPublic, statuses: impl Iterator<Item = Status>) -> Vec<Span<'static>> {
+    let fresh: Vec<_> = statuses.filter_map(|st| if let Status::Dlc(st) = st { Some(st) } else { None }).collect();
+    dlc::ALL.iter().flat_map(|d| d.name_tags(public, &fresh)).collect()
 }
 
 /// Badge style for a buff.
@@ -573,9 +552,10 @@ fn buff_style(buff: Buff) -> Style {
         Buff::Combo => Color::LightRed,
         Buff::Ego => Color::Red,
         Buff::AuraFarm => Color::Rgb(180, 140, 255),
-        Buff::Soap => SOAP_PINK,
-        Buff::Pill => Color::Rgb(245, 130, 35),
-        Buff::BlackPotion => Color::Rgb(150, 70, 200),
+        Buff::Dlc(b) => {
+            let (r, g, b) = b.color();
+            Color::Rgb(r, g, b)
+        }
     };
     Style::new().bg(color).fg(Color::Black).bold()
 }
@@ -793,18 +773,10 @@ fn draw_achievements(f: &mut Frame, g: &Game) {
             ),
             fg(Color::Cyan),
         ),
-        Line::styled(
-            format!(
-                "Cadeia:\u{a0}{}\u{a0}na\u{a0}testa   Numerinhos\u{a0}marcados\u{a0}{}   Título\u{a0}{}",
-                p.forehead,
-                p.marks,
-                PrisonTitle::of(p.marks, p.forehead).map_or("nenhum", |t| t.label()).replace(' ', "\u{a0}")
-            ),
-            fg(SOAP_PINK),
-        ),
     ];
-    for group in Group::ALL {
-        let members: Vec<Achievement> = Achievement::ALL.into_iter().filter(|a| a.group() == group).collect();
+    lines.extend(dlc::ALL.iter().filter_map(|d| d.stats_line(p)));
+    for group in Group::all().iter().copied() {
+        let members: Vec<Achievement> = Achievement::all().iter().copied().filter(|a| a.group() == group).collect();
         let done = members.iter().filter(|a| p.achievements.contains(a)).count();
         lines.push(Line::raw(""));
         lines.push(Line::styled(format!("── {} ({done}/{}) ──", group.label(), members.len()), fg(Color::Magenta).bold()));
@@ -822,7 +794,7 @@ fn draw_achievements(f: &mut Frame, g: &Game) {
             });
         }
     }
-    let title = format!(" Conquistas {}/{} ", p.achievements.len(), Achievement::ALL.len());
+    let title = format!(" Conquistas {}/{} ", p.achievements.len(), Achievement::all().len());
     draw_list_popup(f, g, &title, lines);
 }
 
@@ -886,38 +858,9 @@ fn draw_ranks(f: &mut Frame, g: &Game, now: Instant) {
         lines.push(Line::from(first));
         lines.push(Line::styled(format!("    {}", details.join(" · ")), fg(if reached { Color::Gray } else { Color::DarkGray })));
     }
-    lines.extend(prison_track_lines(g));
+    lines.extend(dlc::ALL.iter().flat_map(|d| d.rank_lines(g)));
     let title = format!(" Ranks {}/{} ", current as usize + 1, Rank::ALL.len());
     draw_list_popup(f, g, &title, lines);
-}
-
-/// The Cadeia track under the ranks: each prison title, what it takes and who on the network holds it.
-fn prison_track_lines(g: &Game) -> Vec<Line<'static>> {
-    let p = &g.player;
-    let mine = PrisonTitle::of(p.marks, p.forehead);
-    let mut lines = vec![
-        Line::raw(""),
-        Line::styled("── TRILHA DA CADEIA ──", fg(SOAP_PINK).bold()),
-        Line::styled(
-            format!("Você: {} na testa · {} numerinhos marcados. Mog PERFECT (ou com Sabonete) faz o alvo pegar o sabonete.", p.forehead, p.marks),
-            fg(Color::Gray),
-        ),
-    ];
-    for title in PrisonTitle::ALL {
-        let marker = if mine == Some(title) { "▶ " } else if mine.is_some_and(|m| m > title) { "✓ " } else { "  " };
-        let mut first = vec![Span::styled(marker, fg(Color::Magenta).bold()), Span::styled(title.label(), fg(prison_color(title)).bold())];
-        first.push(Span::styled(format!("  · {}", title.requirement()), fg(Color::Cyan)));
-        let here: Vec<&str> =
-            g.peers.iter().filter(|peer| !peer.is_npc() && PrisonTitle::of(peer.marks, peer.forehead) == Some(title)).map(|peer| peer.name.as_str()).collect();
-        let mut details = vec![title.flavor().to_string()];
-        if !here.is_empty() {
-            details.push(format!("na rede: {}", here.join(", ")));
-        }
-        lines.push(Line::raw(""));
-        lines.push(Line::from(first));
-        lines.push(Line::styled(format!("    {}", details.join(" · ")), fg(Color::Gray)));
-    }
-    lines
 }
 
 fn draw_shop(f: &mut Frame, g: &Game) {
@@ -944,8 +887,8 @@ fn draw_shop(f: &mut Frame, g: &Game) {
         Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0), Constraint::Length(details_h)]).areas(inner);
     let tabs_line = shop_tabs(g, category);
     if tabs_line.width() > tabs.width as usize {
-        let at = Category::ALL.iter().position(|c| *c == category).unwrap_or(0);
-        f.render_widget(pager_line(category.label(), at, Category::ALL.len()), tabs);
+        let at = Category::all().iter().position(|c| *c == category).unwrap_or(0);
+        f.render_widget(pager_line(category.label(), at, Category::all().len()), tabs);
     } else {
         f.render_widget(tabs_line, tabs);
     }
@@ -1004,7 +947,7 @@ fn draw_shop(f: &mut Frame, g: &Game) {
 /// Category tabs of the shop; each shows how many of its items can be bought now.
 fn shop_tabs(g: &Game, current: Category) -> Line<'static> {
     let mut spans = vec![Span::raw(" ")];
-    for category in Category::ALL {
+    for category in Category::all().iter().copied() {
         let ready = category.items().filter(|i| CATALOG[*i].purchase_block(&g.player).is_none()).count();
         let label = if ready > 0 { format!(" {} ·{ready} ", category.label()) } else { format!(" {} ", category.label()) };
         let style = if category == current {
@@ -1153,7 +1096,7 @@ fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
             lines.push(Line::raw(format!(" Tecla {key}: {text}.")));
             lines.push(Line::styled(" Fica no inventário até você usar.", fg(Color::Gray)));
         }
-        None if def.effects.is_empty() => lines.push(Line::raw(format!(" Compra única: {}.", def.summary()))),
+        None if def.is_unlock() => lines.push(Line::raw(format!(" Compra única: {}.", def.summary()))),
         None => {
             lines.push(Line::raw(" Cada nível comprado dá:"));
             lines.extend(def.effects.iter().map(|e| Line::raw(format!("  • {}", e.describe()))));

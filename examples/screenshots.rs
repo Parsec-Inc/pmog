@@ -167,8 +167,7 @@ fn peer(id: i64, name: &str, lifetime: f64, mp: f64, tag: Option<&str>) -> PeerV
         immune_ms: 0,
         clan_tag: tag.map(Into::into),
         statuses: Vec::new(),
-        forehead: 0,
-        marks: 0,
+        dlc: Default::default(),
     }
 }
 
@@ -431,7 +430,7 @@ fn main() {
     let mut achievements = playing(None);
     let p = &mut achievements.game.player;
     (p.mews, p.perfects, p.defends_won, p.defends_lost, p.purchases, p.items_used) = (4_210, 64, 38, 21, 47, 12);
-    p.achievements = Achievement::ALL.into_iter().filter(|a| a.reached(p) || a.group() == pmog::achievements::Group::Mog && !a.secret()).collect();
+    p.achievements = Achievement::all().iter().copied().filter(|a| a.reached(p) || a.group() == pmog::achievements::Group::Mog && !a.secret()).collect();
     achievements.game.overlay = Overlay::Achievements;
     shot(&achievements, "conquistas", "pmog · conquistas", w, h);
 

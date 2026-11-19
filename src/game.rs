@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::constants::*;
 pub use crate::achievements::Achievement;
 pub use crate::items::{CATALOG, Category, Effect, ItemDef, ItemId};
+use crate::dlc::{DlcBuff, DlcId, DlcProfile, DlcPublic, DlcStatus};
 use crate::duel::{Board, DuelKey, DuelView, MacrosProgress, Minigame, Phase, TypingProgress, rhythm_fresh, rhythm_len, typing_stats};
 use crate::notify::Notice;
 use crate::protocol::{ClientMsg, InviteView, NPC_TARGET, PlayerId, ServerMsg, StateView};
@@ -187,16 +188,8 @@ pub struct Player {
     /// Last player who mogged this one.
     pub nemesis: Option<String>,
     pub achievements: Vec<Achievement>,
-    /// Cadeia: soaps this player had to pick up, the number on the forehead.
-    pub forehead: u32,
-    /// Cadeia: soaps this player made others pick up.
-    pub marks: u32,
-    /// Sabonete waiting for the next mog that lands.
-    pub soap_armed: bool,
-    /// Comprimido do Cenoura waiting for the next mog that lands.
-    pub pill_armed: bool,
-    /// Poção Negra waiting for the next mog that lands.
-    pub black_armed: bool,
+    /// What each DLC saves.
+    pub dlc: DlcProfile,
 }
 
 impl Player {
@@ -208,9 +201,9 @@ impl Player {
         Rank::from_lifetime(self.lifetime)
     }
 
-    /// Owns the Cadeia expansion.
-    pub fn has_prison_dlc(&self) -> bool {
-        self.level(ItemId::PrisonDlc) > 0
+    /// Bought the DLC `id`.
+    pub fn owns_dlc(&self, id: DlcId) -> bool {
+        self.level(crate::dlc::get(id).unlock_item()) > 0
     }
 
     /// Derives combat and economy stats from owned items.
@@ -233,7 +226,7 @@ impl Player {
             resilience: 0.0,
         };
         let mut aura = 1.0;
-        for def in &CATALOG {
+        for def in CATALOG.iter() {
             let n = self.level(def.id).min(def.max_level);
             let k = n as f64;
             for effect in def.effects.iter().filter(|_| n > 0) {
@@ -448,14 +441,13 @@ pub struct Peer {
     pub clan_tag: Option<String>,
     /// Fight statuses and when they end.
     pub statuses: Vec<(Status, Instant)>,
-    /// Cadeia: the number on the forehead and the soaps made.
-    pub forehead: u32,
-    pub marks: u32,
+    /// What each DLC shows about them.
+    pub dlc: DlcPublic,
 }
 
 impl Peer {
     pub fn npc() -> Peer {
-        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), forehead: 0, marks: 0 }
+        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: DlcPublic::default() }
     }
 
     pub fn is_npc(&self) -> bool {
@@ -567,12 +559,8 @@ pub enum Status {
     PerdeuAura(u8),
     /// Beat a higher rank: power rises.
     EgoProibido(u8),
-    /// Picked up the soap: defense drops while the number is fresh.
-    Sabonete,
-    /// Drank the Black Potion: can't mog whoever gave it.
-    Obedecendo,
-    PocaoVerde,
-    PocaoVermelha,
+    /// A status from a DLC.
+    Dlc(DlcStatus),
 }
 
 impl Status {
@@ -581,10 +569,7 @@ impl Status {
             Status::Abalado => "ABALADO",
             Status::PerdeuAura(_) => "PERDEU AURA",
             Status::EgoProibido(_) => "EGO PROIBIDO",
-            Status::Sabonete => "PEGOU O SABONETE",
-            Status::Obedecendo => "OBEDECENDO",
-            Status::PocaoVerde => "POÇÃO VERDE",
-            Status::PocaoVermelha => "POÇÃO VERMELHA",
+            Status::Dlc(st) => st.label(),
         }
     }
 
@@ -593,15 +578,16 @@ impl Status {
             Status::Abalado => format!("defesa -{:.0}%", ABALADO_DEF_CUT * 100.0),
             Status::PerdeuAura(n) => format!("poder -{:.0}%", gap_strength(n) * 100.0),
             Status::EgoProibido(n) => format!("poder +{:.0}%", gap_strength(n) * 100.0),
-            Status::Sabonete => format!("defesa -{:.0}%", SOAP_DEF_CUT * 100.0),
-            Status::Obedecendo => "não consegue mogar quem deu a poção".into(),
-            Status::PocaoVerde => format!("poder x{}", crate::utils::decimal(GREEN_POTION_MULT)),
-            Status::PocaoVermelha => format!("poder +{:.0}%", (RED_POTION_MULT - 1.0) * 100.0),
+            Status::Dlc(st) => st.effect(),
         }
     }
 
     pub fn is_bad(self) -> bool {
-        !matches!(self, Status::EgoProibido(_) | Status::PocaoVerde | Status::PocaoVermelha)
+        match self {
+            Status::EgoProibido(_) => false,
+            Status::Dlc(st) => st.is_bad(),
+            _ => true,
+        }
     }
 }
 
@@ -610,9 +596,8 @@ pub fn status_power_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
     statuses.into_iter().fold(1.0, |m, st| match st {
         Status::PerdeuAura(n) => m * (1.0 - gap_strength(n)),
         Status::EgoProibido(n) => m * (1.0 + gap_strength(n)),
-        Status::PocaoVerde => m * GREEN_POTION_MULT,
-        Status::PocaoVermelha => m * RED_POTION_MULT,
-        Status::Abalado | Status::Sabonete | Status::Obedecendo => m,
+        Status::Dlc(st) => m * st.power_mult(),
+        Status::Abalado => m,
     })
 }
 
@@ -620,7 +605,7 @@ pub fn status_power_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
 pub fn status_defense_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
     statuses.into_iter().fold(1.0, |m, st| match st {
         Status::Abalado => m * (1.0 - ABALADO_DEF_CUT),
-        Status::Sabonete => m * (1.0 - SOAP_DEF_CUT),
+        Status::Dlc(st) => m * st.defense_mult(),
         _ => m,
     })
 }
@@ -637,9 +622,8 @@ pub enum Buff {
     Combo,
     AuraFarm,
     Ego,
-    Soap,
-    Pill,
-    BlackPotion,
+    /// A consumable from a DLC.
+    Dlc(DlcBuff),
 }
 
 impl Buff {
@@ -654,9 +638,7 @@ impl Buff {
             Buff::Combo => "COMBO 6-7",
             Buff::Ego => "EGO FERIDO",
             Buff::AuraFarm => "FARMANDO AURA",
-            Buff::Soap => "SABONETE",
-            Buff::Pill => "COMPRIMIDO",
-            Buff::BlackPotion => "POÇÃO NEGRA",
+            Buff::Dlc(b) => b.label(),
         }
     }
 
@@ -671,9 +653,7 @@ impl Buff {
             Buff::Combo => "+67% MP no próximo mog",
             Buff::Ego => "crítico garantido no troco",
             Buff::AuraFarm => "passivo x2",
-            Buff::Soap => "próximo alvo pega o sabonete",
-            Buff::Pill => "próximo alvo dorme",
-            Buff::BlackPotion => "próximo alvo te obedece",
+            Buff::Dlc(b) => b.effect(),
         }
     }
 
@@ -688,9 +668,7 @@ impl Buff {
             Buff::Combo => ItemId::ComboSixSeven,
             Buff::Ego => ItemId::WoundedEgo,
             Buff::AuraFarm => ItemId::AuraFarm,
-            Buff::Soap => ItemId::Soap,
-            Buff::Pill => ItemId::CarrotPill,
-            Buff::BlackPotion => ItemId::BlackPotion,
+            Buff::Dlc(b) => b.item(),
         };
         crate::items::def(id).name
     }
@@ -764,11 +742,12 @@ impl Game {
     pub fn buffs(&self, now: Instant) -> Vec<(Buff, Option<Duration>)> {
         let p = &self.player;
         let left = |until: Instant| (now < until).then(|| until - now);
-        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape), (p.combo_armed, Buff::Combo), (p.ego_armed, Buff::Ego), (p.soap_armed, Buff::Soap), (p.pill_armed, Buff::Pill), (p.black_armed, Buff::BlackPotion)];
+        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape), (p.combo_armed, Buff::Combo), (p.ego_armed, Buff::Ego)];
         let timed = [(Buff::PreWorkout, left(self.preworkout_until)), (Buff::Cologne, left(self.cologne_until)), (Buff::AuraFarm, left(self.aura_farm_until))];
         armed
             .into_iter()
             .filter_map(|(on, b)| on.then_some((b, None)))
+            .chain(crate::dlc::ALL.iter().flat_map(|d| d.armed(p)).map(|b| (Buff::Dlc(b), None)))
             .chain(timed.into_iter().filter_map(|(b, l)| l.map(|l| (b, Some(l)))))
             .collect()
     }
@@ -863,7 +842,7 @@ impl Game {
 
     /// Switches to the first item of the previous or next shop tab.
     pub fn shop_tab(&mut self, delta: isize) {
-        let tabs = Category::ALL;
+        let tabs = Category::all();
         let at = tabs.iter().position(|c| *c == self.shop_category()).unwrap_or(0) as isize;
         let next = tabs[(at + delta).rem_euclid(tabs.len() as isize) as usize];
         self.shop_cursor = next.items().next().unwrap_or(0);
@@ -1243,8 +1222,7 @@ impl Game {
             immune_until: p.immune.then(|| now + ms(p.immune_ms.max(1))),
             clan_tag: p.clan_tag,
             statuses: p.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect(),
-            forehead: p.forehead,
-            marks: p.marks,
+            dlc: p.dlc,
         }));
         self.peers = peers;
         self.selected = selected_id

@@ -4,9 +4,18 @@
 use ratatui::prelude::*;
 
 use super::burst::hash;
+use crate::dlc::{self, UseFx};
 use crate::items::{self, ItemId};
 
+/// The DLC's animation for `item`, if a DLC owns it.
+fn dlc_fx(item: ItemId) -> Option<UseFx> {
+    dlc::of_item(item).and_then(|d| d.use_fx(item))
+}
+
 fn color(item: ItemId) -> (u8, u8, u8) {
+    if let Some(fx) = dlc_fx(item) {
+        return fx.color;
+    }
     match item {
         ItemId::EnergyDrink => (255, 220, 40),
         ItemId::SigmaShield => (80, 200, 255),
@@ -18,16 +27,14 @@ fn color(item: ItemId) -> (u8, u8, u8) {
         ItemId::IcePack => (170, 230, 255),
         ItemId::ComboSixSeven => (255, 90, 90),
         ItemId::WoundedEgo => (220, 30, 50),
-        ItemId::Soap => (250, 160, 200),
-        ItemId::GreenPotion => (90, 230, 100),
-        ItemId::RedPotion => (230, 60, 70),
-        ItemId::BlackPotion => (150, 60, 210),
-        ItemId::CarrotPill => (245, 140, 50),
         _ => (170, 120, 255), // Aura Farm
     }
 }
 
 pub fn duration_ms(item: ItemId) -> u64 {
+    if let Some(fx) = dlc_fx(item) {
+        return fx.duration_ms;
+    }
     match item {
         ItemId::EnergyDrink => 900,
         ItemId::SigmaShield => 1100,
@@ -39,17 +46,15 @@ pub fn duration_ms(item: ItemId) -> u64 {
         ItemId::IcePack => 1300,
         ItemId::ComboSixSeven => 1200,
         ItemId::WoundedEgo => 1400,
-        ItemId::Soap => 1400,
-        ItemId::GreenPotion => 1200,
-        ItemId::RedPotion => 1500,
-        ItemId::BlackPotion => 1600,
-        ItemId::CarrotPill => 1600,
         _ => 1800,
     }
 }
 
 /// Shake strength: jolting items rattle the screen, calm ones barely do.
 pub fn shake_power(item: ItemId) -> f64 {
+    if let Some(fx) = dlc_fx(item) {
+        return fx.shake;
+    }
     match item {
         ItemId::ComboSixSeven => 1.8,
         ItemId::WoundedEgo => 1.4,
@@ -60,17 +65,12 @@ pub fn shake_power(item: ItemId) -> f64 {
         ItemId::JawTape => 0.5,
         ItemId::AuraFarm => 0.4,
         ItemId::IcePack => 0.3,
-        ItemId::GreenPotion => 1.5,
-        ItemId::BlackPotion => 1.0,
-        ItemId::Soap => 0.8,
-        ItemId::RedPotion => 0.7,
-        ItemId::CarrotPill => 0.2,
         _ => 0.0,
     }
 }
 
 /// Where a cell is, in cell units (`y` counts half rows so distances are round).
-pub(super) struct Cell {
+pub struct Cell {
     pub col: u16,
     pub row: u16,
     pub x: f64,
@@ -81,7 +81,7 @@ pub(super) struct Cell {
     pub age: u64,
 }
 
-pub(super) fn noise(a: u64, b: u64, c: u64) -> f64 {
+pub(crate) fn noise(a: u64, b: u64, c: u64) -> f64 {
     hash(a, b, c) as f64 / 97.0
 }
 
@@ -215,57 +215,6 @@ fn paint(item: ItemId, c: &Cell) -> Option<(&'static str, f64)> {
                 None
             }
         }
-        // The soap drops in the middle and foam bubbles float up around it.
-        ItemId::Soap => {
-            let drop = (t * 2.2).min(1.0) * (c.h - 2.0);
-            if row as i64 == drop.round() as i64 && dx.abs() < 3.0 {
-                return Some(("▀", alpha(0.7)));
-            }
-            let hit = (0..40u64).any(|i| {
-                let rise = ((t - noise(i, 4, 1) * 0.5).max(0.0) * (0.7 + noise(i, 3, 1) * 0.6) * 1.8) * c.h;
-                let y = c.h - rise;
-                let x = noise(i, 2, 1) * c.w + 1.5 * (y * 0.5 + i as f64).cos();
-                col as i64 == x.round() as i64 && row as i64 == y.round() as i64
-            });
-            hit.then(|| (["o", "°", "O"][(col % 3) as usize], (1.0 - t) * 0.9))
-        }
-        // Green fizz climbs from the bottom, popping bubbles above it.
-        ItemId::GreenPotion => {
-            let level = (t * 3.0).min(1.0) * c.h * 0.5;
-            let up = c.h - c.row as f64;
-            if up < level * (0.7 + 0.3 * (col as f64 * 0.7 + phase / 90.0).sin()) {
-                Some((if hash(col, row, c.age / 80) < 4 { "∘" } else { "░" }, 0.7 * alpha(0.6)))
-            } else {
-                (hash(col, row, c.age / 60) < 3 && up < level * 1.8).then(|| ("°", 0.9 * alpha(0.6)))
-            }
-        }
-        // Red pulses roll out from the middle like a slow heartbeat.
-        ItemId::RedPotion => {
-            let max_r = cx.hypot(cy);
-            let ring = (0..3)
-                .map(|i| {
-                    let front = (t * 1.6 - i as f64 * 0.25).max(0.0) * max_r;
-                    (1.0 - (d - front).abs() / 1.8).max(0.0)
-                })
-                .fold(0.0, f64::max);
-            (ring > 0.0).then(|| (if ring > 0.6 { "▓" } else { "░" }, ring * alpha(0.6)))
-        }
-        // Dark tendrils creep in from the edges.
-        ItemId::BlackPotion => {
-            let e = (c.x.min(c.w - c.x) / (c.w / 2.0)).min(c.y.min(c.h * 2.0 - c.y) / c.h);
-            let reach = (t * 2.0).min(1.0) * 0.55 + 0.12 * (dy.atan2(dx) * 7.0 + phase / 200.0).sin();
-            (e < reach).then(|| (if e < reach * 0.5 { "▓" } else { "▒" }, (1.0 - e / reach.max(0.01)).max(0.4) * alpha(0.7)))
-        }
-        // Sleepy Zs drift up and away.
-        ItemId::CarrotPill => (0..40u64).find_map(|i| {
-            let k = ((t - noise(i, 5, 2) * 0.5) / 0.5).clamp(0.0, 1.0);
-            if k <= 0.0 || k >= 1.0 {
-                return None;
-            }
-            let x = c.w * (0.1 + 0.8 * noise(i, 6, 2)) + k * 8.0;
-            let y = c.h * (0.6 + 0.35 * noise(i, 7, 2)) - k * c.h * 0.5;
-            (col as i64 == x.round() as i64 && row as i64 == y.round() as i64).then_some((if i % 2 == 0 { "Z" } else { "z" }, 1.0 - k))
-        }),
         // Aura Farm: a slow lavender glow with two lazy waves.
         _ => {
             let r = 10.0 + 14.0 * (t * 2.0).min(1.0);
@@ -286,7 +235,10 @@ fn paint(item: ItemId, c: &Cell) -> Option<(&'static str, f64)> {
 pub fn render(buf: &mut Buffer, area: Rect, item: ItemId, age_ms: u64) {
     let def = items::def(item);
     let label = format!("{} · {}", def.name.to_uppercase(), def.usage.map_or("", |u| u.1));
-    draw(buf, area, duration_ms(item), age_ms, color(item), &label, |c| paint(item, c));
+    match dlc_fx(item) {
+        Some(fx) => draw(buf, area, fx.duration_ms, age_ms, fx.color, &label, fx.paint),
+        None => draw(buf, area, duration_ms(item), age_ms, color(item), &label, |c| paint(item, c)),
+    }
 }
 
 /// Paints `paint`'s glyphs over the blank cells of `area` for `dur` ms, with a typed-out banner on top.

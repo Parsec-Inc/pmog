@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::{Mutex, OnceLock};
 
+use crate::dlc::{self, SpriteAsset};
 use crate::game::ItemId;
 
 pub type Rgb = (u8, u8, u8);
@@ -21,17 +22,25 @@ pub struct Anim {
     total_ms: u64,
 }
 
-macro_rules! asset {
-    ($n:literal) => {
+/// Embeds `assets/<path>.png` and `.json`, keyed by `path`; usable from any module (DLCs included).
+macro_rules! sprite_asset {
+    ($path:expr) => {
         (
-            include_bytes!(concat!("../assets/sprites/", $n, ".png")).as_slice(),
-            include_bytes!(concat!("../assets/sprites/", $n, ".json")).as_slice(),
-            $n,
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/", $path, ".png")).as_slice(),
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/", $path, ".json")).as_slice(),
+            $path,
         )
     };
 }
+pub(crate) use sprite_asset;
 
-fn asset(id: ItemId) -> (&'static [u8], &'static [u8], &'static str) {
+macro_rules! asset {
+    ($n:literal) => {
+        sprite_asset!(concat!("sprites/", $n))
+    };
+}
+
+fn asset(id: ItemId) -> SpriteAsset {
     match id {
         ItemId::Mewing => asset!("mewing"),
         ItemId::GuaSha => asset!("gua_sha"),
@@ -94,19 +103,7 @@ fn asset(id: ItemId) -> (&'static [u8], &'static [u8], &'static str) {
         ItemId::ThirdEye => asset!("third_eye"),
         ItemId::Underdog => asset!("underdog"),
         ItemId::WoundedEgo => asset!("wounded_ego"),
-        ItemId::PrisonDlc => asset!("prison_dlc"),
-        ItemId::PullUpBar => asset!("pull_up_bar"),
-        ItemId::Crutch => asset!("crutch"),
-        ItemId::CarrotHook => asset!("carrot_hook"),
-        ItemId::MilEar => asset!("mil_ear"),
-        ItemId::Folder77 => asset!("folder_77"),
-        ItemId::PeraUniform => asset!("pera_uniform"),
-        ItemId::TowerKey => asset!("tower_key"),
-        ItemId::GreenPotion => asset!("green_potion"),
-        ItemId::RedPotion => asset!("red_potion"),
-        ItemId::BlackPotion => asset!("black_potion"),
-        ItemId::Soap => asset!("soap"),
-        ItemId::CarrotPill => asset!("carrot_pill"),
+        _ => dlc::of_item(id).and_then(|d| d.sprite(id)).expect("every item has a sprite"),
     }
 }
 

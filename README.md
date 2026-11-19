@@ -22,6 +22,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 | **Mog com timing**: aperte ESPAÇO na hora certa do medidor. PERFECT rende o dobro, e o streak multiplica tudo. | **18 minigames de duelo** em 6 rodadas sorteadas, de encarada e digitação a fit check, fotogenia e mog reverso. Se os dois quiserem, cada um escolhe 3. |
 | **59 itens na loja** em 6 abas (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. Os 10 consumíveis ficam nas teclas `1`–`0`. | **Buffs à vista**: escudo, colônia, combo 6-7, aura farmada e afins aparecem numa faixa ⚡ BUFFADO enquanto valem. |
 | **15 ranks**, de Sub-5 a Transcendente, cada um com um efeito no nome (brilho, fogo, arco-íris, estrelas, 6-7 piscando). Os 7 ranks acima do Ascendido liberam um item exclusivo cada. | **66 conquistas** em 7 grupos, com progresso (37/100) e 4 secretas. |
+| **DLC Cadeia**: compre uma vez e todo mog PERFECT faz o alvo pegar o sabonete e ganhar um número na testa. Traz 12 itens da novelinha "O sabonete", títulos da cela do X9 ao Zero e 6 conquistas. | **DLCs plugáveis**: cada expansão é um módulo que implementa o trait `Dlc` (ver [docs/dlc.md](docs/dlc.md)). |
 | **Chat, grupos e clãs**, com tag ao lado do nome e sem fogo amigo. **Atualização automática** pela rede, só com builds assinadas. | **Jogue no celular** pelo navegador: cada PMOG aberto vira acessível por um celular, com senha, espelhando ou assumindo a sua sessão. Botões na tela. |
 
 <table>
@@ -126,6 +127,8 @@ cargo test --release                # regras, duelos, rede real, stress e TUI
 ./scripts/package.sh deb rpm        # pacotes a partir do dist/ (ver docs/PACKAGING.md)
 cargo run --example screenshots     # refaz as imagens deste README
 ```
+
+Para criar uma DLC nova, veja [docs/dlc.md](docs/dlc.md).
 
 <details>
 <summary><b>Como funciona por dentro</b></summary>

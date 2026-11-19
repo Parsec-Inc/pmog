@@ -2,10 +2,11 @@
 
 use std::time::{Duration, Instant};
 
-use pmog::constants::*;
+use pmog::constants::prison::*;
+use pmog::dlc::prison::{self, Armed, PrisonTitle};
+use pmog::dlc::{DlcId, DlcStatus};
 use pmog::game::{Player, Status, meter_speed};
 use pmog::items::{CATALOG, Category, ItemId};
-use pmog::prison::PrisonTitle;
 use pmog::protocol::{PlayerId, ServerMsg};
 use pmog::world::World;
 
@@ -22,6 +23,10 @@ fn world(n: i64, now: Instant) -> World {
 
 fn player(w: &World, id: PlayerId) -> &Player {
     &w.slot(id).unwrap().player
+}
+
+fn cell(w: &World, id: PlayerId) -> &prison::Profile {
+    &player(w, id).dlc.prison
 }
 
 fn give(w: &mut World, id: PlayerId, item: ItemId, level: u32) {
@@ -64,12 +69,12 @@ fn cadeia_items_need_the_dlc() {
     assert_eq!(player(&w, 1).level(ItemId::PullUpBar), 0);
     assert!(texts(&w, 1).iter().any(|t| t.contains("compre a DLC primeiro")));
     w.buy(1, ItemId::PrisonDlc);
-    assert!(player(&w, 1).has_prison_dlc());
+    assert!(player(&w, 1).owns_dlc(DlcId::Prison));
     w.buy(1, ItemId::PrisonDlc);
     assert_eq!(player(&w, 1).level(ItemId::PrisonDlc), 1, "bought once");
     w.buy(1, ItemId::PullUpBar);
     assert_eq!(player(&w, 1).level(ItemId::PullUpBar), 1);
-    let prison: Vec<_> = CATALOG.iter().filter(|d| d.category() == Category::Prison).collect();
+    let prison: Vec<_> = CATALOG.iter().filter(|d| d.category() == Category::Dlc(DlcId::Prison)).collect();
     assert_eq!(prison.len(), 13, "the DLC, 7 permanent items and 5 consumables");
     assert_eq!(prison.iter().filter(|d| d.consumable()).count(), 5);
 }
@@ -79,7 +84,7 @@ fn a_perfect_mog_with_the_dlc_makes_the_target_pick_up_the_soap() {
     let now = Instant::now();
     let mut w = strong_pair(now);
     w.mog(1, 2, 1.0, at_meter(&w, 1, 1.0));
-    assert_eq!((player(&w, 1).marks, player(&w, 2).forehead), (0, 0), "without the DLC a PERFECT is just a PERFECT");
+    assert_eq!((cell(&w, 1).marks, cell(&w, 2).forehead), (0, 0), "without the DLC a PERFECT is just a PERFECT");
 
     give(&mut w, 1, ItemId::PrisonDlc, 1);
     let later = now + Duration::from_secs(120);
@@ -88,12 +93,12 @@ fn a_perfect_mog_with_the_dlc_makes_the_target_pick_up_the_soap() {
     w.slot_mut(1).unwrap().meter_started = later;
     w.outbox.clear();
     w.mog(1, 2, 1.0, at_meter(&w, 1, 1.0));
-    assert_eq!((player(&w, 1).marks, player(&w, 2).forehead), (1, 1));
+    assert_eq!((cell(&w, 1).marks, cell(&w, 2).forehead), (1, 1));
     assert!(texts(&w, 2).iter().any(|t| t.contains("p1 te fez pegar o sabonete. Agora você tem 1 na testa")));
     assert!(texts(&w, 3).iter().any(|t| t.contains("p2 pegou o sabonete pro p1")), "the whole cell hears about it");
     let peer = w.view(3, at_meter(&w, 1, 1.0)).unwrap().players.into_iter().find(|p| p.id == 2).unwrap();
-    assert_eq!(peer.forehead, 1);
-    assert!(peer.statuses.iter().any(|(st, _)| *st == Status::Sabonete), "the number is fresh");
+    assert_eq!(peer.dlc.prison.forehead, 1);
+    assert!(peer.statuses.iter().any(|(st, _)| *st == Status::Dlc(DlcStatus::Prison(prison::Status::Sabonete))), "the number is fresh");
 }
 
 #[test]
@@ -105,12 +110,10 @@ fn the_soap_marks_any_hit_and_the_pill_and_black_potion_land_with_it() {
         give(&mut w, 1, item, 1);
         w.use_item(1, item, now);
     }
-    let p = player(&w, 1);
-    assert!(p.soap_armed && p.pill_armed && p.black_armed);
+    assert_eq!(cell(&w, 1).armed, [Armed::Soap, Armed::Pill, Armed::BlackPotion]);
     w.mog(1, 2, 0.0, now);
-    assert_eq!(player(&w, 2).forehead, 1, "a BAD hit still makes them pick it up");
-    let p = player(&w, 1);
-    assert!(!p.soap_armed && !p.pill_armed && !p.black_armed, "all spent on the hit");
+    assert_eq!(cell(&w, 2).forehead, 1, "a BAD hit still makes them pick it up");
+    assert!(cell(&w, 1).armed.is_empty(), "all spent on the hit");
     assert!(w.slot(2).unwrap().cooldown_until >= now + PILL_SLEEP, "the pill puts them to sleep");
 
     // Obeying: p2 can't mog p1 back, but can mog someone else.
