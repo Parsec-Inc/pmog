@@ -113,7 +113,7 @@ fn basics() -> Vec<Line<'static>> {
         bullet("Topo: seu nome, rank, MP, streak, seus números de combate e a barra até o próximo rank."),
         bullet("Esquerda: quem está na rede. O ▶ marca o alvo selecionado."),
         bullet("Centro: o botão MOGAR, o medidor de timing, o cooldown e os avisos grandes."),
-        bullet("Direita: o feed com tudo o que aconteceu, o mais novo em cima."),
+        bullet("Direita: o feed com tudo o que aconteceu, o mais novo em cima, e embaixo o inventário com os itens que você tem."),
         bullet("A borda do topo pisca em vermelho quando alguém te mogga."),
         gap(),
         title("Controles"),
