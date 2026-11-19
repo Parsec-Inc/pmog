@@ -311,6 +311,20 @@ fn status_flags_and_banner_render() {
 }
 
 #[test]
+fn a_peer_in_a_duel_is_not_mogged_and_shows_no_prize() {
+    let mut a = playing();
+    let now = Instant::now();
+    a.game.select_move(1);
+    a.game.peers[a.game.selected].in_duel = true;
+    a.game.outbox.clear();
+    a.game.try_mog(now);
+    assert!(a.game.outbox.is_empty(), "nothing goes to the server");
+    assert!(a.game.last_mog.is_none(), "passive MP is not shown as a mog prize");
+    assert!(a.game.is_ready(now), "no cooldown spent");
+    assert!(render(&a, 170, 42).contains("Rival está num duelo agora."));
+}
+
+#[test]
 fn keys_send_actions_to_the_server() {
     let mut a = playing();
     assert!(press(&mut a, KeyCode::Char('m')));

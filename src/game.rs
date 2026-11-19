@@ -886,6 +886,11 @@ impl Game {
             self.flash(now, Tone::Info, text);
             return;
         }
+        if target.in_duel {
+            let text = format!("{} está num duelo agora.", target.name);
+            self.flash(now, Tone::Info, text);
+            return;
+        }
         let meter = self.meter(now);
         let tier = TimingTier::from_meter(meter, self.player.stats().perfect_threshold);
         self.last_mog = Some(MogHit { at: now, tier, bank: self.player.mp, gain: 0.0 });
