@@ -74,6 +74,7 @@ fn main() -> io::Result<()> {
     let mut app = App::new(name, machine_id, discovery, store, ports);
 
     app.notifier.enabled = config.notifications;
+    app.inventory_panel = config.inventory_panel;
     app.notifier.set_sink(Box::new(SystemSink::new()));
     app.remote = Some(Remote::start(WEB_PORT_START, config.phone.clone()));
     app.check_web_update(false);
@@ -122,9 +123,10 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App, config: &mut save::Config)
         }
         let name_changed = std::mem::take(&mut app.name_changed);
         let phone_changed = app.remote.as_ref().is_some_and(|r| r.take_dirty());
-        if std::mem::take(&mut app.notifications_changed) || name_changed || phone_changed {
+        if std::mem::take(&mut app.settings_changed) || name_changed || phone_changed {
             config.name = app.name.clone();
             config.notifications = app.notifier.enabled;
+            config.inventory_panel = app.inventory_panel;
             if let Some(remote) = &app.remote {
                 config.phone = remote.settings();
             }

@@ -11,13 +11,15 @@ pub struct Config {
     pub name: String,
     /// Whether game events may show system notifications.
     pub notifications: bool,
+    /// Whether the inventory panel shows under the feed.
+    pub inventory_panel: bool,
     /// Phone access password and remembered browsers.
     pub phone: crate::web::PhoneSettings,
 }
 
 impl Default for Config {
     fn default() -> Config {
-        Config { name: String::new(), notifications: true, phone: Default::default() }
+        Config { name: String::new(), notifications: true, inventory_panel: true, phone: Default::default() }
     }
 }
 

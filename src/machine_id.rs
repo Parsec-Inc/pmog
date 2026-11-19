@@ -117,8 +117,8 @@ fn read_elevated() -> Result<(String, String), IdError> {
 #[cfg(windows)]
 fn read_windows() -> Result<(String, String), IdError> {
     let script = "(Get-CimInstance Win32_ComputerSystemProduct).UUID; '|'; (Get-CimInstance Win32_BaseBoard).SerialNumber";
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+    let output = crate::utils::hidden_powershell()
+        .args(["-Command", script])
         .output()
         .map_err(|e| IdError::Unavailable(format!("PowerShell indisponível: {e}")))?;
     let text = String::from_utf8_lossy(&output.stdout);

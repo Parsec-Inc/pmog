@@ -60,6 +60,10 @@ pub const LOBBY_TALL: u16 = 30;
 /// Shop width below which the table drops the Requer and Efeito columns and shows them under it.
 pub const SHOP_FULL_TABLE_WIDTH: u16 = 76;
 pub const SHOP_DETAILS_ROWS: u16 = 5;
+/// Inventory screen width from which the picked item's details sit beside the list.
+pub const INVENTORY_SIDE_DETAILS_FROM: u16 = 90;
+/// Rows of item details under the inventory list on narrow screens.
+pub const INVENTORY_DETAILS_ROWS: u16 = 10;
 /// Below this height popups take the whole screen.
 pub const SHORT_HEIGHT: u16 = 24;
 /// Stacked game body tall enough for the bigger MOGAR button.
@@ -262,3 +266,6 @@ pub const GITHUB_ACCEPT: &str = "Accept: application/vnd.github+json";
 pub const UPDATE_USER_AGENT: &str = "pmog-updater";
 /// How long a whole download from the internet may take.
 pub const WEB_UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Windows process flag: the child gets its own invisible console instead of sharing the game's.
+pub const WINDOWS_CREATE_NO_WINDOW: u32 = 0x0800_0000;

@@ -96,6 +96,7 @@ Cada PMOG aberto no PC pode ser jogado de **um** celular por vez, na mesma rede,
 | `L` | loja | `1`–`9`, `0` | consumíveis |
 | `C` | conquistas | `S` | painel do servidor |
 | `P` | lista de ranks | `?` | ajuda |
+| `I` | inventário por aba | `O` | esconder/mostrar o inventário |
 | `Q` | sair |  |  |
 
 ## Rede

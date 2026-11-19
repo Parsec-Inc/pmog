@@ -299,7 +299,7 @@ fn b_key_in_server_panel_toggles_and_flags_the_config() {
     assert!(app.notifier.enabled);
     handle_key(&mut app, KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE), Instant::now());
     assert!(!app.notifier.enabled);
-    assert!(app.notifications_changed);
+    assert!(app.settings_changed);
     assert_eq!(app.game.overlay, Overlay::Server);
     let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
     terminal.draw(|f| pmog::ui::draw(f, &app)).unwrap();
