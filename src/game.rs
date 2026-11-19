@@ -6,7 +6,9 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::avatar::{self, Avatar, Editor, Mood, Part};
 use crate::constants::*;
+use crate::constants::avatar::{BLINK_EVERY_MS, BLINK_MS, MOOD_DURATION};
 pub use crate::achievements::Achievement;
 pub use crate::items::{CATALOG, Category, Effect, ItemDef, ItemId};
 use crate::dlc::{DlcBuff, DlcId, DlcProfile, DlcPublic, DlcStatus};
@@ -190,6 +192,10 @@ pub struct Player {
     pub achievements: Vec<Achievement>,
     /// What each DLC saves.
     pub dlc: DlcProfile,
+    /// Face parts worn.
+    pub avatar: Avatar,
+    /// Face parts bought; free ones are always owned.
+    pub avatar_parts: Vec<Part>,
 }
 
 impl Player {
@@ -199,6 +205,10 @@ impl Player {
 
     pub fn rank(&self) -> Rank {
         Rank::from_lifetime(self.lifetime)
+    }
+
+    pub fn owns_part(&self, part: Part) -> bool {
+        avatar::def(part).free() || self.avatar_parts.contains(&part)
     }
 
     /// Bought the DLC `id`.
@@ -351,6 +361,10 @@ pub enum Overlay {
     Server,
     /// Choosing how much to bet before a challenge or the queue.
     Stake,
+    /// Own face: try on, buy and wear parts.
+    Avatar,
+    /// A player's profile; `None` is the own one.
+    Profile(Option<PlayerId>),
 }
 
 /// How well the button press was timed; multiplies the MP reward.
@@ -422,6 +436,21 @@ pub fn beat_chance(power: f64, defense: f64, roll: std::ops::Range<f64>) -> f64 
     ((power / defense - roll.start) / (roll.end - roll.start)).clamp(0.0, 1.0)
 }
 
+/// How the own face reacts to the counters changing from `old` to `new`.
+fn reaction(old: &Player, new: &Player) -> Option<Mood> {
+    if new.defends_lost > old.defends_lost {
+        Some(Mood::Mogged)
+    } else if new.mogs_won > old.mogs_won {
+        Some(Mood::Smug)
+    } else if new.mogs_lost > old.mogs_lost {
+        Some(Mood::Sad)
+    } else if new.defends_won > old.defends_won {
+        Some(Mood::Proud)
+    } else {
+        None
+    }
+}
+
 pub fn streak_mult(streak: u32, stats: &Stats) -> f64 {
     1.0 + streak.min(STREAK_CAP) as f64 * stats.streak_bonus
 }
@@ -443,11 +472,12 @@ pub struct Peer {
     pub statuses: Vec<(Status, Instant)>,
     /// What each DLC shows about them.
     pub dlc: DlcPublic,
+    pub avatar: Avatar,
 }
 
 impl Peer {
     pub fn npc() -> Peer {
-        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: DlcPublic::default() }
+        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: DlcPublic::default(), avatar: Default::default() }
     }
 
     pub fn is_npc(&self) -> bool {
@@ -542,6 +572,11 @@ pub struct Game {
     /// Fight statuses and when they end.
     pub statuses: Vec<(Status, Instant)>,
     logged: usize,
+    pub avatar_editor: Editor,
+    /// Last reaction of the own face and when it started.
+    mood: Option<(Mood, Instant)>,
+    /// A state already arrived, so counter changes are real events.
+    synced: bool,
 }
 
 /// Share of power a rank-gap status changes, for a gap of `n` ranks (0 means none).
@@ -729,6 +764,9 @@ impl Game {
             timed_buffs: Vec::new(),
             statuses: Vec::new(),
             logged: 0,
+            avatar_editor: Default::default(),
+            mood: None,
+            synced: false,
         }
     }
 
@@ -815,6 +853,62 @@ impl Game {
         let len = crate::help::PAGES.len() as isize;
         self.help_page = (self.help_page as isize + delta).rem_euclid(len) as usize;
         self.help_scroll = 0;
+    }
+
+    /// The own face's expression at `now`: a recent reaction, a blink, or neutral.
+    pub fn mood(&self, now: Instant) -> Mood {
+        match self.mood {
+            Some((mood, at)) if now.saturating_duration_since(at) < MOOD_DURATION => mood,
+            _ => self.idle_mood(now),
+        }
+    }
+
+    /// A face with nothing to react to: blinking now and then.
+    pub fn idle_mood(&self, now: Instant) -> Mood {
+        if now.saturating_duration_since(self.started).as_millis() % BLINK_EVERY_MS < BLINK_MS { Mood::Blink } else { Mood::Neutral }
+    }
+
+    /// The own player as others see them, for the profile; the client does not know its own id.
+    pub fn own_peer(&self, now: Instant) -> Peer {
+        let (p, s) = (&self.player, self.player.stats());
+        Peer {
+            id: NPC_TARGET,
+            name: p.name.clone(),
+            mp: p.mp,
+            lifetime: p.lifetime,
+            attack: s.attack,
+            defense: s.defense,
+            streak: self.streak,
+            in_duel: self.duel.is_some(),
+            immune_until: None,
+            clan_tag: self.clan_tag.clone(),
+            statuses: self.active_statuses(now).into_iter().map(|(st, left)| (st, now + left)).collect(),
+            dlc: crate::dlc::public(p),
+            avatar: p.avatar,
+        }
+    }
+
+    pub fn open_avatar(&mut self) {
+        self.avatar_editor.open(&self.player.avatar);
+        self.overlay = Overlay::Avatar;
+    }
+
+    pub fn avatar_enter(&mut self) {
+        self.outbox.extend(self.avatar_editor.enter(&self.player));
+    }
+
+    /// Opens the profile of the selected player, or the own one when the bot is selected.
+    pub fn open_profile(&mut self) {
+        let id = self.peers.get(self.selected).filter(|p| !p.is_npc()).map(|p| p.id);
+        self.overlay = Overlay::Profile(id);
+    }
+
+    /// Moves the open profile to the next player, the own one counting as the first.
+    pub fn profile_step(&mut self, delta: isize) {
+        let Overlay::Profile(current) = self.overlay else { return };
+        let ids: Vec<Option<PlayerId>> = std::iter::once(None).chain(self.peers.iter().filter(|p| !p.is_npc()).map(|p| Some(p.id))).collect();
+        let at = ids.iter().position(|id| *id == current).unwrap_or(0) as isize;
+        self.overlay = Overlay::Profile(ids[(at + delta).rem_euclid(ids.len() as isize) as usize]);
     }
 
     /// Opens a scrolling list (achievements or ranks) from the top.
@@ -1168,6 +1262,10 @@ impl Game {
         if let Some(def) = CATALOG.iter().find(|d| d.consumable() && view.me.level(d.id) < self.player.level(d.id)) {
             self.last_used = Some((now, def.id));
         }
+        if let Some(mood) = self.synced.then(|| reaction(&self.player, &view.me)).flatten() {
+            self.mood = Some((mood, now));
+        }
+        self.synced = true;
         self.player = view.me;
         self.streak = view.streak;
         self.cooldown_until = now + ms(view.cooldown_ms);
@@ -1223,6 +1321,7 @@ impl Game {
             clan_tag: p.clan_tag,
             statuses: p.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect(),
             dlc: p.dlc,
+            avatar: p.avatar,
         }));
         self.peers = peers;
         self.selected = selected_id

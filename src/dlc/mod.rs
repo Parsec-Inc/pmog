@@ -180,6 +180,10 @@ pub trait Dlc: Sync {
     fn help(&self) -> Vec<String> {
         Vec::new()
     }
+    /// Number drawn on a player's avatar forehead, with its color.
+    fn forehead(&self, _public: &DlcPublic) -> Option<(u32, (u8, u8, u8))> {
+        None
+    }
     fn use_fx(&self, _item: ItemId) -> Option<UseFx> {
         None
     }
@@ -190,6 +194,11 @@ pub trait Dlc: Sync {
 
 pub fn get(id: DlcId) -> &'static dyn Dlc {
     *ALL.iter().find(|d| d.id() == id).expect("every DlcId is registered in ALL")
+}
+
+/// The DLCs `player` bought.
+pub fn owned_by(player: &Player) -> impl Iterator<Item = &'static dyn Dlc> + '_ {
+    ALL.iter().copied().filter(|d| player.owns_dlc(d.id()))
 }
 
 /// The DLC an item belongs to, if any.

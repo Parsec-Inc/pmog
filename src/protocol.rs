@@ -43,6 +43,10 @@ pub enum ClientMsg {
     Mew,
     Buy { item: ItemId },
     Use { item: ItemId },
+    /// Buys a face part and wears it.
+    BuyPart { part: crate::avatar::Part },
+    /// Wears a face part already owned.
+    WearPart { part: crate::avatar::Part },
     Rename { name: String },
     /// Invites `target` to a duel betting `fraction` of the poorer player's MP.
     /// `draft` asks for each side to pick minigames instead of drawing them.
@@ -96,6 +100,8 @@ pub struct PeerView {
     /// What each DLC shows about the player.
     #[serde(default)]
     pub dlc: crate::dlc::DlcPublic,
+    #[serde(default)]
+    pub avatar: crate::avatar::Avatar,
 }
 
 /// A duel invitation; `peer` is the other player.

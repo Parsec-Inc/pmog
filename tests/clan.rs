@@ -415,6 +415,7 @@ fn playing(own_tag: Option<&str>, rival_tag: Option<&str>) -> App {
         clan_tag: tag.map(Into::into),
         statuses: Vec::new(),
         dlc: Default::default(),
+        avatar: Default::default(),
     };
     let view = StateView {
         me: Player { name: "Igor".into(), ..Default::default() },

@@ -418,6 +418,10 @@ impl Dlc for Prison {
         ui::help()
     }
 
+    fn forehead(&self, public: &DlcPublic) -> Option<(u32, (u8, u8, u8))> {
+        Some((public.prison.forehead, ui::FOREHEAD_RGB))
+    }
+
     fn use_fx(&self, item: ItemId) -> Option<UseFx> {
         ui::use_fx(item)
     }

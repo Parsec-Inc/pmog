@@ -303,6 +303,8 @@ impl ServerLoop {
                     ClientMsg::Mew => self.world.mew(player, now),
                     ClientMsg::Buy { item } => self.world.buy(player, item),
                     ClientMsg::Use { item } => self.world.use_item(player, item, now),
+                    ClientMsg::BuyPart { part } => self.world.buy_part(player, part),
+                    ClientMsg::WearPart { part } => self.world.wear_part(player, part),
                     ClientMsg::Rename { name } => self.world.rename(player, &name),
                     ClientMsg::Challenge { target, fraction, draft } => self.world.challenge(player, target, fraction, draft, now),
                     ClientMsg::Answer { from, accept } => self.world.answer(player, from, accept, now),

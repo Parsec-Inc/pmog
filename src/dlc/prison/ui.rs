@@ -16,6 +16,8 @@ use crate::ui::fg;
 pub const SOAP_RGB: (u8, u8, u8) = (250, 160, 200);
 pub const PILL_RGB: (u8, u8, u8) = (245, 130, 35);
 pub const BLACK_RGB: (u8, u8, u8) = (150, 60, 210);
+/// Forehead number on the avatar.
+pub const FOREHEAD_RGB: (u8, u8, u8) = (235, 60, 140);
 const SOAP_PINK: Color = Color::Rgb(SOAP_RGB.0, SOAP_RGB.1, SOAP_RGB.2);
 
 fn title_color(title: PrisonTitle) -> Color {

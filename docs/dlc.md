@@ -33,6 +33,9 @@ Uma DLC é uma expansão comprada uma vez na loja. Todo o conteúdo dela (itens,
 | `rank_lines` | tela de ranks | uma trilha paralela de títulos |
 | `help` | página DLCs da ajuda (`?`) | regras da DLC, uma por item da lista |
 | `use_fx` | animação de tela cheia ao usar um consumível | cor, duração, tremida e a função que pinta cada célula |
+| `forehead` | ao desenhar um avatar | número e cor escritos na testa |
+
+Os hooks de tela (`name_tags`, `stats_line`, `rank_lines`, `forehead`) só rodam para quem comprou a DLC (`dlc::owned_by`): quem não tem a expansão não vê nada dela nos outros jogadores. Partes de avatar exclusivas da DLC ficam em `src/avatar.rs` com `dlc: Some(id)`.
 
 Status implementam `StatusKind` (rótulo, efeito, se é ruim, multiplicadores de poder e defesa) e consumíveis armados implementam `BuffKind` (rótulo, efeito, cor do selo, item). Para mexer no mundo, use a API do `World` (`event`, `announce`, `afflict`, `add_cooldown`) e do `Slot` (`set_status`, `mark_dirty`) em vez de editar os campos direto. O jogo base aplica os multiplicadores e encurta status ruins com a Terapia sem saber de qual DLC eles vêm.
 

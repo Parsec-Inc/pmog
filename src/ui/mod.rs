@@ -2,6 +2,7 @@
 
 pub mod chat;
 pub mod clan;
+mod avatar;
 pub(crate) mod burst;
 pub(crate) mod consume;
 mod duel;
@@ -20,8 +21,9 @@ use ratatui::widgets::{
 
 use crate::achievements::Group;
 use crate::constants::{LOBBY_TALL, NARROW_FULL_HEADER_FROM, SHOP_DETAILS_ROWS, SHOP_FULL_TABLE_WIDTH, NARROW_DUEL_FEED_FROM, NARROW_FEED_ROWS, NARROW_ROOMY_BODY, NARROW_WIDTH, SHORT_HEIGHT, PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
+use crate::constants::avatar::AVATAR_PANEL_MIN_HEIGHT;
 use crate::duel::Minigame;
-use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, Status, TimingTier, Tone};
+use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Player, Rank, Stats, Status, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
 use crate::dlc::{self, DlcPublic};
@@ -37,7 +39,7 @@ const BIG_BUTTON: [&str; 6] = [
     "╚═╝     ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
 ];
 
-fn rank_color(rank: Rank) -> Color {
+pub(crate) fn rank_color(rank: Rank) -> Color {
     match rank {
         Rank::Sub5 => Color::Gray,
         Rank::Ltn => Color::White,
@@ -71,7 +73,7 @@ pub(crate) fn fg(color: Color) -> Style {
 }
 
 /// Badge style for a key the player can press.
-fn key_style() -> Style {
+pub(crate) fn key_style() -> Style {
     Style::new().bg(Color::DarkGray).fg(Color::White).bold()
 }
 
@@ -186,6 +188,11 @@ fn draw_game(f: &mut Frame, app: &App) {
             Layout::horizontal([Constraint::Percentage(26), Constraint::Percentage(48), Constraint::Percentage(26)]).areas(body);
         draw_peers(f, left, g, now);
         draw_center(f, center, g, now, full.height < SHORT_HEIGHT);
+        let face_h = if right.height >= AVATAR_PANEL_MIN_HEIGHT && right.width >= avatar::FACE_COLS + 2 { avatar::corner_height() } else { 0 };
+        let [face, right] = Layout::vertical([Constraint::Length(face_h), Constraint::Min(0)]).areas(right);
+        if face_h > 0 {
+            avatar::draw_corner(f, face, g, now);
+        }
         let rows = inventory_rows(g);
         let inventory_h = (rows.len().max(1) as u16 + 2).min(right.height / 2);
         let [feed, inventory] = Layout::vertical([Constraint::Min(0), Constraint::Length(inventory_h)]).areas(right);
@@ -205,6 +212,8 @@ fn draw_game(f: &mut Frame, app: &App) {
         Overlay::Stake => duel::draw_stake_picker(f, g),
         Overlay::Chat => chat::draw(f, app, now),
         Overlay::Clan => clan::draw(f, app, now),
+        Overlay::Avatar => avatar::draw_editor(f, g, now),
+        Overlay::Profile(id) => avatar::draw_profile(f, g, id, now),
         Overlay::None => duel::draw_invite(f, g, now),
     }
 }
@@ -220,7 +229,7 @@ fn header_lines(app: &App, now: Instant, narrow: bool, compact: bool) -> Vec<Lin
     let mut name = flair::tagged_spans(g.clan_tag.as_deref(), &p.name, rank, now);
     name.push(Span::raw(" "));
     name.push(Span::styled(format!("[{}]", rank.label()), fg(rank_color(rank)).bold()));
-    name.extend(dlc_tags(&dlc::public(p), g.active_statuses(now).into_iter().map(|(st, _)| st)));
+    name.extend(dlc_tags(p, &dlc::public(p), g.active_statuses(now).into_iter().map(|(st, _)| st)));
     let mut numbers = vec![
         Span::styled(pair("MP", String::new()), Style::new()),
         Span::styled(format_mp(p.mp), fg(Color::Yellow).bold()),
@@ -321,7 +330,7 @@ fn draw_peers(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
             let mut title = flair::tagged_spans(peer.clan_tag.as_deref(), &peer.name, rank, now);
             title.push("  ".into());
             title.push(Span::styled(rank.label(), fg(rank_color(rank))));
-            title.extend(dlc_tags(&peer.dlc, peer.statuses.iter().filter(|(_, until)| now < *until).map(|(st, _)| *st)));
+            title.extend(dlc_tags(&g.player, &peer.dlc, peer.statuses.iter().filter(|(_, until)| now < *until).map(|(st, _)| *st)));
             if peer.in_duel {
                 title.push(Span::styled("  ⚔ em duelo", fg(Color::Yellow)));
             } else if let Some(left) = peer.immune_left(now) {
@@ -529,10 +538,10 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant, phone: bool) {
 
 const BUFF_GOLD: Color = Color::Rgb(255, 200, 40);
 
-/// Every DLC's tags after a name, from what everyone sees and the statuses running on them.
-fn dlc_tags(public: &DlcPublic, statuses: impl Iterator<Item = Status>) -> Vec<Span<'static>> {
+/// Tags after a name from the DLCs `viewer` owns, from what everyone sees and the statuses running on them.
+pub(crate) fn dlc_tags(viewer: &Player, public: &DlcPublic, statuses: impl Iterator<Item = Status>) -> Vec<Span<'static>> {
     let fresh: Vec<_> = statuses.filter_map(|st| if let Status::Dlc(st) = st { Some(st) } else { None }).collect();
-    dlc::ALL.iter().flat_map(|d| d.name_tags(public, &fresh)).collect()
+    dlc::owned_by(viewer).flat_map(|d| d.name_tags(public, &fresh)).collect()
 }
 
 /// Badge style for a buff.
@@ -661,6 +670,8 @@ fn game_hints(g: &Game) -> Vec<KeyHint> {
         hint("C", "conquistas"),
         hint("P", "ranks"),
         hint("S", "servidor"),
+        hint("A", "avatar"),
+        hint("R", "perfil"),
         hint("D", "duelar"),
         hint("F", "fila"),
         (count("T", g.chat.unread()), "chat".into()),
@@ -701,7 +712,13 @@ pub(crate) fn hint_lines(hints: &[KeyHint], width: u16) -> Vec<Line<'static>> {
 }
 
 /// Centered box taking a share of the screen; phones get all of the width, short screens all of the height.
-fn popup_area(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
+/// `width` x `height` centered inside `area`, shrunk to fit.
+pub(crate) fn centered(area: Rect, width: u16, height: u16) -> Rect {
+    let (w, h) = (area.width.min(width), area.height.min(height));
+    Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h)
+}
+
+pub(crate) fn popup_area(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
     let pct_x = if area.width < NARROW_WIDTH { 100 } else { pct_x };
     let pct_y = if area.height < SHORT_HEIGHT || area.width < NARROW_WIDTH { 100 } else { pct_y };
     let [_, mid, _] = Layout::vertical([
@@ -774,7 +791,7 @@ fn draw_achievements(f: &mut Frame, g: &Game) {
             fg(Color::Cyan),
         ),
     ];
-    lines.extend(dlc::ALL.iter().filter_map(|d| d.stats_line(p)));
+    lines.extend(dlc::owned_by(p).filter_map(|d| d.stats_line(p)));
     for group in Group::all().iter().copied() {
         let members: Vec<Achievement> = Achievement::all().iter().copied().filter(|a| a.group() == group).collect();
         let done = members.iter().filter(|a| p.achievements.contains(a)).count();
@@ -858,7 +875,7 @@ fn draw_ranks(f: &mut Frame, g: &Game, now: Instant) {
         lines.push(Line::from(first));
         lines.push(Line::styled(format!("    {}", details.join(" · ")), fg(if reached { Color::Gray } else { Color::DarkGray })));
     }
-    lines.extend(dlc::ALL.iter().flat_map(|d| d.rank_lines(g)));
+    lines.extend(dlc::owned_by(&g.player).flat_map(|d| d.rank_lines(g)));
     let title = format!(" Ranks {}/{} ", current as usize + 1, Rank::ALL.len());
     draw_list_popup(f, g, &title, lines);
 }
@@ -1046,7 +1063,8 @@ fn anim_ms() -> u64 {
 }
 
 /// Renders a sprite frame with half blocks: two pixels per terminal cell.
-fn sprite_lines(frame: &sprites::Frame, dim: bool) -> Vec<Line<'static>> {
+/// Half-block lines of a pixel grid, two pixel rows per line; `dim` grays it out.
+pub(crate) fn sprite_lines(rows: &[Vec<Option<sprites::Rgb>>], dim: bool) -> Vec<Line<'static>> {
     let pixel = |p: Option<sprites::Rgb>| {
         p.map(|(r, g, b)| {
             if dim {
@@ -1057,14 +1075,12 @@ fn sprite_lines(frame: &sprites::Frame, dim: bool) -> Vec<Line<'static>> {
             }
         })
     };
-    frame
-        .rows
-        .chunks(2)
+    rows.chunks(2)
         .map(|pair| {
             let spans: Vec<Span> = pair[0]
                 .iter()
-                .zip(&pair[1])
-                .map(|(&top, &bottom)| match (pixel(top), pixel(bottom)) {
+                .enumerate()
+                .map(|(x, &top)| match (pixel(top), pixel(pair.get(1).and_then(|r| r[x]))) {
                     (None, None) => Span::raw(" "),
                     (Some(t), None) => Span::styled("▀", fg(t)),
                     (None, Some(b)) => Span::styled("▄", fg(b)),
@@ -1084,7 +1100,7 @@ fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
     let cost = def.cost(level);
     let heading = |t: &str| Line::styled(t.to_string(), fg(Color::Magenta).bold());
 
-    let sprite = sprite_lines(sprites::sprite_at(def.id, anim_ms()), locked);
+    let sprite = sprite_lines(&sprites::sprite_at(def.id, anim_ms()).rows, locked);
     let mut lines: Vec<Line> = (0..sprite.len() + 2).map(|_| Line::raw("")).collect();
     lines.push(Line::styled(def.name, fg(Color::Yellow).bold()).centered());
     lines.push(Line::styled(def.flavor, fg(Color::Gray).italic()).centered());
@@ -1263,7 +1279,7 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     let mascot_x = (title.width / 2).saturating_sub(22 + 17);
     if title.width >= 80 {
         let area = Rect::new(title.x + mascot_x, title.y, 16, title.height);
-        f.render_widget(Paragraph::new(sprite_lines(sprites::mascot_at(anim_ms()), false)), area);
+        f.render_widget(Paragraph::new(sprite_lines(&sprites::mascot_at(anim_ms()).rows, false)), area);
     }
 
     let [list_area, info_area] = if narrow {

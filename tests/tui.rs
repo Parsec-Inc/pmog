@@ -38,7 +38,7 @@ fn playing() -> App {
         aura_farm_ms: 0,
         statuses: vec![],
         meter_ms: 0,
-        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default() }],
+        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default() }],
         duel: None,
         invites: Vec::new(),
         outgoing: None,
@@ -498,7 +498,7 @@ fn state_with(app: &mut App, edit: impl FnOnce(&mut StateView)) {
         aura_farm_ms: 0,
         statuses: vec![],
         meter_ms: 0,
-        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default() }],
+        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default() }],
         duel: None,
         invites: Vec::new(),
         outgoing: None,
@@ -1080,4 +1080,60 @@ fn achievements_are_grouped_with_progress_and_secrets() {
     assert!(screen.contains("── Mog (") && screen.contains("37/100") && screen.contains("37/1.000"), "{screen}");
     assert!(screen.contains("??? · Conquista secreta"), "{screen}");
     assert!(!screen.contains("Sessenta e Sete"), "secrets stay hidden");
+}
+
+#[test]
+fn avatar_and_profile_keys_and_screens() {
+    let mut a = playing();
+    assert!(render(&a, 170, 42).contains("[A] avatar"), "own face in the corner");
+    assert!(!render(&a, 100, 24).contains("[A] avatar"), "no room for it on short screens");
+
+    press(&mut a, KeyCode::Char('a'));
+    assert_eq!(a.game.overlay, Overlay::Avatar);
+    let screen = render(&a, 170, 42);
+    for needle in ["Rosto", "Acessório", "usando", "Zero (Lucas)"] {
+        assert!(screen.contains(needle), "missing {needle:?}\n{screen}");
+    }
+    press(&mut a, KeyCode::Right);
+    press(&mut a, KeyCode::Down);
+    a.game.player.mp = 1e9;
+    a.game.player.lifetime = 1e9;
+    press(&mut a, KeyCode::Enter);
+    assert!(a.game.outbox.is_empty(), "first Enter only asks");
+    assert!(render(&a, 170, 42).contains("Enter de novo para comprar"));
+    press(&mut a, KeyCode::Enter);
+    assert!(matches!(a.game.outbox.last(), Some(ClientMsg::BuyPart { .. })));
+    press(&mut a, KeyCode::Esc);
+    assert_eq!(a.game.overlay, Overlay::None);
+
+    press(&mut a, KeyCode::Char('r'));
+    assert_eq!(a.game.overlay, Overlay::Profile(None), "the bot is selected, so the own profile");
+    assert!(render(&a, 170, 42).contains("Perfil"));
+    press(&mut a, KeyCode::Down);
+    assert_eq!(a.game.overlay, Overlay::Profile(Some(2)));
+    assert!(render(&a, 170, 42).contains("Rival"));
+    press(&mut a, KeyCode::Down);
+    assert_eq!(a.game.overlay, Overlay::Profile(None), "wraps around, skipping the bot");
+    press(&mut a, KeyCode::Char('r'));
+    assert_eq!(a.game.overlay, Overlay::None);
+}
+
+#[test]
+fn the_face_reacts_to_mogs() {
+    let mut a = playing();
+    let now = Instant::now();
+    assert_ne!(a.game.mood(now), pmog::avatar::Mood::Mogged);
+    state_with(&mut a, |v| v.me.defends_lost += 1);
+    assert_eq!(a.game.mood(Instant::now()), pmog::avatar::Mood::Mogged);
+    state_with(&mut a, |v| v.me.mogs_won += 1);
+    assert_eq!(a.game.mood(Instant::now()), pmog::avatar::Mood::Smug);
+}
+
+#[test]
+fn dlc_tags_only_show_to_who_owns_the_dlc() {
+    let mut a = playing();
+    state_with(&mut a, |v| v.players[0].dlc.prison.marks = 100);
+    assert!(!render(&a, 170, 42).contains('«'));
+    a.game.player.items.insert(ItemId::PrisonDlc, 1);
+    assert!(render(&a, 170, 42).contains('«'));
 }

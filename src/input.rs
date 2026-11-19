@@ -210,6 +210,21 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
         Overlay::Help => help_key(game, code),
         Overlay::Achievements | Overlay::Ranks => list_key(game, code),
         Overlay::Chat | Overlay::Clan => {} // handled above with raw keys
+        Overlay::Avatar => match code {
+            KeyCode::Left | KeyCode::BackTab | KeyCode::Char('h') => game.avatar_editor.turn(-1, &game.player.avatar),
+            KeyCode::Right | KeyCode::Tab | KeyCode::Char('l') => game.avatar_editor.turn(1, &game.player.avatar),
+            KeyCode::Up | KeyCode::Char('k') => game.avatar_editor.step(-1),
+            KeyCode::Down | KeyCode::Char('j') => game.avatar_editor.step(1),
+            KeyCode::Enter | KeyCode::Char(' ') => game.avatar_enter(),
+            KeyCode::Esc | KeyCode::Char('a' | 'q') => game.overlay = Overlay::None,
+            _ => {}
+        },
+        Overlay::Profile(_) => match code {
+            KeyCode::Up | KeyCode::Left | KeyCode::Char('k') => game.profile_step(-1),
+            KeyCode::Down | KeyCode::Right | KeyCode::Char('j') => game.profile_step(1),
+            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('r' | 'q') => game.overlay = Overlay::None,
+            _ => {}
+        },
         Overlay::Stake => match code {
             KeyCode::Left | KeyCode::Char('h') => game.stake_move(-1),
             KeyCode::Right | KeyCode::Char('l') => game.stake_move(1),
@@ -259,6 +274,8 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
             }
             KeyCode::Char('x') if game.outgoing.is_some() => game.outbox.push(ClientMsg::CancelChallenge),
             KeyCode::Char('?' | 'h') => game.overlay = Overlay::Help,
+            KeyCode::Char('a') => game.open_avatar(),
+            KeyCode::Char('r') => game.open_profile(),
             KeyCode::Char(c) => {
                 if let Some(id) = consumable_for_key(c) {
                     game.use_item(id);

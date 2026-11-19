@@ -2,6 +2,7 @@
 
 pub mod achievements;
 pub mod app;
+pub mod avatar;
 pub mod bot;
 pub mod chat;
 pub mod clan;

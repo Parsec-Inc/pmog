@@ -23,6 +23,7 @@ Jogo de terminal multiplayer para a rede local. Um amigo hospeda, o resto entra 
 | **59 itens na loja** em 6 abas (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), cada um com pixel art própria. Os 10 consumíveis ficam nas teclas `1`–`0`. | **Buffs à vista**: escudo, colônia, combo 6-7, aura farmada e afins aparecem numa faixa ⚡ BUFFADO enquanto valem. |
 | **15 ranks**, de Sub-5 a Transcendente, cada um com um efeito no nome (brilho, fogo, arco-íris, estrelas, 6-7 piscando). Os 7 ranks acima do Ascendido liberam um item exclusivo cada. | **66 conquistas** em 7 grupos, com progresso (37/100) e 4 secretas. |
 | **DLC Cadeia**: compre uma vez e todo mog PERFECT faz o alvo pegar o sabonete e ganhar um número na testa. Traz 12 itens da novelinha "O sabonete", títulos da cela do X9 ao Zero e 6 conquistas. | **DLCs plugáveis**: cada expansão é um módulo que implementa o trait `Dlc` (ver [docs/dlc.md](docs/dlc.md)). |
+| **Avatar em pixel art** no canto da tela, que faz cara de moggado ou de convencido conforme o jogo. 34 partes compráveis com MP (rosto, cabelo, olhos, boca, acessório); com a DLC Cadeia, as frutas da novelinha e o número na testa. | **Perfis**: `R` abre o perfil de qualquer jogador, com o avatar e os números dele. |
 | **Chat, grupos e clãs**, com tag ao lado do nome e sem fogo amigo. **Atualização automática** pela rede, só com builds assinadas. | **Jogue no celular** pelo navegador: cada PMOG aberto vira acessível por um celular, com senha, espelhando ou assumindo a sua sessão. Botões na tela. |
 
 <table>
@@ -97,6 +98,7 @@ Cada PMOG aberto no PC pode ser jogado de **um** celular por vez, na mesma rede,
 | `L` | loja | `1`–`9`, `0` | consumíveis |
 | `C` | conquistas | `S` | painel do servidor |
 | `P` | lista de ranks | `?` | ajuda |
+| `A` | avatar | `R` | perfil |
 | `Q` | sair |  |  |
 
 ## Rede
@@ -126,6 +128,8 @@ cargo test --release                # regras, duelos, rede real, stress e TUI
 ./scripts/build-dist.sh             # gera e assina dist/pmog-linux e dist/pmog-windows.exe
 ./scripts/package.sh deb rpm        # pacotes a partir do dist/ (ver docs/PACKAGING.md)
 cargo run --example screenshots     # refaz as imagens deste README
+cargo run --example avatar          # mostra rostos e humores do avatar no terminal
+python3 scripts/avatar_layers.py assets/avatar   # regera as camadas do avatar
 ```
 
 Para criar uma DLC nova, veja [docs/dlc.md](docs/dlc.md).

@@ -107,11 +107,20 @@ fn asset(id: ItemId) -> SpriteAsset {
     }
 }
 
-fn decode(png: &[u8], json: &[u8]) -> Anim {
+/// Every pixel of an 8-bit RGBA PNG, row by row; `None` is transparent.
+pub fn pixels(png: &[u8]) -> Vec<Vec<Option<Rgb>>> {
     let mut reader = png::Decoder::new(Cursor::new(png)).read_info().expect("sprite png");
     let mut buf = vec![0; reader.output_buffer_size().expect("sprite png size")];
     let info = reader.next_frame(&mut buf).expect("sprite png data");
     assert!(info.color_type == png::ColorType::Rgba && info.bit_depth == png::BitDepth::Eight, "export sprites as 8-bit RGBA");
+    buf.chunks(info.width as usize * 4)
+        .take(info.height as usize)
+        .map(|row| row.chunks(4).map(|p| (p[3] > 127).then_some((p[0], p[1], p[2]))).collect())
+        .collect()
+}
+
+fn decode(png: &[u8], json: &[u8]) -> Anim {
+    let sheet = pixels(png);
     let meta: serde_json::Value = serde_json::from_slice(json).expect("sprite json");
     let frames: Vec<Frame> = meta["frames"]
         .as_array()
@@ -120,16 +129,7 @@ fn decode(png: &[u8], json: &[u8]) -> Anim {
         .map(|f| {
             let n = |k: &str| f["frame"][k].as_u64().expect("frame rect") as usize;
             let (x0, y0, w, h) = (n("x"), n("y"), n("w"), n("h"));
-            let rows = (y0..y0 + h)
-                .map(|y| {
-                    (x0..x0 + w)
-                        .map(|x| {
-                            let p = &buf[(y * info.width as usize + x) * 4..][..4];
-                            (p[3] > 127).then_some((p[0], p[1], p[2]))
-                        })
-                        .collect()
-                })
-                .collect();
+            let rows = sheet[y0..y0 + h].iter().map(|row| row[x0..x0 + w].to_vec()).collect();
             Frame { rows, ms: f["duration"].as_u64().unwrap_or(100).max(1) }
         })
         .collect();

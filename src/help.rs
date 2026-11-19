@@ -126,6 +126,8 @@ fn basics() -> Vec<Line<'static>> {
         key("C", "conquistas e estatísticas"),
         key("P", "todos os ranks, com o visual de cada nome"),
         key("S", "painel do servidor"),
+        key("A", "avatar: monte o rosto e compre partes com MP (← → parte, ↑ ↓ opção, Enter usa ou compra)"),
+        key("R", "perfil do alvo selecionado (o seu, se o alvo for o bot); ↑ ↓ passa pelos jogadores"),
         key("D / F", "duelo direto ou fila de duelo (veja a página Duelos)"),
         key("?", "esta ajuda (← → troca de aba, ↑ ↓ rola)"),
         key("Esc", "fechar a janela aberta"),
@@ -407,6 +409,13 @@ fn shop() -> Vec<Line<'static>> {
         )),
         bullet("Consumíveis têm preço fixo, ficam no inventário e são usados com as teclas 1 a 9 e 0."),
         bullet("Escudo, Foto no Ângulo, Espelho, Fita de Mandíbula e Combo 6-7 ficam preparados até serem gastos, mesmo se você fechar o jogo."),
+        gap(),
+        title("Avatar"),
+        bullet("Seu rosto em pixel art fica no canto da tela e reage ao jogo: cara de moggado quando te moggam, convencido quando você mogga."),
+        bullet("Abra com A. Rosto, cabelo, olhos, boca e acessório: a primeira opção de cada é de graça, as outras custam MP e algumas pedem rank."),
+        bullet("Enter usa uma parte que você já tem; numa parte nova, Enter duas vezes compra e já veste."),
+        bullet("Com a DLC Cadeia: as frutas da novelinha como rosto e o número da testa desenhado no avatar. Quem não tem a DLC não vê o número."),
+        bullet("Os outros veem seu avatar no seu perfil (tecla R com você selecionado)."),
     ];
     for category in crate::items::Category::all() {
         lines.push(gap());

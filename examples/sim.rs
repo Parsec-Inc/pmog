@@ -98,6 +98,8 @@ fn handle(world: &mut World, id: PlayerId, msg: ClientMsg, now: Instant, stats: 
         ClientMsg::Buy { item } => world.buy(id, item),
         ClientMsg::Use { item } => world.use_item(id, item, now),
         ClientMsg::Rename { name } => world.rename(id, &name),
+        ClientMsg::BuyPart { part } => world.buy_part(id, part),
+        ClientMsg::WearPart { part } => world.wear_part(id, part),
         ClientMsg::Challenge { target, fraction, draft } => {
             stats.invites_sent += 1;
             world.challenge(id, target, fraction, draft, now)

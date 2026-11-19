@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use rand::Rng;
 
 use crate::constants::*;
+use crate::avatar::{self, Part};
 use crate::dlc::{self, DlcSlot};
 use crate::db::{DuelRecord, MatchRecord, PurchaseRecord};
 use crate::duel::{Duel, DuelKey, DuelView};
@@ -361,6 +362,36 @@ impl World {
         };
         self.event(id, if ok { Tone::Good } else { Tone::Bad }, text.clone(), None, false);
         self.outbox.push((id, ServerMsg::Purchase { item, ok, text }));
+    }
+
+    /// Buys a face part and wears it right away.
+    pub fn buy_part(&mut self, id: PlayerId, part: Part) {
+        let Some(slot) = self.slots.get_mut(&id) else { return };
+        let def = avatar::def(part);
+        let (tone, text) = match def.purchase_block(&slot.player) {
+            Some(reason) => (Tone::Bad, reason),
+            None => {
+                slot.player.mp -= def.cost;
+                slot.player.avatar_parts.push(part);
+                slot.player.avatar.set(part);
+                slot.dirty = true;
+                self.purchases.push(PurchaseRecord { player: id, item: format!("{part:?}"), cost: def.cost });
+                (Tone::Good, format!("Comprou {} (-{} MP) e já está usando.", def.name, format_mp(def.cost)))
+            }
+        };
+        self.event(id, tone, text, None, false);
+    }
+
+    /// Wears a face part the player owns.
+    pub fn wear_part(&mut self, id: PlayerId, part: Part) {
+        let Some(slot) = self.slots.get_mut(&id) else { return };
+        if !slot.player.owns_part(part) {
+            let name = avatar::def(part).name;
+            return self.event(id, Tone::Bad, format!("Você ainda não tem {name}."), None, false);
+        }
+        slot.player.avatar.set(part);
+        slot.dirty = true;
+        self.push.push(id);
     }
 
     pub fn use_item(&mut self, id: PlayerId, item: ItemId, now: Instant) {
@@ -787,6 +818,7 @@ impl World {
                     clan_tag: self.clan_of.get(other).map(|(_, tag)| tag.clone()),
                     statuses: s.active_statuses(now),
                     dlc: dlc::public(&s.player),
+                    avatar: s.player.avatar,
                 }
             })
             .collect();

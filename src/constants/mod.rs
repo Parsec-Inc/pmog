@@ -1,5 +1,6 @@
 //! Tunable numbers for networking, combat and economy.
 
+pub mod avatar;
 pub mod prison;
 
 use std::net::Ipv4Addr;
@@ -7,7 +8,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 20;
+pub const PROTOCOL_VERSION: u32 = 21;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
