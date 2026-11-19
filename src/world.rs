@@ -30,6 +30,11 @@ pub struct Slot {
     /// Until when, and at which rank gap.
     perdeu_aura: (Instant, u8),
     ego_proibido: (Instant, u8),
+    /// Cadeia statuses: soap number fresh on the forehead, potions, and who the Black Potion obeys.
+    soap_until: Instant,
+    green_until: Instant,
+    red_until: Instant,
+    obeys: (Instant, PlayerId),
     pub meter_started: Instant,
     mew_window: (Instant, u32),
     /// Mogs suffered in a row and when the last one landed; each one lengthens the immunity.
@@ -56,6 +61,10 @@ impl Slot {
             abalado_until: now,
             perdeu_aura: (now, 0),
             ego_proibido: (now, 0),
+            soap_until: now,
+            green_until: now,
+            red_until: now,
+            obeys: (now, NPC_TARGET),
             meter_started: now,
             mew_window: (now, 0),
             hits_in_row: 0,
@@ -72,6 +81,10 @@ impl Slot {
             Status::PerdeuAura(_) if self.perdeu_aura.1 > 0 && now < self.perdeu_aura.0 + PERDEU_AURA_GRACE => return false,
             Status::PerdeuAura(_) => self.perdeu_aura.0,
             Status::EgoProibido(_) => self.ego_proibido.0,
+            Status::Sabonete => self.soap_until,
+            Status::Obedecendo => self.obeys.0,
+            Status::PocaoVerde => self.green_until,
+            Status::PocaoVermelha => self.red_until,
         };
         if until <= current {
             return false;
@@ -80,6 +93,10 @@ impl Slot {
             Status::Abalado => self.abalado_until = until,
             Status::PerdeuAura(n) => self.perdeu_aura = (until, n),
             Status::EgoProibido(n) => self.ego_proibido = (until, n),
+            Status::Sabonete => self.soap_until = until,
+            Status::Obedecendo => self.obeys.0 = until,
+            Status::PocaoVerde => self.green_until = until,
+            Status::PocaoVermelha => self.red_until = until,
         }
         true
     }
@@ -89,6 +106,10 @@ impl Slot {
         self.abalado_until = now;
         self.perdeu_aura = (now, 0);
         self.ego_proibido = (now, 0);
+        self.soap_until = now;
+        self.green_until = now;
+        self.red_until = now;
+        self.obeys.0 = now;
     }
 
     /// Statuses running at `now`, with the ms left.
@@ -97,6 +118,10 @@ impl Slot {
             (Status::Abalado, self.abalado_until),
             (Status::PerdeuAura(self.perdeu_aura.1), self.perdeu_aura.0),
             (Status::EgoProibido(self.ego_proibido.1), self.ego_proibido.0),
+            (Status::Sabonete, self.soap_until),
+            (Status::Obedecendo, self.obeys.0),
+            (Status::PocaoVerde, self.green_until),
+            (Status::PocaoVermelha, self.red_until),
         ]
         .into_iter()
         .filter(|(_, until)| now < *until)
@@ -398,6 +423,25 @@ impl World {
                 slot.hits_in_row = 0;
                 Ok("Imune por 20 s, e a imunidade acumulada voltou ao normal.")
             }
+            ItemId::Soap if p.soap_armed => Err("O Sabonete já está na mão."),
+            ItemId::Soap => {
+                p.soap_armed = true;
+                Ok("Quem o próximo mog acertar vai pegar o sabonete.")
+            }
+            ItemId::CarrotPill if p.pill_armed => Err("O Comprimido já está pronto."),
+            ItemId::CarrotPill => {
+                p.pill_armed = true;
+                Ok("Quem o próximo mog acertar vai dormir.")
+            }
+            ItemId::BlackPotion if p.black_armed => Err("A Poção Negra já está pronta."),
+            ItemId::BlackPotion => {
+                p.black_armed = true;
+                Ok("Quem o próximo mog acertar vai te obedecer.")
+            }
+            ItemId::GreenPotion if !slot.set_status(Status::PocaoVerde, now + GREEN_POTION_DURATION, now) => Err("A Poção Verde ainda está fazendo efeito."),
+            ItemId::GreenPotion => Ok("Poder x2 por 20 s."),
+            ItemId::RedPotion if !slot.set_status(Status::PocaoVermelha, now + RED_POTION_DURATION, now) => Err("A Poção Vermelha ainda está fazendo efeito."),
+            ItemId::RedPotion => Ok("Poder +40% por 2 min."),
             _ => Err("Esse item não é consumível."),
         };
         match result {
@@ -433,6 +477,11 @@ impl World {
         if self.in_duel(target) {
             let name = self.slots[&target].player.name.clone();
             self.event(id, Tone::Info, format!("{name} está num duelo agora."), None, false);
+            return;
+        }
+        if let Some(until) = self.slots.get(&id).filter(|s| s.obeys.1 == target && now < s.obeys.0).map(|s| s.obeys.0) {
+            let text = format!("Você está sob a Poção Negra de {}: não consegue mogar ele por mais {}.", self.name_of(target), format_wait(until - now));
+            self.event(id, Tone::Info, text, None, false);
             return;
         }
         if let Some(defender) = self.slots.get(&target).filter(|s| now < s.immune_until) {
@@ -534,6 +583,7 @@ impl World {
                 if up >= 1 {
                     self.upset(id, target, up, now);
                 }
+                self.prison_hit(id, target, tier, now);
                 ("won", won, loss)
             }
             Defense::Held { roll } => {
@@ -554,6 +604,49 @@ impl World {
             }
         };
         self.duels.push(DuelRecord { attacker: id, defender: Some(target), outcome, tier: tier.label(), power, mp_won: won, mp_lost: lost });
+    }
+
+    /// Cadeia: a mog that landed makes the defender pick up the soap (PERFECT with the DLC, or Sabonete), sleep (Comprimido) or obey (Poção Negra).
+    fn prison_hit(&mut self, id: PlayerId, target: PlayerId, tier: TimingTier, now: Instant) {
+        let (Some(attacker), Some(defender)) = (self.slots.get(&id), self.slots.get(&target)) else { return };
+        let (attacker_name, defender_name) = (attacker.player.name.clone(), defender.player.name.clone());
+        let dlc = attacker.player.has_prison_dlc();
+        let slot = self.slots.get_mut(&id).expect("checked above");
+        let soap = std::mem::take(&mut slot.player.soap_armed);
+        let pill = std::mem::take(&mut slot.player.pill_armed);
+        let black = std::mem::take(&mut slot.player.black_armed);
+        if soap || (dlc && tier == TimingTier::Perfect) {
+            slot.player.marks += 1;
+            slot.dirty = true;
+            let victim = self.slots.get_mut(&target).expect("checked above");
+            victim.player.forehead += 1;
+            victim.dirty = true;
+            let n = victim.player.forehead;
+            self.afflict(target, Status::Sabonete, SOAP_DURATION, now);
+            self.event(target, Tone::Bad, format!("{attacker_name} te fez pegar o sabonete. Agora você tem {n} na testa."), Some(format!("PEGOU O SABONETE ({n})")), false);
+            self.event(id, Tone::Good, format!("{defender_name} pegou o sabonete pra você: {n} na testa."), None, false);
+            let others: Vec<PlayerId> = self.slots.keys().copied().filter(|o| *o != id && *o != target).collect();
+            for other in others {
+                self.event(other, Tone::Info, format!("{defender_name} pegou o sabonete pro {attacker_name} ({n} na testa)."), None, false);
+            }
+        }
+        if pill {
+            let victim = self.slots.get_mut(&target).expect("checked above");
+            victim.cooldown_until = victim.cooldown_until.max(now) + PILL_SLEEP;
+            victim.cooldown_total = victim.cooldown_until.saturating_duration_since(now).as_secs_f64();
+            victim.dirty = true;
+            let secs = PILL_SLEEP.as_secs();
+            self.event(target, Tone::Bad, format!("{attacker_name} te deu o Comprimido do Cenoura: você dormiu, +{secs} s de cooldown."), None, false);
+            self.event(id, Tone::Good, format!("{defender_name} tomou o Comprimido e dormiu: +{secs} s de cooldown."), None, false);
+            self.push.push(target);
+        }
+        if black {
+            let victim = self.slots.get_mut(&target).expect("checked above");
+            victim.obeys.1 = id;
+            self.afflict(target, Status::Obedecendo, BLACK_POTION_DURATION, now);
+            self.event(target, Tone::Bad, format!("{attacker_name} te fez beber a Poção Negra: você não consegue mogar ele por um tempo."), None, false);
+            self.event(id, Tone::Good, format!("{defender_name} bebeu a Poção Negra e agora te obedece."), None, false);
+        }
     }
 
     /// Weight of `to`'s rank over `from`'s, at least 1: from 1 (same or lower) up to `1 + RANK_WEIGHT_SPAN` over `1`.
@@ -738,6 +831,8 @@ impl World {
                     immune_ms: remaining_ms(s.immune_until, now),
                     clan_tag: self.clan_of.get(other).map(|(_, tag)| tag.clone()),
                     statuses: s.active_statuses(now),
+                    forehead: s.player.forehead,
+                    marks: s.player.marks,
                 }
             })
             .collect();

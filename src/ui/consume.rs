@@ -18,6 +18,11 @@ fn color(item: ItemId) -> (u8, u8, u8) {
         ItemId::IcePack => (170, 230, 255),
         ItemId::ComboSixSeven => (255, 90, 90),
         ItemId::WoundedEgo => (220, 30, 50),
+        ItemId::Soap => (250, 160, 200),
+        ItemId::GreenPotion => (90, 230, 100),
+        ItemId::RedPotion => (230, 60, 70),
+        ItemId::BlackPotion => (150, 60, 210),
+        ItemId::CarrotPill => (245, 140, 50),
         _ => (170, 120, 255), // Aura Farm
     }
 }
@@ -34,6 +39,11 @@ pub fn duration_ms(item: ItemId) -> u64 {
         ItemId::IcePack => 1300,
         ItemId::ComboSixSeven => 1200,
         ItemId::WoundedEgo => 1400,
+        ItemId::Soap => 1400,
+        ItemId::GreenPotion => 1200,
+        ItemId::RedPotion => 1500,
+        ItemId::BlackPotion => 1600,
+        ItemId::CarrotPill => 1600,
         _ => 1800,
     }
 }
@@ -50,6 +60,11 @@ pub fn shake_power(item: ItemId) -> f64 {
         ItemId::JawTape => 0.5,
         ItemId::AuraFarm => 0.4,
         ItemId::IcePack => 0.3,
+        ItemId::GreenPotion => 1.5,
+        ItemId::BlackPotion => 1.0,
+        ItemId::Soap => 0.8,
+        ItemId::RedPotion => 0.7,
+        ItemId::CarrotPill => 0.2,
         _ => 0.0,
     }
 }
@@ -200,6 +215,57 @@ fn paint(item: ItemId, c: &Cell) -> Option<(&'static str, f64)> {
                 None
             }
         }
+        // The soap drops in the middle and foam bubbles float up around it.
+        ItemId::Soap => {
+            let drop = (t * 2.2).min(1.0) * (c.h - 2.0);
+            if row as i64 == drop.round() as i64 && dx.abs() < 3.0 {
+                return Some(("▀", alpha(0.7)));
+            }
+            let hit = (0..40u64).any(|i| {
+                let rise = ((t - noise(i, 4, 1) * 0.5).max(0.0) * (0.7 + noise(i, 3, 1) * 0.6) * 1.8) * c.h;
+                let y = c.h - rise;
+                let x = noise(i, 2, 1) * c.w + 1.5 * (y * 0.5 + i as f64).cos();
+                col as i64 == x.round() as i64 && row as i64 == y.round() as i64
+            });
+            hit.then(|| (["o", "°", "O"][(col % 3) as usize], (1.0 - t) * 0.9))
+        }
+        // Green fizz climbs from the bottom, popping bubbles above it.
+        ItemId::GreenPotion => {
+            let level = (t * 3.0).min(1.0) * c.h * 0.5;
+            let up = c.h - c.row as f64;
+            if up < level * (0.7 + 0.3 * (col as f64 * 0.7 + phase / 90.0).sin()) {
+                Some((if hash(col, row, c.age / 80) < 4 { "∘" } else { "░" }, 0.7 * alpha(0.6)))
+            } else {
+                (hash(col, row, c.age / 60) < 3 && up < level * 1.8).then(|| ("°", 0.9 * alpha(0.6)))
+            }
+        }
+        // Red pulses roll out from the middle like a slow heartbeat.
+        ItemId::RedPotion => {
+            let max_r = cx.hypot(cy);
+            let ring = (0..3)
+                .map(|i| {
+                    let front = (t * 1.6 - i as f64 * 0.25).max(0.0) * max_r;
+                    (1.0 - (d - front).abs() / 1.8).max(0.0)
+                })
+                .fold(0.0, f64::max);
+            (ring > 0.0).then(|| (if ring > 0.6 { "▓" } else { "░" }, ring * alpha(0.6)))
+        }
+        // Dark tendrils creep in from the edges.
+        ItemId::BlackPotion => {
+            let e = (c.x.min(c.w - c.x) / (c.w / 2.0)).min(c.y.min(c.h * 2.0 - c.y) / c.h);
+            let reach = (t * 2.0).min(1.0) * 0.55 + 0.12 * (dy.atan2(dx) * 7.0 + phase / 200.0).sin();
+            (e < reach).then(|| (if e < reach * 0.5 { "▓" } else { "▒" }, (1.0 - e / reach.max(0.01)).max(0.4) * alpha(0.7)))
+        }
+        // Sleepy Zs drift up and away.
+        ItemId::CarrotPill => (0..40u64).find_map(|i| {
+            let k = ((t - noise(i, 5, 2) * 0.5) / 0.5).clamp(0.0, 1.0);
+            if k <= 0.0 || k >= 1.0 {
+                return None;
+            }
+            let x = c.w * (0.1 + 0.8 * noise(i, 6, 2)) + k * 8.0;
+            let y = c.h * (0.6 + 0.35 * noise(i, 7, 2)) - k * c.h * 0.5;
+            (col as i64 == x.round() as i64 && row as i64 == y.round() as i64).then_some((if i % 2 == 0 { "Z" } else { "z" }, 1.0 - k))
+        }),
         // Aura Farm: a slow lavender glow with two lazy waves.
         _ => {
             let r = 10.0 + 14.0 * (t * 2.0).min(1.0);
@@ -272,7 +338,7 @@ mod tests {
     fn every_consumable_animates_and_ends() {
         let area = Rect::new(0, 0, 100, 30);
         let consumables: Vec<_> = CATALOG.iter().filter(|d| d.consumable()).collect();
-        assert_eq!(consumables.len(), 11);
+        assert_eq!(consumables.len(), 16);
         for def in consumables {
             let id = def.id;
             let painted = |age| {

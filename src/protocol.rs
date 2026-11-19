@@ -93,6 +93,11 @@ pub struct PeerView {
     /// Fight statuses and ms left, so the odds shown count them.
     #[serde(default)]
     pub statuses: Vec<(crate::game::Status, u64)>,
+    /// Cadeia: soaps picked up (the number on the forehead) and soaps made.
+    #[serde(default)]
+    pub forehead: u32,
+    #[serde(default)]
+    pub marks: u32,
 }
 
 /// A duel invitation; `peer` is the other player.

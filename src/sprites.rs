@@ -94,6 +94,19 @@ fn asset(id: ItemId) -> (&'static [u8], &'static [u8], &'static str) {
         ItemId::ThirdEye => asset!("third_eye"),
         ItemId::Underdog => asset!("underdog"),
         ItemId::WoundedEgo => asset!("wounded_ego"),
+        ItemId::PrisonDlc => asset!("prison_dlc"),
+        ItemId::PullUpBar => asset!("pull_up_bar"),
+        ItemId::Crutch => asset!("crutch"),
+        ItemId::CarrotHook => asset!("carrot_hook"),
+        ItemId::MilEar => asset!("mil_ear"),
+        ItemId::Folder77 => asset!("folder_77"),
+        ItemId::PeraUniform => asset!("pera_uniform"),
+        ItemId::TowerKey => asset!("tower_key"),
+        ItemId::GreenPotion => asset!("green_potion"),
+        ItemId::RedPotion => asset!("red_potion"),
+        ItemId::BlackPotion => asset!("black_potion"),
+        ItemId::Soap => asset!("soap"),
+        ItemId::CarrotPill => asset!("carrot_pill"),
     }
 }
 

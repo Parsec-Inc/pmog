@@ -68,6 +68,19 @@ pub enum ItemId {
     ThirdEye,
     Underdog,
     WoundedEgo,
+    PrisonDlc,
+    PullUpBar,
+    Crutch,
+    CarrotHook,
+    MilEar,
+    Folder77,
+    PeraUniform,
+    TowerKey,
+    GreenPotion,
+    RedPotion,
+    BlackPotion,
+    Soap,
+    CarrotPill,
 }
 
 /// Shop tab an item belongs to.
@@ -78,11 +91,13 @@ pub enum Category {
     Drip,
     Aura,
     Brainrot,
+    Prison,
     Consumable,
 }
 
 impl Category {
-    pub const ALL: [Category; 6] = [Category::Face, Category::Body, Category::Drip, Category::Aura, Category::Brainrot, Category::Consumable];
+    pub const ALL: [Category; 7] =
+        [Category::Face, Category::Body, Category::Drip, Category::Aura, Category::Brainrot, Category::Prison, Category::Consumable];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -91,6 +106,7 @@ impl Category {
             Category::Drip => "Drip e Status",
             Category::Aura => "Aura",
             Category::Brainrot => "Brainrot e 67",
+            Category::Prison => "Cadeia",
             Category::Consumable => "Consumíveis",
         }
     }
@@ -167,7 +183,7 @@ impl ItemDef {
 
     pub fn category(&self) -> Category {
         use ItemId::*;
-        if self.consumable() {
+        if self.consumable() && !matches!(self.id, GreenPotion | RedPotion | BlackPotion | Soap | CarrotPill) {
             return Category::Consumable;
         }
         match self.id {
@@ -181,6 +197,9 @@ impl ItemDef {
             Therapy | PhonkTrack | Meditation | InfiniteAura | BlessedGenes | BoatDance | DoorLean | Jestermaxxing | AuraScepter | Underdog | PhoenixFeather
             | ThirdEye => Category::Aura,
             SixSeven | SixSevenHeight | Capoeira | SharkSneakers | SahurBat | CrocBomber | BananaMonkey | Trophy67 => Category::Brainrot,
+            PrisonDlc | PullUpBar | Crutch | CarrotHook | MilEar | Folder77 | PeraUniform | TowerKey | GreenPotion | RedPotion | BlackPotion | Soap | CarrotPill => {
+                Category::Prison
+            }
             EnergyDrink | SigmaShield | AngleShot | PreWorkout | PocketMirror | JawTape | Cologne | IcePack | ComboSixSeven | AuraFarm | WoundedEgo => {
                 Category::Consumable
             }
@@ -204,7 +223,9 @@ impl ItemDef {
     /// Why `player` can't buy the next unit or level right now, if anything stops it.
     pub fn purchase_block(&self, player: &crate::game::Player) -> Option<String> {
         let level = player.level(self.id);
-        if player.rank() < self.min_rank {
+        if self.category() == Category::Prison && self.id != ItemId::PrisonDlc && !player.has_prison_dlc() {
+            Some(format!("{} faz parte da DLC Cadeia: compre a DLC primeiro.", self.name))
+        } else if player.rank() < self.min_rank {
             Some(format!("{} exige rank {}.", self.name, self.min_rank.label()))
         } else if level >= self.max_level {
             Some(format!("{} já está no máximo.", self.name))
@@ -217,12 +238,17 @@ impl ItemDef {
 
     /// One-line summary of what the item does.
     pub fn summary(&self) -> String {
+        if self.id == ItemId::PrisonDlc {
+            return DLC_SUMMARY.into();
+        }
         match self.usage {
             Some((key, text)) => format!("[{key}] {text}"),
             None => self.effects.iter().map(|e| e.describe()).collect::<Vec<_>>().join(", "),
         }
     }
 }
+
+const DLC_SUMMARY: &str = "libera os itens da Cadeia, o sabonete no PERFECT e os títulos da cela";
 
 pub fn def(id: ItemId) -> &'static ItemDef {
     CATALOG.iter().find(|d| d.id == id).expect("every ItemId is in the catalog")
@@ -266,7 +292,7 @@ const fn consumable(
     ItemDef { id, name, flavor, min_rank, base_cost, max_level: 99, effects: &[], usage: Some((key, text)) }
 }
 
-pub const CATALOG: [ItemDef; 61] = [
+pub const CATALOG: [ItemDef; 74] = [
     permanent(ItemId::Mewing, "Tutorial de Mewing", "Língua no céu da boca, 24 horas por dia.", Rank::Sub5, 25.0, 50,
         &[Effect::Passive(0.5), Effect::MewGain(0.25)]),
     permanent(ItemId::Sunscreen, "Protetor Solar FPS 70", "Envelhecer é para quem foi moggado.", Rank::Sub5, 45.0, 20,
@@ -389,4 +415,30 @@ pub const CATALOG: [ItemDef; 61] = [
         &[Effect::Underdog(0.04)]),
     consumable(ItemId::WoundedEgo, "Ego Ferido", "Ninguém mogga você duas vezes.", Rank::Htn, 2_500.0, 'e',
         "o próximo mog em quem te moggou por último é crítico garantido"),
+    // Cadeia: the "O sabonete" series, unlocked by the DLC.
+    permanent(ItemId::PrisonDlc, "DLC Cadeia", "Expansão baseada em \"O sabonete\". Nunca deixe cair.", Rank::Ltn, 1_000.0, 1, &[]),
+    permanent(ItemId::PullUpBar, "Barra do Três", "Um mês atrás o magrelo mal subia nessa barra.", Rank::Ltn, 260.0, 30,
+        &[Effect::Attack(4.0), Effect::Defense(2.0)]),
+    permanent(ItemId::Crutch, "Muleta do Mamão", "Sem ela ele não consegue nem levantar.", Rank::Mtn, 950.0, 10,
+        &[Effect::Defense(10.0), Effect::LossShield(0.02)]),
+    permanent(ItemId::CarrotHook, "Gancho do Cenoura", "Quase derrubou o Zero junto com o saco de pancada.", Rank::Htn, 3_200.0, 10,
+        &[Effect::Attack(12.0), Effect::WinBonus(0.04)]),
+    permanent(ItemId::MilEar, "Ouvido do Mil", "Ouve até tua respiração, guri.", Rank::Chadlite, 9_000.0, 5,
+        &[Effect::PerfectZone(0.006), Effect::CounterBonus(0.05)]),
+    permanent(ItemId::Folder77, "Pasta 77", "O que estava na torre, ninguém devia saber.", Rank::Chad, 22_000.0, 5,
+        &[Effect::Resilience(0.10), Effect::ImmunityBonus(1.0)]),
+    permanent(ItemId::PeraUniform, "Farda do Pera", "Quem veste manda na prisão. Por enquanto.", Rank::Gigachad, 90_000.0, 10,
+        &[Effect::Passive(35.0), Effect::Defense(40.0)]),
+    permanent(ItemId::TowerKey, "Chave da Torre", "A única chave da prisão. Agora quem manda é você.", Rank::Ascended, 300_000.0, 5,
+        &[Effect::Attack(120.0), Effect::LossShield(0.04)]),
+    consumable(ItemId::Soap, "Sabonete", "Caiu no chão do chuveiro. Alguém vai ter que pegar.", Rank::Mtn, 800.0, 'b',
+        "o próximo mog que acertar faz o alvo pegar o sabonete, mesmo sem PERFECT"),
+    consumable(ItemId::GreenPotion, "Poção Verde", "Dez minutos de monstro. Aqui, vinte segundos.", Rank::Htn, 2_500.0, 'v',
+        "por 20 s, poder x2"),
+    consumable(ItemId::CarrotPill, "Comprimido do Cenoura", "Com isso dorme um cavalo.", Rank::Htn, 2_000.0, 'z',
+        "o próximo mog que acertar faz o alvo dormir: +10 s de cooldown"),
+    consumable(ItemId::RedPotion, "Poção Vermelha", "Do doutor da outra prisão. Ninguém viu a cara dele.", Rank::Chadlite, 6_000.0, 'w',
+        "por 2 min, poder +40%"),
+    consumable(ItemId::BlackPotion, "Poção Negra", "Não dá força. Faz obedecer.", Rank::Chad, 15_000.0, 'n',
+        "quem o próximo mog acertar fica 60 s sem conseguir te mogar"),
 ];

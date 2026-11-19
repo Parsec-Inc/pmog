@@ -5,7 +5,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 19;
+pub const PROTOCOL_VERSION: u32 = 20;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -208,6 +208,23 @@ pub const ABALADO_DURATION: Duration = Duration::from_secs(20);
 pub const UPSET_DURATION: Duration = Duration::from_secs(30);
 /// After Perdeu Aura ends, it can't land again for this long, so one loss doesn't chain into more.
 pub const PERDEU_AURA_GRACE: Duration = Duration::from_secs(30);
+
+// Cadeia: the soap track
+/// Defense lost while the soap number is fresh on the forehead.
+pub const SOAP_DEF_CUT: f64 = 0.20;
+pub const SOAP_DURATION: Duration = Duration::from_secs(30);
+pub const GREEN_POTION_MULT: f64 = 2.0;
+pub const GREEN_POTION_DURATION: Duration = Duration::from_secs(20);
+pub const RED_POTION_MULT: f64 = 1.4;
+pub const RED_POTION_DURATION: Duration = Duration::from_secs(120);
+/// How long whoever drank the Black Potion can't mog the one who gave it.
+pub const BLACK_POTION_DURATION: Duration = Duration::from_secs(60);
+/// Cooldown added to whoever took Cenoura's pill.
+pub const PILL_SLEEP: Duration = Duration::from_secs(10);
+/// Marks given (soaps others picked up) needed for each prison title, from X9 to Mil.
+pub const PRISON_TITLE_MARKS: [u32; 6] = [1, 5, 15, 40, 100, 250];
+/// Marks given that make a clean forehead into Zero (Lucas).
+pub const ZERO_TITLE_MARKS: u32 = 67;
 /// Each level of Sessão de Terapia shortens debuffs by this share, up to the cap.
 pub const DEBUFF_CUT_CAP: f64 = 0.75;
 /// Each mog suffered in a row multiplies the next immunity by this.

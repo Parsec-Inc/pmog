@@ -187,6 +187,16 @@ pub struct Player {
     /// Last player who mogged this one.
     pub nemesis: Option<String>,
     pub achievements: Vec<Achievement>,
+    /// Cadeia: soaps this player had to pick up, the number on the forehead.
+    pub forehead: u32,
+    /// Cadeia: soaps this player made others pick up.
+    pub marks: u32,
+    /// Sabonete waiting for the next mog that lands.
+    pub soap_armed: bool,
+    /// Comprimido do Cenoura waiting for the next mog that lands.
+    pub pill_armed: bool,
+    /// Poção Negra waiting for the next mog that lands.
+    pub black_armed: bool,
 }
 
 impl Player {
@@ -196,6 +206,11 @@ impl Player {
 
     pub fn rank(&self) -> Rank {
         Rank::from_lifetime(self.lifetime)
+    }
+
+    /// Owns the Cadeia expansion.
+    pub fn has_prison_dlc(&self) -> bool {
+        self.level(ItemId::PrisonDlc) > 0
     }
 
     /// Derives combat and economy stats from owned items.
@@ -433,11 +448,14 @@ pub struct Peer {
     pub clan_tag: Option<String>,
     /// Fight statuses and when they end.
     pub statuses: Vec<(Status, Instant)>,
+    /// Cadeia: the number on the forehead and the soaps made.
+    pub forehead: u32,
+    pub marks: u32,
 }
 
 impl Peer {
     pub fn npc() -> Peer {
-        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new() }
+        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), forehead: 0, marks: 0 }
     }
 
     pub fn is_npc(&self) -> bool {
@@ -549,6 +567,12 @@ pub enum Status {
     PerdeuAura(u8),
     /// Beat a higher rank: power rises.
     EgoProibido(u8),
+    /// Picked up the soap: defense drops while the number is fresh.
+    Sabonete,
+    /// Drank the Black Potion: can't mog whoever gave it.
+    Obedecendo,
+    PocaoVerde,
+    PocaoVermelha,
 }
 
 impl Status {
@@ -557,6 +581,10 @@ impl Status {
             Status::Abalado => "ABALADO",
             Status::PerdeuAura(_) => "PERDEU AURA",
             Status::EgoProibido(_) => "EGO PROIBIDO",
+            Status::Sabonete => "PEGOU O SABONETE",
+            Status::Obedecendo => "OBEDECENDO",
+            Status::PocaoVerde => "POÇÃO VERDE",
+            Status::PocaoVermelha => "POÇÃO VERMELHA",
         }
     }
 
@@ -565,11 +593,15 @@ impl Status {
             Status::Abalado => format!("defesa -{:.0}%", ABALADO_DEF_CUT * 100.0),
             Status::PerdeuAura(n) => format!("poder -{:.0}%", gap_strength(n) * 100.0),
             Status::EgoProibido(n) => format!("poder +{:.0}%", gap_strength(n) * 100.0),
+            Status::Sabonete => format!("defesa -{:.0}%", SOAP_DEF_CUT * 100.0),
+            Status::Obedecendo => "não consegue mogar quem deu a poção".into(),
+            Status::PocaoVerde => format!("poder x{}", crate::utils::decimal(GREEN_POTION_MULT)),
+            Status::PocaoVermelha => format!("poder +{:.0}%", (RED_POTION_MULT - 1.0) * 100.0),
         }
     }
 
     pub fn is_bad(self) -> bool {
-        !matches!(self, Status::EgoProibido(_))
+        !matches!(self, Status::EgoProibido(_) | Status::PocaoVerde | Status::PocaoVermelha)
     }
 }
 
@@ -578,13 +610,19 @@ pub fn status_power_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
     statuses.into_iter().fold(1.0, |m, st| match st {
         Status::PerdeuAura(n) => m * (1.0 - gap_strength(n)),
         Status::EgoProibido(n) => m * (1.0 + gap_strength(n)),
-        Status::Abalado => m,
+        Status::PocaoVerde => m * GREEN_POTION_MULT,
+        Status::PocaoVermelha => m * RED_POTION_MULT,
+        Status::Abalado | Status::Sabonete | Status::Obedecendo => m,
     })
 }
 
 /// Defense multiplier from the given active statuses.
 pub fn status_defense_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
-    if statuses.into_iter().any(|st| st == Status::Abalado) { 1.0 - ABALADO_DEF_CUT } else { 1.0 }
+    statuses.into_iter().fold(1.0, |m, st| match st {
+        Status::Abalado => m * (1.0 - ABALADO_DEF_CUT),
+        Status::Sabonete => m * (1.0 - SOAP_DEF_CUT),
+        _ => m,
+    })
 }
 
 /// An edge from a consumable that is active right now.
@@ -599,6 +637,9 @@ pub enum Buff {
     Combo,
     AuraFarm,
     Ego,
+    Soap,
+    Pill,
+    BlackPotion,
 }
 
 impl Buff {
@@ -613,6 +654,9 @@ impl Buff {
             Buff::Combo => "COMBO 6-7",
             Buff::Ego => "EGO FERIDO",
             Buff::AuraFarm => "FARMANDO AURA",
+            Buff::Soap => "SABONETE",
+            Buff::Pill => "COMPRIMIDO",
+            Buff::BlackPotion => "POÇÃO NEGRA",
         }
     }
 
@@ -627,6 +671,9 @@ impl Buff {
             Buff::Combo => "+67% MP no próximo mog",
             Buff::Ego => "crítico garantido no troco",
             Buff::AuraFarm => "passivo x2",
+            Buff::Soap => "próximo alvo pega o sabonete",
+            Buff::Pill => "próximo alvo dorme",
+            Buff::BlackPotion => "próximo alvo te obedece",
         }
     }
 
@@ -641,6 +688,9 @@ impl Buff {
             Buff::Combo => ItemId::ComboSixSeven,
             Buff::Ego => ItemId::WoundedEgo,
             Buff::AuraFarm => ItemId::AuraFarm,
+            Buff::Soap => ItemId::Soap,
+            Buff::Pill => ItemId::CarrotPill,
+            Buff::BlackPotion => ItemId::BlackPotion,
         };
         crate::items::def(id).name
     }
@@ -714,7 +764,7 @@ impl Game {
     pub fn buffs(&self, now: Instant) -> Vec<(Buff, Option<Duration>)> {
         let p = &self.player;
         let left = |until: Instant| (now < until).then(|| until - now);
-        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape), (p.combo_armed, Buff::Combo), (p.ego_armed, Buff::Ego)];
+        let armed = [(p.shield_armed, Buff::Shield), (p.angle_armed, Buff::Angle), (p.mirror_armed, Buff::Mirror), (p.tape_armed, Buff::Tape), (p.combo_armed, Buff::Combo), (p.ego_armed, Buff::Ego), (p.soap_armed, Buff::Soap), (p.pill_armed, Buff::Pill), (p.black_armed, Buff::BlackPotion)];
         let timed = [(Buff::PreWorkout, left(self.preworkout_until)), (Buff::Cologne, left(self.cologne_until)), (Buff::AuraFarm, left(self.aura_farm_until))];
         armed
             .into_iter()
@@ -1193,6 +1243,8 @@ impl Game {
             immune_until: p.immune.then(|| now + ms(p.immune_ms.max(1))),
             clan_tag: p.clan_tag,
             statuses: p.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect(),
+            forehead: p.forehead,
+            marks: p.marks,
         }));
         self.peers = peers;
         self.selected = selected_id

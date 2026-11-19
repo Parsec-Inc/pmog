@@ -17,6 +17,7 @@ pub mod input;
 pub mod items;
 pub mod machine_id;
 pub mod notify;
+pub mod prison;
 pub mod protocol;
 pub mod save;
 pub mod server;

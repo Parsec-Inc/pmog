@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::duel::Minigame;
 use crate::game::{Player, Rank};
 use crate::items::{CATALOG, Category};
+use crate::prison::PrisonTitle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Achievement {
@@ -74,6 +75,12 @@ pub enum Achievement {
     MasterOfAll,
     Hunter,
     Platinum,
+    FirstSoap,
+    Forehead67,
+    FirstMark,
+    Marks100,
+    ZeroTitle,
+    PrisonSet,
 }
 
 /// Section an achievement is listed under.
@@ -85,11 +92,12 @@ pub enum Group {
     Mewing,
     Ranks,
     Duels,
+    Prison,
     Special,
 }
 
 impl Group {
-    pub const ALL: [Group; 7] = [Group::Mog, Group::Defense, Group::Shop, Group::Mewing, Group::Ranks, Group::Duels, Group::Special];
+    pub const ALL: [Group; 8] = [Group::Mog, Group::Defense, Group::Shop, Group::Mewing, Group::Ranks, Group::Duels, Group::Prison, Group::Special];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -99,6 +107,7 @@ impl Group {
             Group::Mewing => "Mewing e MP",
             Group::Ranks => "Ranks",
             Group::Duels => "Duelos",
+            Group::Prison => "Cadeia",
             Group::Special => "Especiais",
         }
     }
@@ -138,11 +147,11 @@ fn distinct_items(p: &Player) -> u64 {
 }
 
 fn armed_consumables(p: &Player) -> u64 {
-    [p.shield_armed, p.angle_armed, p.mirror_armed, p.tape_armed, p.combo_armed, p.ego_armed].into_iter().filter(|b| *b).count() as u64
+    [p.shield_armed, p.angle_armed, p.mirror_armed, p.tape_armed, p.combo_armed, p.ego_armed, p.soap_armed, p.pill_armed, p.black_armed].into_iter().filter(|b| *b).count() as u64
 }
 
 impl Achievement {
-    pub const ALL: [Achievement; 66] = {
+    pub const ALL: [Achievement; 72] = {
         use Achievement::*;
         [
             FirstMog, TenMogs, HundredMogs, FiveHundredMogs, ThousandMogs, Mogs6767, Streak5, Streak7, Streak10, Streak20, Streak67,
@@ -151,7 +160,7 @@ impl Achievement {
             BrainrotSet, Consumer, Pharmacy, Arsenal, ComboArmed, Mews1k, Mews10k, Mews67k, Savings, WealthMog, Millionaire,
             Exactly67, ReachChad, ReachGigachad, Ascend, ReachSigma, ReachAuraLord, ReachSixSeven, ReachMythic, ReachGreekGod,
             ReachCosmic, ReachTranscendent, FirstDuel, Duelist, Gladiator, ArenaChampion, PartOfIt, Flawless, SuddenDeath,
-            HighRoller, Rounds50, Versatile, MasterOfAll, Hunter, Platinum,
+            HighRoller, Rounds50, Versatile, MasterOfAll, FirstSoap, Forehead67, FirstMark, Marks100, ZeroTitle, PrisonSet, Hunter, Platinum,
         ]
     };
 
@@ -186,7 +195,7 @@ impl Achievement {
             Shopper200 => def(Shop, "Cliente VIP", "Compre 200 itens", Count(|p| p.purchases.into(), 200)),
             Collector => def(Shop, "Colecionador", "Tenha 20 itens diferentes", Count(distinct_items, 20)),
             FullCatalog => def(Shop, "Catálogo Completo", "Tenha todos os itens permanentes", Check(|p| owns_set(p, None))),
-            Maxed => def(Shop, "No Talo", "Leve um item ao nível máximo", Check(|p| CATALOG.iter().any(|d| !d.consumable() && p.level(d.id) >= d.max_level))),
+            Maxed => def(Shop, "No Talo", "Leve um item ao nível máximo", Check(|p| CATALOG.iter().any(|d| !d.effects.is_empty() && p.level(d.id) >= d.max_level))),
             FaceSet => def(Shop, "Rosto Esculpido", "Tenha todos os itens de Rosto", Check(|p| owns_set(p, Some(Category::Face)))),
             BodySet => def(Shop, "Frame Completo", "Tenha todos os itens de Físico", Check(|p| owns_set(p, Some(Category::Body)))),
             DripSet => def(Shop, "Drip Infinito", "Tenha todos os itens de Drip e Status", Check(|p| owns_set(p, Some(Category::Drip)))),
@@ -229,6 +238,12 @@ impl Achievement {
                 "Vença rodadas em todos os minigames",
                 Count(|p| p.minigames_won.len() as u64, Minigame::ALL.len() as u64),
             ),
+            FirstSoap => def(Prison, "Abaixou", "Pegue o sabonete pela primeira vez", Count(|p| p.forehead.into(), 1)),
+            Forehead67 => def(Prison, "Testa 6-7", "Fique com 67 na testa", Count(|p| p.forehead.into(), 67)),
+            FirstMark => def(Prison, "Primeiro Numerinho", "Faça alguém pegar o sabonete", Count(|p| p.marks.into(), 1)),
+            Marks100 => def(Prison, "Dono da Cela", "Faça 100 pessoas pegarem o sabonete", Count(|p| p.marks.into(), 100)),
+            ZeroTitle => def(Prison, "Nunca Se Abaixou", "Vire o Zero: 67 numerinhos marcados sem nenhum na testa", Check(|p| PrisonTitle::of(p.marks, p.forehead) == Some(PrisonTitle::Zero))),
+            PrisonSet => def(Prison, "Kit da Cadeia", "Tenha todos os itens permanentes da Cadeia", Check(|p| owns_set(p, Some(Category::Prison)))),
             Hunter => def(Special, "Caçador de Conquistas", "Desbloqueie 30 conquistas", Count(|p| p.achievements.len() as u64, 30)),
             Platinum => def(
                 Special,
@@ -253,7 +268,7 @@ impl Achievement {
 
     /// Hidden until unlocked.
     pub fn secret(self) -> bool {
-        matches!(self, Achievement::Exactly67 | Achievement::Streak67 | Achievement::Mews67k | Achievement::Mogs6767)
+        matches!(self, Achievement::Exactly67 | Achievement::Streak67 | Achievement::Mews67k | Achievement::Mogs6767 | Achievement::Forehead67)
     }
 
     /// Progress as (current, target), capped at the target; `None` for yes/no goals.
