@@ -92,6 +92,36 @@ fn the_inventory_lists_owned_items_under_the_feed() {
 }
 
 #[test]
+fn o_hides_the_inventory_panel_and_i_opens_it_by_tab() {
+    let mut a = playing();
+    a.game.player.items.insert(ItemId::Mewing, 3);
+    a.game.player.items.insert(ItemId::EnergyDrink, 2);
+    press(&mut a, KeyCode::Char('o'));
+    assert!(!a.inventory_panel && a.settings_changed);
+    assert!(!render(&a, 170, 42).contains("Inventário"));
+    press(&mut a, KeyCode::Char('o'));
+    assert!(render(&a, 170, 42).contains("Inventário"));
+
+    press(&mut a, KeyCode::Char('i'));
+    assert_eq!(a.game.overlay, Overlay::Inventory);
+    let screen = render(&a, 170, 42);
+    for needle in ["Rosto ·1", "Consumíveis ·1", "Tutorial de Mewing", "Cada nível comprado dá", "Nível 3 de 50."] {
+        assert!(screen.contains(needle), "missing {needle:?}\n{screen}");
+    }
+    assert!(!screen.contains("Energético  "), "other tabs stay out of the list");
+    press(&mut a, KeyCode::Left);
+    assert_eq!(a.game.inventory_tab, pmog::items::Category::Consumable);
+    assert!(render(&a, 170, 42).contains("Enter usa agora."));
+    press(&mut a, KeyCode::Left);
+    assert!(render(&a, 170, 42).contains("Nenhum item de Brainrot e 67 ainda."));
+    for (w, h) in [(50, 45), (80, 24), (20, 8)] {
+        render(&a, w, h);
+    }
+    press(&mut a, KeyCode::Esc);
+    assert_eq!(a.game.overlay, Overlay::None);
+}
+
+#[test]
 fn every_overlay_renders() {
     let mut a = playing();
     a.game.player.achievements.push(Achievement::FirstMog);

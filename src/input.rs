@@ -209,6 +209,16 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
         Overlay::Shop => shop_key(game, code),
         Overlay::Help => help_key(game, code),
         Overlay::Achievements | Overlay::Ranks => list_key(game, code),
+        Overlay::Inventory => match code {
+            KeyCode::Up | KeyCode::Char('k') => game.inventory_move(-1),
+            KeyCode::Down | KeyCode::Char('j') => game.inventory_move(1),
+            KeyCode::Left | KeyCode::BackTab | KeyCode::Char('h') => game.inventory_turn(-1),
+            KeyCode::Right | KeyCode::Tab | KeyCode::Char('l') => game.inventory_turn(1),
+            KeyCode::Enter | KeyCode::Char(' ') => game.inventory_use(),
+            KeyCode::Char('o') => app.toggle_inventory_panel(),
+            KeyCode::Esc | KeyCode::Char('i' | 'q') => game.overlay = Overlay::None,
+            _ => {}
+        },
         Overlay::Chat | Overlay::Clan => {} // handled above with raw keys
         Overlay::Stake => match code {
             KeyCode::Left | KeyCode::Char('h') => game.stake_move(-1),
@@ -247,6 +257,8 @@ fn playing_key(app: &mut App, code: KeyCode, now: Instant) {
             KeyCode::Down | KeyCode::Right | KeyCode::Char('j') => game.select_move(1),
             KeyCode::Char('m') => game.mew(),
             KeyCode::Char('l') => game.overlay = Overlay::Shop,
+            KeyCode::Char('i') => game.open_inventory(),
+            KeyCode::Char('o') => app.toggle_inventory_panel(),
             KeyCode::Char('c') => game.open_list(Overlay::Achievements),
             KeyCode::Char('p') => game.open_list(Overlay::Ranks),
             KeyCode::Char('s') => game.overlay = Overlay::Server,

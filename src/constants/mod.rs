@@ -60,6 +60,10 @@ pub const LOBBY_TALL: u16 = 30;
 /// Shop width below which the table drops the Requer and Efeito columns and shows them under it.
 pub const SHOP_FULL_TABLE_WIDTH: u16 = 76;
 pub const SHOP_DETAILS_ROWS: u16 = 5;
+/// Inventory screen width from which the picked item's details sit beside the list.
+pub const INVENTORY_SIDE_DETAILS_FROM: u16 = 90;
+/// Rows of item details under the inventory list on narrow screens.
+pub const INVENTORY_DETAILS_ROWS: u16 = 10;
 /// Below this height popups take the whole screen.
 pub const SHORT_HEIGHT: u16 = 24;
 /// Stacked game body tall enough for the bigger MOGAR button.

@@ -14,12 +14,12 @@ use std::time::{Duration, Instant};
 
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, BorderType, Cell, Clear, Gauge, LineGauge, List, ListItem, ListState, Paragraph, Row,
+    Block, BorderType, Borders, Cell, Clear, Gauge, LineGauge, List, ListItem, ListState, Padding, Paragraph, Row,
     Table, TableState, Tabs, Wrap,
 };
 
 use crate::achievements::Group;
-use crate::constants::{LOBBY_TALL, NARROW_FULL_HEADER_FROM, SHOP_DETAILS_ROWS, SHOP_FULL_TABLE_WIDTH, NARROW_DUEL_FEED_FROM, NARROW_FEED_ROWS, NARROW_ROOMY_BODY, NARROW_WIDTH, SHORT_HEIGHT, PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
+use crate::constants::{INVENTORY_DETAILS_ROWS, INVENTORY_SIDE_DETAILS_FROM, LOBBY_TALL, NARROW_FULL_HEADER_FROM, SHOP_DETAILS_ROWS, SHOP_FULL_TABLE_WIDTH, NARROW_DUEL_FEED_FROM, NARROW_FEED_ROWS, NARROW_ROOMY_BODY, NARROW_WIDTH, SHORT_HEIGHT, PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
 use crate::duel::Minigame;
 use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, Status, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
@@ -185,11 +185,15 @@ fn draw_game(f: &mut Frame, app: &App) {
             Layout::horizontal([Constraint::Percentage(26), Constraint::Percentage(48), Constraint::Percentage(26)]).areas(body);
         draw_peers(f, left, g, now);
         draw_center(f, center, g, now, full.height < SHORT_HEIGHT);
-        let rows = inventory_rows(g);
-        let inventory_h = (rows.len().max(1) as u16 + 2).min(right.height / 2);
-        let [feed, inventory] = Layout::vertical([Constraint::Min(0), Constraint::Length(inventory_h)]).areas(right);
-        draw_feed(f, feed, g);
-        draw_inventory(f, inventory, rows);
+        if app.inventory_panel {
+            let rows = inventory_rows(g);
+            let inventory_h = (rows.len().max(1) as u16 + 2).min(right.height / 2);
+            let [feed, inventory] = Layout::vertical([Constraint::Min(0), Constraint::Length(inventory_h)]).areas(right);
+            draw_feed(f, feed, g);
+            draw_inventory(f, inventory, rows);
+        } else {
+            draw_feed(f, right, g);
+        }
     }
 
     match g.overlay {
@@ -201,6 +205,7 @@ fn draw_game(f: &mut Frame, app: &App) {
         Overlay::Ranks => draw_ranks(f, g, now),
         Overlay::Help => draw_help(f, g),
         Overlay::Server => draw_server_panel(f, app),
+        Overlay::Inventory => draw_inventory_screen(f, g),
         Overlay::Stake => duel::draw_stake_picker(f, g),
         Overlay::Chat => chat::draw(f, app, now),
         Overlay::Clan => clan::draw(f, app, now),
@@ -596,19 +601,18 @@ fn inventory_rows(g: &Game) -> Vec<Row<'static>> {
     let (consumables, permanent): (Vec<&ItemDef>, Vec<&ItemDef>) = owned.partition(|d| d.consumable());
     // Permanent names line up with the consumable names after their key badge.
     let indent = if consumables.is_empty() { " " } else { "    " };
-    consumables
-        .into_iter()
-        .chain(permanent)
-        .map(|d| {
-            let level = g.player.level(d.id);
-            let (name, amount) = match d.usage {
-                Some((key, _)) => (Line::from(vec![Span::styled(format!(" {key} "), key_style()), Span::raw(format!(" {}", d.name))]), format!("x{level} ")),
-                None => (Line::raw(format!("{indent}{}", d.name)), format!("{level}/{} ", d.max_level)),
-            };
-            let color = if level >= d.max_level { Color::Yellow } else { Color::Gray };
-            Row::new([Cell::from(name), Cell::from(Line::styled(amount, fg(color)).right_aligned())])
-        })
-        .collect()
+    consumables.into_iter().chain(permanent).map(|d| item_row(g, d, indent)).collect()
+}
+
+/// One owned item: key badge or `indent`, name, and count or level (yellow when maxed).
+fn item_row(g: &Game, def: &ItemDef, indent: &str) -> Row<'static> {
+    let level = g.player.level(def.id);
+    let (name, amount) = match def.usage {
+        Some((key, _)) => (Line::from(vec![Span::styled(format!(" {key} "), key_style()), Span::raw(format!(" {}", def.name))]), format!("x{level} ")),
+        None => (Line::raw(format!("{indent}{}", def.name)), format!("{level}/{} ", def.max_level)),
+    };
+    let color = if level >= def.max_level { Color::Yellow } else { Color::Gray };
+    Row::new([Cell::from(name), Cell::from(Line::styled(amount, fg(color)).right_aligned())])
 }
 
 /// Inventory box under the feed; rows that do not fit fold into a "+N itens" line.
@@ -616,7 +620,7 @@ fn draw_inventory(f: &mut Frame, area: Rect, mut rows: Vec<Row<'static>>) {
     if area.height < 3 {
         return;
     }
-    let block = Block::bordered().title(" Inventário ");
+    let block = Block::bordered().title(" Inventário ").title_bottom(Line::styled(" I abre · O esconde ", fg(Color::DarkGray)).right_aligned());
     if rows.is_empty() {
         f.render_widget(Paragraph::new(Line::styled(" Nada ainda. L abre a loja.", fg(Color::DarkGray))).block(block), area);
         return;
@@ -645,6 +649,7 @@ fn game_hints(g: &Game) -> Vec<KeyHint> {
         hint("↑↓", "alvo"),
         hint("M", "mewar"),
         hint("L", "loja"),
+        hint("I", "inventário"),
         hint("C", "conquistas"),
         hint("P", "ranks"),
         hint("S", "servidor"),
@@ -848,6 +853,60 @@ fn draw_ranks(f: &mut Frame, g: &Game, now: Instant) {
     draw_list_popup(f, g, &title, lines);
 }
 
+/// Full-screen inventory: owned items of one category, with the picked one explained.
+fn draw_inventory_screen(f: &mut Frame, g: &Game) {
+    let popup = popup_area(f.area(), 80, 80);
+    f.render_widget(Clear, popup);
+    let block = Block::bordered()
+        .border_type(BorderType::Double)
+        .border_style(fg(Color::Cyan))
+        .title(Span::styled(" Inventário ", fg(Color::Cyan).bold()))
+        .title_bottom(Line::styled(" ←→ aba · ↑↓ item · Enter usa · O painel · Esc fecha ", fg(Color::DarkGray)));
+    let inner = block.inner(popup);
+    f.render_widget(block, popup);
+    let [tabs, _, body] = Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+    let owned = |c: Category| c.items().filter(|i| g.player.level(CATALOG[*i].id) > 0).count();
+    let tabs_line = category_tabs(g.inventory_tab, Color::Cyan, owned);
+    if tabs_line.width() > tabs.width as usize {
+        let at = Category::ALL.iter().position(|c| *c == g.inventory_tab).unwrap_or(0);
+        f.render_widget(pager_line(g.inventory_tab.label(), at, Category::ALL.len()), tabs);
+    } else {
+        f.render_widget(tabs_line, tabs);
+    }
+    let items = g.inventory_items();
+    let Some(selected) = g.inventory_selected() else {
+        let text = format!("Nenhum item de {} ainda. L abre a loja.", g.inventory_tab.label());
+        f.render_widget(Paragraph::new(Line::styled(text, fg(Color::DarkGray))).centered(), body);
+        return;
+    };
+    let [list, details] = if body.width >= INVENTORY_SIDE_DETAILS_FROM {
+        Layout::horizontal([Constraint::Min(0), Constraint::Length(SHOP_PREVIEW_WIDTH)]).areas(body)
+    } else {
+        Layout::vertical([Constraint::Min(3), Constraint::Length(INVENTORY_DETAILS_ROWS)]).areas(body)
+    };
+    let rows: Vec<Row> = items.iter().map(|i| item_row(g, &CATALOG[*i], " ")).collect();
+    let table = Table::new(rows, [Constraint::Min(0), Constraint::Length(7)])
+        .row_highlight_style(Style::new().bg(Color::Rgb(15, 45, 55)))
+        .highlight_symbol("▶ ");
+    let mut state = TableState::default().with_selected(items.iter().position(|i| *i == selected));
+    f.render_stateful_widget(table, list, &mut state);
+
+    let def = &CATALOG[selected];
+    let level = g.player.level(def.id);
+    let mut lines = vec![Line::styled(def.name, fg(Color::Yellow).bold()), Line::styled(def.flavor, fg(Color::Gray).italic()), Line::raw("")];
+    lines.extend(item_use_lines(def));
+    lines.push(Line::raw(""));
+    if def.consumable() {
+        lines.push(Line::raw(format!(" Você tem {level}.")));
+        lines.push(Line::styled(" Enter usa agora.", fg(Color::Green)));
+    } else {
+        lines.push(Line::raw(format!(" Nível {level} de {}.", def.max_level)));
+    }
+    let side = if body.width >= INVENTORY_SIDE_DETAILS_FROM { Borders::LEFT } else { Borders::TOP };
+    let block = Block::new().borders(side).border_style(fg(Color::DarkGray)).padding(Padding::horizontal(1));
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }).block(block), details);
+}
+
 fn draw_shop(f: &mut Frame, g: &Game) {
     let popup = popup_area(f.area(), 94, 88);
     f.render_widget(Clear, popup);
@@ -931,13 +990,18 @@ fn draw_shop(f: &mut Frame, g: &Game) {
 
 /// Category tabs of the shop; each shows how many of its items can be bought now.
 fn shop_tabs(g: &Game, current: Category) -> Line<'static> {
+    category_tabs(current, Color::Magenta, |c| c.items().filter(|i| CATALOG[*i].purchase_block(&g.player).is_none()).count())
+}
+
+/// One tab per category with `count` next to its label; tabs at zero are dimmed.
+fn category_tabs(current: Category, accent: Color, count: impl Fn(Category) -> usize) -> Line<'static> {
     let mut spans = vec![Span::raw(" ")];
     for category in Category::ALL {
-        let ready = category.items().filter(|i| CATALOG[*i].purchase_block(&g.player).is_none()).count();
-        let label = if ready > 0 { format!(" {} ·{ready} ", category.label()) } else { format!(" {} ", category.label()) };
+        let n = count(category);
+        let label = if n > 0 { format!(" {} ·{n} ", category.label()) } else { format!(" {} ", category.label()) };
         let style = if category == current {
-            Style::new().bold().fg(Color::Black).bg(Color::Magenta)
-        } else if ready > 0 {
+            Style::new().bold().fg(Color::Black).bg(accent)
+        } else if n > 0 {
             fg(Color::White)
         } else {
             fg(Color::DarkGray)
@@ -1061,6 +1125,22 @@ fn sprite_lines(frame: &sprites::Frame, dim: bool) -> Vec<Line<'static>> {
         .collect()
 }
 
+/// "O QUE FAZ" section of an item: its key and use, or what each level adds.
+fn item_use_lines(def: &ItemDef) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::styled("O QUE FAZ", fg(Color::Magenta).bold())];
+    match def.usage {
+        Some((key, text)) => {
+            lines.push(Line::raw(format!(" Tecla {key}: {text}.")));
+            lines.push(Line::styled(" Fica no inventário até você usar.", fg(Color::Gray)));
+        }
+        None => {
+            lines.push(Line::raw(" Cada nível comprado dá:"));
+            lines.extend(def.effects.iter().map(|e| Line::raw(format!("  • {}", e.describe()))));
+        }
+    }
+    lines
+}
+
 fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
     let p = &g.player;
     let level = p.level(def.id);
@@ -1075,17 +1155,7 @@ fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
     lines.push(Line::styled(def.flavor, fg(Color::Gray).italic()).centered());
     lines.push(Line::raw(""));
 
-    lines.push(heading("O QUE FAZ"));
-    match def.usage {
-        Some((key, text)) => {
-            lines.push(Line::raw(format!(" Tecla {key}: {text}.")));
-            lines.push(Line::styled(" Fica no inventário até você usar.", fg(Color::Gray)));
-        }
-        None => {
-            lines.push(Line::raw(" Cada nível comprado dá:"));
-            lines.extend(def.effects.iter().map(|e| Line::raw(format!("  • {}", e.describe()))));
-        }
-    }
+    lines.extend(item_use_lines(def));
     lines.push(Line::raw(""));
 
     lines.push(heading("SITUAÇÃO"));
