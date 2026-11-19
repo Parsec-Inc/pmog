@@ -4,9 +4,18 @@
 use ratatui::prelude::*;
 
 use super::burst::hash;
+use crate::dlc::{self, UseFx};
 use crate::items::{self, ItemId};
 
+/// The DLC's animation for `item`, if a DLC owns it.
+fn dlc_fx(item: ItemId) -> Option<UseFx> {
+    dlc::of_item(item).and_then(|d| d.use_fx(item))
+}
+
 fn color(item: ItemId) -> (u8, u8, u8) {
+    if let Some(fx) = dlc_fx(item) {
+        return fx.color;
+    }
     match item {
         ItemId::EnergyDrink => (255, 220, 40),
         ItemId::SigmaShield => (80, 200, 255),
@@ -23,6 +32,9 @@ fn color(item: ItemId) -> (u8, u8, u8) {
 }
 
 pub fn duration_ms(item: ItemId) -> u64 {
+    if let Some(fx) = dlc_fx(item) {
+        return fx.duration_ms;
+    }
     match item {
         ItemId::EnergyDrink => 900,
         ItemId::SigmaShield => 1100,
@@ -40,6 +52,9 @@ pub fn duration_ms(item: ItemId) -> u64 {
 
 /// Shake strength: jolting items rattle the screen, calm ones barely do.
 pub fn shake_power(item: ItemId) -> f64 {
+    if let Some(fx) = dlc_fx(item) {
+        return fx.shake;
+    }
     match item {
         ItemId::ComboSixSeven => 1.8,
         ItemId::WoundedEgo => 1.4,
@@ -55,7 +70,7 @@ pub fn shake_power(item: ItemId) -> f64 {
 }
 
 /// Where a cell is, in cell units (`y` counts half rows so distances are round).
-pub(super) struct Cell {
+pub struct Cell {
     pub col: u16,
     pub row: u16,
     pub x: f64,
@@ -66,7 +81,7 @@ pub(super) struct Cell {
     pub age: u64,
 }
 
-pub(super) fn noise(a: u64, b: u64, c: u64) -> f64 {
+pub(crate) fn noise(a: u64, b: u64, c: u64) -> f64 {
     hash(a, b, c) as f64 / 97.0
 }
 
@@ -220,7 +235,10 @@ fn paint(item: ItemId, c: &Cell) -> Option<(&'static str, f64)> {
 pub fn render(buf: &mut Buffer, area: Rect, item: ItemId, age_ms: u64) {
     let def = items::def(item);
     let label = format!("{} · {}", def.name.to_uppercase(), def.usage.map_or("", |u| u.1));
-    draw(buf, area, duration_ms(item), age_ms, color(item), &label, |c| paint(item, c));
+    match dlc_fx(item) {
+        Some(fx) => draw(buf, area, fx.duration_ms, age_ms, fx.color, &label, fx.paint),
+        None => draw(buf, area, duration_ms(item), age_ms, color(item), &label, |c| paint(item, c)),
+    }
 }
 
 /// Paints `paint`'s glyphs over the blank cells of `area` for `dur` ms, with a typed-out banner on top.
@@ -272,7 +290,7 @@ mod tests {
     fn every_consumable_animates_and_ends() {
         let area = Rect::new(0, 0, 100, 30);
         let consumables: Vec<_> = CATALOG.iter().filter(|d| d.consumable()).collect();
-        assert_eq!(consumables.len(), 11);
+        assert_eq!(consumables.len(), 16);
         for def in consumables {
             let id = def.id;
             let painted = |age| {

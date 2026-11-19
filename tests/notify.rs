@@ -69,13 +69,15 @@ fn state(invites: Vec<InviteView>) -> ServerMsg {
         invites,
         outgoing: None,
         queued: None,
+        queued_group: false,
         rtt_ms: 0.0,
         clan_tag: None,
+        mood: None,
     }))
 }
 
 fn invite(peer: i64, name: &str) -> InviteView {
-    InviteView { peer, name: name.into(), fraction: 0.5, stake: 120.0, expires_ms: 10_000, draft: false }
+    InviteView { peer, name: name.into(), fraction: 0.5, stake: 120.0, expires_ms: 10_000, draft: false, others: Vec::new() }
 }
 
 fn offline_app() -> App {

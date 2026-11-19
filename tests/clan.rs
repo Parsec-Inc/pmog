@@ -92,10 +92,10 @@ fn clanmates_cannot_bet_but_can_duel_for_fun() {
     let mut w = world(2, now);
     rich(&mut w, &[1, 2]);
     clan(&mut w, &[1, 2], 1, "MEW");
-    w.challenge(1, 2, 0.5, false, now);
+    w.challenge(1, vec![2], 0.5, false, now);
     assert!(w.view(2, now).unwrap().invites.is_empty());
     assert!(texts(&w, 1).iter().any(|t| t.contains("amistoso")));
-    w.challenge(1, 2, 0.0, false, now);
+    w.challenge(1, vec![2], 0.0, false, now);
     assert_eq!(w.view(2, now).unwrap().invites.len(), 1);
     w.answer(2, 1, true, now);
     assert_eq!(w.duel_count(), 1);
@@ -107,7 +107,7 @@ fn a_bet_invite_dies_if_the_players_become_clanmates() {
     let now = Instant::now();
     let mut w = world(2, now);
     rich(&mut w, &[1, 2]);
-    w.challenge(1, 2, 0.5, false, now);
+    w.challenge(1, vec![2], 0.5, false, now);
     clan(&mut w, &[1, 2], 1, "MEW");
     w.answer(2, 1, true, now);
     assert_eq!(w.duel_count(), 0);
@@ -120,7 +120,7 @@ fn different_clans_can_bet() {
     rich(&mut w, &[1, 2]);
     clan(&mut w, &[1], 1, "AAA");
     clan(&mut w, &[2], 2, "BBB");
-    w.challenge(1, 2, 0.5, false, now);
+    w.challenge(1, vec![2], 0.5, false, now);
     w.answer(2, 1, true, now);
     assert_eq!(w.duel_count(), 1);
 }
@@ -130,11 +130,11 @@ fn the_queue_never_pairs_clanmates() {
     let now = Instant::now();
     let mut w = world(2, now);
     clan(&mut w, &[1, 2], 1, "MEW");
-    w.queue(1, Some(0.0), false, now);
-    w.queue(2, Some(0.0), false, now);
+    w.queue(1, Some(0.0), false, false, now);
+    w.queue(2, Some(0.0), false, false, now);
     assert_eq!(w.duel_count(), 0);
     let later = now + std::time::Duration::from_secs(60);
-    w.queue(2, Some(0.0), false, later);
+    w.queue(2, Some(0.0), false, false, later);
     assert_eq!(w.duel_count(), 0, "not even after a long wait");
 }
 
@@ -143,9 +143,9 @@ fn the_queue_skips_clanmates_for_an_outsider() {
     let now = Instant::now();
     let mut w = world(3, now);
     clan(&mut w, &[1, 2], 1, "MEW");
-    w.queue(1, Some(0.0), false, now);
-    w.queue(2, Some(0.0), false, now);
-    w.queue(3, Some(0.0), false, now);
+    w.queue(1, Some(0.0), false, false, now);
+    w.queue(2, Some(0.0), false, false, now);
+    w.queue(3, Some(0.0), false, false, now);
     assert_eq!(w.duel_count(), 1);
     assert!(w.in_duel(3));
 }
@@ -414,6 +414,9 @@ fn playing(own_tag: Option<&str>, rival_tag: Option<&str>) -> App {
         immune_ms: 0,
         clan_tag: tag.map(Into::into),
         statuses: Vec::new(),
+        dlc: Default::default(),
+        avatar: Default::default(),
+        mood: None,
     };
     let view = StateView {
         me: Player { name: "Igor".into(), ..Default::default() },
@@ -431,8 +434,10 @@ fn playing(own_tag: Option<&str>, rival_tag: Option<&str>) -> App {
         invites: Vec::new(),
         outgoing: None,
         queued: None,
+        queued_group: false,
         rtt_ms: 0.0,
         clan_tag: own_tag.map(Into::into),
+        mood: None,
     };
     app.game.apply(ServerMsg::State(Box::new(view)), Instant::now());
     app

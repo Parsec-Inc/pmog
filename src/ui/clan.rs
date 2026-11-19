@@ -7,7 +7,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph, Wrap};
 
 use super::flair::{name_spans, tag_span};
-use super::{fg, rank_color};
+use super::{centered, fg, rank_color};
 use crate::app::App;
 use crate::clan::{ClanCmd, ClanView, MemberView, valid_clan_name, valid_clan_tag};
 use crate::constants::*;
@@ -120,11 +120,6 @@ pub fn sorted_members(clan: &ClanView) -> Vec<&MemberView> {
 /// Online players who could be invited.
 pub fn candidates(game: &Game) -> Vec<(PlayerId, &str)> {
     game.peers.iter().filter(|p| !p.is_npc() && p.clan_tag.is_none()).map(|p| (p.id, p.name.as_str())).collect()
-}
-
-fn centered(area: Rect, width: u16, height: u16) -> Rect {
-    let (w, h) = (area.width.min(width), area.height.min(height));
-    Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h)
 }
 
 pub fn draw(f: &mut Frame, app: &App, now: Instant) {

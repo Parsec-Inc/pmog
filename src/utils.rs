@@ -55,6 +55,11 @@ pub fn decimal(v: f64) -> String {
 }
 
 /// This computer's address on the local network (no packet is sent).
+/// `text` with non-breaking spaces, so it wraps as one word.
+pub fn nbsp(text: &str) -> String {
+    text.replace(' ', "\u{a0}")
+}
+
 pub fn lan_ip() -> Option<std::net::IpAddr> {
     let socket = std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).ok()?;
     socket.connect((std::net::Ipv4Addr::new(10, 255, 255, 255), 1)).ok()?;

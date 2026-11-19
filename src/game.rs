@@ -6,9 +6,12 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::avatar::{self, Avatar, Editor, Mood, Part};
 use crate::constants::*;
+use crate::constants::avatar::{BLINK_EVERY_MS, BLINK_MS};
 pub use crate::achievements::Achievement;
 pub use crate::items::{CATALOG, Category, Effect, ItemDef, ItemId};
+use crate::dlc::{DlcBuff, DlcId, DlcProfile, DlcPublic, DlcStatus};
 use crate::duel::{Board, DuelKey, DuelView, MacrosProgress, Minigame, Phase, TypingProgress, rhythm_fresh, rhythm_len, typing_stats};
 use crate::notify::Notice;
 use crate::protocol::{ClientMsg, InviteView, NPC_TARGET, PlayerId, ServerMsg, StateView};
@@ -187,6 +190,12 @@ pub struct Player {
     /// Last player who mogged this one.
     pub nemesis: Option<String>,
     pub achievements: Vec<Achievement>,
+    /// What each DLC saves.
+    pub dlc: DlcProfile,
+    /// Face parts worn.
+    pub avatar: Avatar,
+    /// Face parts bought; free ones are always owned.
+    pub avatar_parts: Vec<Part>,
 }
 
 impl Player {
@@ -196,6 +205,15 @@ impl Player {
 
     pub fn rank(&self) -> Rank {
         Rank::from_lifetime(self.lifetime)
+    }
+
+    pub fn owns_part(&self, part: Part) -> bool {
+        avatar::def(part).free() || self.avatar_parts.contains(&part)
+    }
+
+    /// Bought the DLC `id`.
+    pub fn owns_dlc(&self, id: DlcId) -> bool {
+        self.level(crate::dlc::get(id).unlock_item()) > 0
     }
 
     /// Derives combat and economy stats from owned items.
@@ -218,7 +236,7 @@ impl Player {
             resilience: 0.0,
         };
         let mut aura = 1.0;
-        for def in &CATALOG {
+        for def in CATALOG.iter() {
             let n = self.level(def.id).min(def.max_level);
             let k = n as f64;
             for effect in def.effects.iter().filter(|_| n > 0) {
@@ -345,6 +363,10 @@ pub enum Overlay {
     Inventory,
     /// Choosing how much to bet before a challenge or the queue.
     Stake,
+    /// Own face: try on, buy and wear parts.
+    Avatar,
+    /// A player's profile; `None` is the own one.
+    Profile(Option<PlayerId>),
 }
 
 /// How well the button press was timed; multiplies the MP reward.
@@ -435,11 +457,21 @@ pub struct Peer {
     pub clan_tag: Option<String>,
     /// Fight statuses and when they end.
     pub statuses: Vec<(Status, Instant)>,
+    /// What each DLC shows about them.
+    pub dlc: DlcPublic,
+    pub avatar: Avatar,
+    /// The face's reaction to the last mog, and until when.
+    pub mood: Option<(Mood, Instant)>,
 }
 
 impl Peer {
+    /// The face's reaction at `now`, if one is running.
+    pub fn reacting(&self, now: Instant) -> Option<Mood> {
+        self.mood.filter(|(_, until)| now < *until).map(|(mood, _)| mood)
+    }
+
     pub fn npc() -> Peer {
-        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new() }
+        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: DlcPublic::default(), avatar: Default::default(), mood: None }
     }
 
     pub fn is_npc(&self) -> bool {
@@ -507,14 +539,22 @@ pub struct Game {
     pub invites: Vec<InviteView>,
     pub outgoing: Option<InviteView>,
     pub queued: Option<f64>,
+    /// The queue entry waits for a group duel.
+    pub queued_group: bool,
     /// Selected bet in the stake picker, as an index of `STAKE_FRACTIONS`.
     pub stake_cursor: usize,
     /// Who the stake picker challenges; `None` means the queue.
     pub stake_target: Option<PlayerId>,
-    /// Focused row of the stake picker: the bet, then the minigame mode.
+    /// Focused row of the stake picker: the bet, the minigame mode, then the players.
     pub stake_row: usize,
     /// Each side picks the minigames instead of drawing them.
     pub stake_draft: bool,
+    /// Everyone the stake picker challenges (more than one makes a group duel).
+    pub stake_invited: Vec<PlayerId>,
+    /// Player under the cursor on the players row, as an index of `stake_candidates`.
+    pub stake_pick: usize,
+    /// The queue waits for a group duel instead of one rival.
+    pub stake_group: bool,
     /// Last measured round trip to the server.
     pub rtt: Duration,
     pub chat: crate::chat::ChatClient,
@@ -538,6 +578,9 @@ pub struct Game {
     /// Fight statuses and when they end.
     pub statuses: Vec<(Status, Instant)>,
     logged: usize,
+    pub avatar_editor: Editor,
+    /// The own face's reaction to the last mog, and until when.
+    mood: Option<(Mood, Instant)>,
 }
 
 /// Share of power a rank-gap status changes, for a gap of `n` ranks (0 means none).
@@ -555,6 +598,8 @@ pub enum Status {
     PerdeuAura(u8),
     /// Beat a higher rank: power rises.
     EgoProibido(u8),
+    /// A status from a DLC.
+    Dlc(DlcStatus),
 }
 
 impl Status {
@@ -563,6 +608,7 @@ impl Status {
             Status::Abalado => "ABALADO",
             Status::PerdeuAura(_) => "PERDEU AURA",
             Status::EgoProibido(_) => "EGO PROIBIDO",
+            Status::Dlc(st) => st.label(),
         }
     }
 
@@ -571,11 +617,16 @@ impl Status {
             Status::Abalado => format!("defesa -{:.0}%", ABALADO_DEF_CUT * 100.0),
             Status::PerdeuAura(n) => format!("poder -{:.0}%", gap_strength(n) * 100.0),
             Status::EgoProibido(n) => format!("poder +{:.0}%", gap_strength(n) * 100.0),
+            Status::Dlc(st) => st.effect(),
         }
     }
 
     pub fn is_bad(self) -> bool {
-        !matches!(self, Status::EgoProibido(_))
+        match self {
+            Status::EgoProibido(_) => false,
+            Status::Dlc(st) => st.is_bad(),
+            _ => true,
+        }
     }
 }
 
@@ -584,13 +635,18 @@ pub fn status_power_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
     statuses.into_iter().fold(1.0, |m, st| match st {
         Status::PerdeuAura(n) => m * (1.0 - gap_strength(n)),
         Status::EgoProibido(n) => m * (1.0 + gap_strength(n)),
+        Status::Dlc(st) => m * st.power_mult(),
         Status::Abalado => m,
     })
 }
 
 /// Defense multiplier from the given active statuses.
 pub fn status_defense_mult(statuses: impl IntoIterator<Item = Status>) -> f64 {
-    if statuses.into_iter().any(|st| st == Status::Abalado) { 1.0 - ABALADO_DEF_CUT } else { 1.0 }
+    statuses.into_iter().fold(1.0, |m, st| match st {
+        Status::Abalado => m * (1.0 - ABALADO_DEF_CUT),
+        Status::Dlc(st) => m * st.defense_mult(),
+        _ => m,
+    })
 }
 
 /// An edge from a consumable that is active right now.
@@ -605,6 +661,8 @@ pub enum Buff {
     Combo,
     AuraFarm,
     Ego,
+    /// A consumable from a DLC.
+    Dlc(DlcBuff),
 }
 
 impl Buff {
@@ -619,6 +677,7 @@ impl Buff {
             Buff::Combo => "COMBO 6-7",
             Buff::Ego => "EGO FERIDO",
             Buff::AuraFarm => "FARMANDO AURA",
+            Buff::Dlc(b) => b.label(),
         }
     }
 
@@ -633,6 +692,7 @@ impl Buff {
             Buff::Combo => "+67% MP no próximo mog",
             Buff::Ego => "crítico garantido no troco",
             Buff::AuraFarm => "passivo x2",
+            Buff::Dlc(b) => b.effect(),
         }
     }
 
@@ -647,6 +707,7 @@ impl Buff {
             Buff::Combo => ItemId::ComboSixSeven,
             Buff::Ego => ItemId::WoundedEgo,
             Buff::AuraFarm => ItemId::AuraFarm,
+            Buff::Dlc(b) => b.item(),
         };
         crate::items::def(id).name
     }
@@ -692,10 +753,14 @@ impl Game {
             invites: Vec::new(),
             outgoing: None,
             queued: None,
+            queued_group: false,
             stake_cursor: 1,
             stake_target: None,
             stake_row: 0,
             stake_draft: false,
+            stake_invited: Vec::new(),
+            stake_pick: 0,
+            stake_group: false,
             rtt: Duration::ZERO,
             chat: Default::default(),
             clan: Default::default(),
@@ -709,6 +774,8 @@ impl Game {
             timed_buffs: Vec::new(),
             statuses: Vec::new(),
             logged: 0,
+            avatar_editor: Default::default(),
+            mood: None,
         }
     }
 
@@ -727,6 +794,7 @@ impl Game {
         armed
             .into_iter()
             .filter_map(|(on, b)| on.then_some((b, None)))
+            .chain(crate::dlc::ALL.iter().flat_map(|d| d.armed(p)).map(|b| (Buff::Dlc(b), None)))
             .chain(timed.into_iter().filter_map(|(b, l)| l.map(|l| (b, Some(l)))))
             .collect()
     }
@@ -796,6 +864,63 @@ impl Game {
         self.help_scroll = 0;
     }
 
+    /// The own face's expression at `now`: a recent reaction, a blink, or neutral.
+    pub fn mood(&self, now: Instant) -> Mood {
+        match self.mood {
+            Some((mood, until)) if now < until => mood,
+            _ => self.idle_mood(now),
+        }
+    }
+
+    /// A face with nothing to react to: blinking now and then.
+    pub fn idle_mood(&self, now: Instant) -> Mood {
+        if now.saturating_duration_since(self.started).as_millis() % BLINK_EVERY_MS < BLINK_MS { Mood::Blink } else { Mood::Neutral }
+    }
+
+    /// The own player as others see them, for the profile; the client does not know its own id.
+    pub fn own_peer(&self, now: Instant) -> Peer {
+        let (p, s) = (&self.player, self.player.stats());
+        Peer {
+            id: NPC_TARGET,
+            name: p.name.clone(),
+            mp: p.mp,
+            lifetime: p.lifetime,
+            attack: s.attack,
+            defense: s.defense,
+            streak: self.streak,
+            in_duel: self.duel.is_some(),
+            immune_until: None,
+            clan_tag: self.clan_tag.clone(),
+            statuses: self.active_statuses(now).into_iter().map(|(st, left)| (st, now + left)).collect(),
+            dlc: crate::dlc::public(p),
+            avatar: p.avatar,
+            mood: self.mood,
+        }
+    }
+
+    pub fn open_avatar(&mut self) {
+        self.avatar_editor.open(&self.player.avatar);
+        self.overlay = Overlay::Avatar;
+    }
+
+    pub fn avatar_enter(&mut self) {
+        self.outbox.extend(self.avatar_editor.enter(&self.player));
+    }
+
+    /// Opens the profile of the selected player, or the own one when the bot is selected.
+    pub fn open_profile(&mut self) {
+        let id = self.peers.get(self.selected).filter(|p| !p.is_npc()).map(|p| p.id);
+        self.overlay = Overlay::Profile(id);
+    }
+
+    /// Moves the open profile to the next player, the own one counting as the first.
+    pub fn profile_step(&mut self, delta: isize) {
+        let Overlay::Profile(current) = self.overlay else { return };
+        let ids: Vec<Option<PlayerId>> = std::iter::once(None).chain(self.peers.iter().filter(|p| !p.is_npc()).map(|p| Some(p.id))).collect();
+        let at = ids.iter().position(|id| *id == current).unwrap_or(0) as isize;
+        self.overlay = Overlay::Profile(ids[(at + delta).rem_euclid(ids.len() as isize) as usize]);
+    }
+
     /// Opens a scrolling list (achievements or ranks) from the top.
     pub fn open_list(&mut self, overlay: Overlay) {
         self.list_scroll = 0;
@@ -821,7 +946,7 @@ impl Game {
 
     /// Switches to the first item of the previous or next shop tab.
     pub fn shop_tab(&mut self, delta: isize) {
-        let tabs = Category::ALL;
+        let tabs = Category::all();
         let at = tabs.iter().position(|c| *c == self.shop_category()).unwrap_or(0) as isize;
         let next = tabs[(at + delta).rem_euclid(tabs.len() as isize) as usize];
         self.shop_cursor = next.items().next().unwrap_or(0);
@@ -957,42 +1082,83 @@ impl Game {
     /// Leaves the queue, or opens the bet picker to join it.
     pub fn toggle_queue(&mut self) {
         if self.queued.is_some() {
-            self.outbox.push(ClientMsg::Queue { fraction: None, draft: false });
+            self.outbox.push(ClientMsg::Queue { fraction: None, draft: false, group: false });
         } else {
             self.open_stake(None);
         }
     }
 
-    /// Opens the stake picker on the bet row, with drawn minigames.
+    /// Opens the stake picker on the bet row, with drawn minigames and only `target` invited.
     fn open_stake(&mut self, target: Option<PlayerId>) {
         self.stake_target = target;
+        self.stake_invited = target.into_iter().collect();
+        self.stake_pick = self.stake_candidates().iter().position(|p| Some(p.id) == target).unwrap_or(0);
         self.stake_row = 0;
         self.stake_draft = false;
+        self.stake_group = false;
         self.overlay = Overlay::Stake;
     }
 
-    /// Changes the bet, or the minigame mode on the second row.
-    pub fn stake_move(&mut self, delta: isize) {
-        if self.stake_row == 1 {
-            self.stake_draft = delta > 0;
-            return;
-        }
-        let len = STAKE_FRACTIONS.len() as isize;
-        self.stake_cursor = (self.stake_cursor as isize + delta).clamp(0, len - 1) as usize;
+    /// Players who can be invited to the duel being set up.
+    pub fn stake_candidates(&self) -> Vec<&Peer> {
+        self.peers.iter().filter(|p| !p.is_npc() && !p.in_duel).collect()
     }
 
-    /// Moves focus between the bet and the minigame mode rows.
+    /// A group duel is being set up: several players invited, or the group queue.
+    pub fn stake_is_group(&self) -> bool {
+        if self.stake_target.is_some() { self.stake_invited.len() > 1 } else { self.stake_group }
+    }
+
+    /// Changes the bet, the minigame mode, or the player under the cursor (the queue mode, for the queue).
+    pub fn stake_move(&mut self, delta: isize) {
+        match self.stake_row {
+            0 => {
+                let len = STAKE_FRACTIONS.len() as isize;
+                self.stake_cursor = (self.stake_cursor as isize + delta).clamp(0, len - 1) as usize;
+            }
+            1 => self.stake_draft = delta > 0,
+            _ if self.stake_target.is_none() => self.stake_group = delta > 0,
+            _ => {
+                let len = self.stake_candidates().len().max(1) as isize;
+                self.stake_pick = (self.stake_pick as isize + delta).rem_euclid(len) as usize;
+            }
+        }
+    }
+
+    /// Moves focus between the bet, minigame mode and players rows.
     pub fn stake_row_move(&mut self, delta: isize) {
-        self.stake_row = (self.stake_row as isize + delta).clamp(0, 1) as usize;
+        self.stake_row = (self.stake_row as isize + delta).clamp(0, 2) as usize;
+    }
+
+    /// Invites or drops the player under the cursor, up to a full group.
+    pub fn stake_toggle(&mut self) {
+        let Some(id) = self.stake_candidates().get(self.stake_pick).map(|p| p.id) else { return };
+        if let Some(i) = self.stake_invited.iter().position(|p| *p == id) {
+            self.stake_invited.remove(i);
+        } else if self.stake_invited.len() + 1 < DUEL_MAX_PLAYERS {
+            self.stake_invited.push(id);
+        }
+    }
+
+    /// Space: ticks a player on the players row, confirms anywhere else.
+    pub fn stake_space(&mut self) {
+        if self.stake_row == 2 && self.stake_target.is_some() {
+            self.stake_toggle();
+        } else {
+            self.confirm_stake();
+        }
     }
 
     /// Sends the challenge or joins the queue with the chosen bet.
     pub fn confirm_stake(&mut self) {
         let fraction = STAKE_FRACTIONS[self.stake_cursor.min(STAKE_FRACTIONS.len() - 1)];
-        self.outbox.push(match self.stake_target {
-            Some(target) => ClientMsg::Challenge { target, fraction, draft: self.stake_draft },
-            None => ClientMsg::Queue { fraction: Some(fraction), draft: self.stake_draft },
-        });
+        let draft = self.stake_draft && !self.stake_is_group();
+        let msg = match self.stake_target {
+            Some(_) if self.stake_invited.is_empty() => return self.log(Tone::Info, "Marque ao menos um jogador (ESPAÇO)."),
+            Some(_) => ClientMsg::Challenge { targets: self.stake_invited.clone(), fraction, draft },
+            None => ClientMsg::Queue { fraction: Some(fraction), draft, group: self.stake_group },
+        };
+        self.outbox.push(msg);
         self.overlay = Overlay::None;
     }
 
@@ -1148,6 +1314,10 @@ impl Game {
         match msg {
             ServerMsg::State(view) => self.apply_state(*view, now),
             ServerMsg::Event { tone, text, banner, hit } => {
+                // A refused part purchase answers with a bad event only.
+                if tone == Tone::Bad {
+                    self.avatar_editor.pending = None;
+                }
                 self.notices.extend(Notice::from_event(&text, banner.as_deref(), hit));
                 if !text.is_empty() {
                     self.log(tone, text);
@@ -1194,6 +1364,10 @@ impl Game {
         if let Some(def) = CATALOG.iter().find(|d| d.consumable() && view.me.level(d.id) < self.player.level(d.id)) {
             self.last_used = Some((now, def.id));
         }
+        if self.avatar_editor.pending.is_some_and(|part| view.me.owns_part(part)) {
+            self.avatar_editor.pending = None;
+        }
+        self.mood = view.mood.map(|(mood, left)| (mood, now + ms(left)));
         self.player = view.me;
         self.streak = view.streak;
         self.cooldown_until = now + ms(view.cooldown_ms);
@@ -1232,6 +1406,7 @@ impl Game {
         self.invites = view.invites;
         self.outgoing = view.outgoing;
         self.queued = view.queued;
+        self.queued_group = view.queued_group;
         self.clan_tag = view.clan_tag;
 
         let selected_id = self.peers.get(self.selected).map(|p| p.id);
@@ -1248,6 +1423,9 @@ impl Game {
             immune_until: p.immune.then(|| now + ms(p.immune_ms.max(1))),
             clan_tag: p.clan_tag,
             statuses: p.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect(),
+            dlc: p.dlc,
+            avatar: p.avatar,
+            mood: p.mood.map(|(mood, left)| (mood, now + ms(left))),
         }));
         self.peers = peers;
         self.selected = selected_id

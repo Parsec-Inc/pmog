@@ -303,11 +303,13 @@ impl ServerLoop {
                     ClientMsg::Mew => self.world.mew(player, now),
                     ClientMsg::Buy { item } => self.world.buy(player, item),
                     ClientMsg::Use { item } => self.world.use_item(player, item, now),
+                    ClientMsg::BuyPart { part } => self.world.buy_part(player, part),
+                    ClientMsg::WearPart { part } => self.world.wear_part(player, part),
                     ClientMsg::Rename { name } => self.world.rename(player, &name),
-                    ClientMsg::Challenge { target, fraction, draft } => self.world.challenge(player, target, fraction, draft, now),
+                    ClientMsg::Challenge { targets, fraction, draft } => self.world.challenge(player, targets, fraction, draft, now),
                     ClientMsg::Answer { from, accept } => self.world.answer(player, from, accept, now),
                     ClientMsg::CancelChallenge => self.world.cancel_challenge(player),
-                    ClientMsg::Queue { fraction, draft } => self.world.queue(player, fraction, draft, now),
+                    ClientMsg::Queue { fraction, draft, group } => self.world.queue(player, fraction, draft, group, now),
                     ClientMsg::Duel { key, at_ms } => {
                         let rtt_max = self.conns.get(&id).map_or(0.0, |c| c.rtt.max());
                         self.world.duel_input(player, key, at_ms, rtt_max, received);

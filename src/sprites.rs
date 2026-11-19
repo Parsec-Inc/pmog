@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::{Mutex, OnceLock};
 
+use crate::dlc::{self, SpriteAsset};
 use crate::game::ItemId;
 
 pub type Rgb = (u8, u8, u8);
@@ -21,17 +22,25 @@ pub struct Anim {
     total_ms: u64,
 }
 
-macro_rules! asset {
-    ($n:literal) => {
+/// Embeds `assets/<path>.png` and `.json`, keyed by `path`; usable from any module (DLCs included).
+macro_rules! sprite_asset {
+    ($path:expr) => {
         (
-            include_bytes!(concat!("../assets/sprites/", $n, ".png")).as_slice(),
-            include_bytes!(concat!("../assets/sprites/", $n, ".json")).as_slice(),
-            $n,
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/", $path, ".png")).as_slice(),
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/", $path, ".json")).as_slice(),
+            $path,
         )
     };
 }
+pub(crate) use sprite_asset;
 
-fn asset(id: ItemId) -> (&'static [u8], &'static [u8], &'static str) {
+macro_rules! asset {
+    ($n:literal) => {
+        sprite_asset!(concat!("sprites/", $n))
+    };
+}
+
+fn asset(id: ItemId) -> SpriteAsset {
     match id {
         ItemId::Mewing => asset!("mewing"),
         ItemId::GuaSha => asset!("gua_sha"),
@@ -94,14 +103,24 @@ fn asset(id: ItemId) -> (&'static [u8], &'static [u8], &'static str) {
         ItemId::ThirdEye => asset!("third_eye"),
         ItemId::Underdog => asset!("underdog"),
         ItemId::WoundedEgo => asset!("wounded_ego"),
+        _ => dlc::of_item(id).and_then(|d| d.sprite(id)).expect("every item has a sprite"),
     }
 }
 
-fn decode(png: &[u8], json: &[u8]) -> Anim {
+/// Every pixel of an 8-bit RGBA PNG, row by row; `None` is transparent.
+pub fn pixels(png: &[u8]) -> Vec<Vec<Option<Rgb>>> {
     let mut reader = png::Decoder::new(Cursor::new(png)).read_info().expect("sprite png");
     let mut buf = vec![0; reader.output_buffer_size().expect("sprite png size")];
     let info = reader.next_frame(&mut buf).expect("sprite png data");
     assert!(info.color_type == png::ColorType::Rgba && info.bit_depth == png::BitDepth::Eight, "export sprites as 8-bit RGBA");
+    buf.chunks(info.width as usize * 4)
+        .take(info.height as usize)
+        .map(|row| row.chunks(4).map(|p| (p[3] > 127).then_some((p[0], p[1], p[2]))).collect())
+        .collect()
+}
+
+fn decode(png: &[u8], json: &[u8]) -> Anim {
+    let sheet = pixels(png);
     let meta: serde_json::Value = serde_json::from_slice(json).expect("sprite json");
     let frames: Vec<Frame> = meta["frames"]
         .as_array()
@@ -110,16 +129,7 @@ fn decode(png: &[u8], json: &[u8]) -> Anim {
         .map(|f| {
             let n = |k: &str| f["frame"][k].as_u64().expect("frame rect") as usize;
             let (x0, y0, w, h) = (n("x"), n("y"), n("w"), n("h"));
-            let rows = (y0..y0 + h)
-                .map(|y| {
-                    (x0..x0 + w)
-                        .map(|x| {
-                            let p = &buf[(y * info.width as usize + x) * 4..][..4];
-                            (p[3] > 127).then_some((p[0], p[1], p[2]))
-                        })
-                        .collect()
-                })
-                .collect();
+            let rows = sheet[y0..y0 + h].iter().map(|row| row[x0..x0 + w].to_vec()).collect();
             Frame { rows, ms: f["duration"].as_u64().unwrap_or(100).max(1) }
         })
         .collect();

@@ -167,6 +167,9 @@ fn peer(id: i64, name: &str, lifetime: f64, mp: f64, tag: Option<&str>) -> PeerV
         immune_ms: 0,
         clan_tag: tag.map(Into::into),
         statuses: Vec::new(),
+        dlc: Default::default(),
+        avatar: Default::default(),
+        mood: None,
     }
 }
 
@@ -226,8 +229,10 @@ fn state(duel: Option<DuelView>) -> StateView {
         invites: Vec::new(),
         outgoing: None,
         queued: None,
+        queued_group: false,
         rtt_ms: 3.0,
         clan_tag: Some("SIGMA".into()),
+        mood: None,
     }
 }
 
@@ -270,6 +275,8 @@ fn duel_view(game: Minigame, phase_ms: u64, board: Board) -> DuelView {
         board,
         seq: 0,
         lineup: Vec::new(),
+        standings: Vec::new(),
+        winner: None,
     }
 }
 
@@ -316,7 +323,7 @@ fn phones() {
     add("aposta", stake);
     let mut invited = playing(None);
     let mut view = state(None);
-    view.invites = vec![InviteView { peer: 2, name: "jawline_99".into(), fraction: 0.25, stake: 1_250.0, expires_ms: 20_000, draft: true }];
+    view.invites = vec![InviteView { peer: 2, name: "jawline_99".into(), fraction: 0.25, stake: 1_250.0, expires_ms: 20_000, draft: true, others: Vec::new() }];
     invited.game.apply(ServerMsg::State(Box::new(view)), Instant::now());
     add("convite", invited);
     let mut naming = playing(None);
@@ -429,7 +436,7 @@ fn main() {
     let mut achievements = playing(None);
     let p = &mut achievements.game.player;
     (p.mews, p.perfects, p.defends_won, p.defends_lost, p.purchases, p.items_used) = (4_210, 64, 38, 21, 47, 12);
-    p.achievements = Achievement::ALL.into_iter().filter(|a| a.reached(p) || a.group() == pmog::achievements::Group::Mog && !a.secret()).collect();
+    p.achievements = Achievement::all().iter().copied().filter(|a| a.reached(p) || a.group() == pmog::achievements::Group::Mog && !a.secret()).collect();
     achievements.game.overlay = Overlay::Achievements;
     shot(&achievements, "conquistas", "pmog · conquistas", w, h);
 

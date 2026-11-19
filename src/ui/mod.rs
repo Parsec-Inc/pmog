@@ -2,8 +2,9 @@
 
 pub mod chat;
 pub mod clan;
-mod burst;
-mod consume;
+mod avatar;
+pub(crate) mod burst;
+pub(crate) mod consume;
 mod duel;
 mod duelfx;
 mod fx;
@@ -19,11 +20,13 @@ use ratatui::widgets::{
 };
 
 use crate::achievements::Group;
-use crate::constants::{INVENTORY_DETAILS_ROWS, INVENTORY_SIDE_DETAILS_FROM, LOBBY_TALL, NARROW_FULL_HEADER_FROM, SHOP_DETAILS_ROWS, SHOP_FULL_TABLE_WIDTH, NARROW_DUEL_FEED_FROM, NARROW_FEED_ROWS, NARROW_ROOMY_BODY, NARROW_WIDTH, SHORT_HEIGHT, PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
+use crate::constants::{LOBBY_TALL, NARROW_FULL_HEADER_FROM, SHOP_DETAILS_ROWS, SHOP_FULL_TABLE_WIDTH, NARROW_DUEL_FEED_FROM, NARROW_FEED_ROWS, NARROW_ROOMY_BODY, NARROW_WIDTH, SHORT_HEIGHT, PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
+use crate::constants::avatar::AVATAR_PANEL_MIN_HEIGHT;
 use crate::duel::Minigame;
-use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Rank, Stats, Status, TimingTier, Tone};
+use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Player, Rank, Stats, Status, TimingTier, Tone};
 use crate::app::{App, Confirm, LobbyRow, Screen};
 use crate::help;
+use crate::dlc::{self, DlcPublic};
 use crate::sprites;
 use crate::utils::{decimal, format_count, format_mp, format_wait};
 
@@ -36,7 +39,7 @@ const BIG_BUTTON: [&str; 6] = [
     "╚═╝     ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
 ];
 
-fn rank_color(rank: Rank) -> Color {
+pub(crate) fn rank_color(rank: Rank) -> Color {
     match rank {
         Rank::Sub5 => Color::Gray,
         Rank::Ltn => Color::White,
@@ -65,12 +68,12 @@ fn tone_color(tone: Tone) -> Color {
     }
 }
 
-fn fg(color: Color) -> Style {
+pub(crate) fn fg(color: Color) -> Style {
     Style::new().fg(color)
 }
 
 /// Badge style for a key the player can press.
-fn key_style() -> Style {
+pub(crate) fn key_style() -> Style {
     Style::new().bg(Color::DarkGray).fg(Color::White).bold()
 }
 
@@ -185,15 +188,16 @@ fn draw_game(f: &mut Frame, app: &App) {
             Layout::horizontal([Constraint::Percentage(26), Constraint::Percentage(48), Constraint::Percentage(26)]).areas(body);
         draw_peers(f, left, g, now);
         draw_center(f, center, g, now, full.height < SHORT_HEIGHT);
-        if app.inventory_panel {
-            let rows = inventory_rows(g);
-            let inventory_h = (rows.len().max(1) as u16 + 2).min(right.height / 2);
-            let [feed, inventory] = Layout::vertical([Constraint::Min(0), Constraint::Length(inventory_h)]).areas(right);
-            draw_feed(f, feed, g);
-            draw_inventory(f, inventory, rows);
-        } else {
-            draw_feed(f, right, g);
+        let face_h = if right.height >= AVATAR_PANEL_MIN_HEIGHT && right.width >= avatar::FACE_COLS + 2 { avatar::corner_height() } else { 0 };
+        let [face, right] = Layout::vertical([Constraint::Length(face_h), Constraint::Min(0)]).areas(right);
+        if face_h > 0 {
+            avatar::draw_corner(f, face, g, now);
         }
+        let rows = inventory_rows(g);
+        let inventory_h = (rows.len().max(1) as u16 + 2).min(right.height / 2);
+        let [feed, inventory] = Layout::vertical([Constraint::Min(0), Constraint::Length(inventory_h)]).areas(right);
+        draw_feed(f, feed, g);
+        draw_inventory(f, inventory, rows);
     }
 
     match g.overlay {
@@ -209,6 +213,8 @@ fn draw_game(f: &mut Frame, app: &App) {
         Overlay::Stake => duel::draw_stake_picker(f, g),
         Overlay::Chat => chat::draw(f, app, now),
         Overlay::Clan => clan::draw(f, app, now),
+        Overlay::Avatar => avatar::draw_editor(f, g, now),
+        Overlay::Profile(id) => avatar::draw_profile(f, g, id, now),
         Overlay::None => duel::draw_invite(f, g, now),
     }
 }
@@ -224,6 +230,7 @@ fn header_lines(app: &App, now: Instant, narrow: bool, compact: bool) -> Vec<Lin
     let mut name = flair::tagged_spans(g.clan_tag.as_deref(), &p.name, rank, now);
     name.push(Span::raw(" "));
     name.push(Span::styled(format!("[{}]", rank.label()), fg(rank_color(rank)).bold()));
+    name.extend(dlc_tags(p, &dlc::public(p), g.active_statuses(now).into_iter().map(|(st, _)| st)));
     let mut numbers = vec![
         Span::styled(pair("MP", String::new()), Style::new()),
         Span::styled(format_mp(p.mp), fg(Color::Yellow).bold()),
@@ -244,7 +251,7 @@ fn header_lines(app: &App, now: Instant, narrow: bool, compact: bool) -> Vec<Lin
     );
     let mut badges = Vec::new();
     for (buff, left) in g.buffs(now) {
-        badges.push(Span::styled(format!(" {} {}{} ", buff.label(), buff.effect(), buff_left(left)).replace(' ', "\u{a0}"), buff_style(buff)));
+        badges.push(Span::styled(crate::utils::nbsp(&format!(" {} {}{} ", buff.label(), buff.effect(), buff_left(left))), buff_style(buff)));
         badges.push(" ".into());
     }
     if now < g.immune_until {
@@ -324,6 +331,7 @@ fn draw_peers(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
             let mut title = flair::tagged_spans(peer.clan_tag.as_deref(), &peer.name, rank, now);
             title.push("  ".into());
             title.push(Span::styled(rank.label(), fg(rank_color(rank))));
+            title.extend(dlc_tags(&g.player, &peer.dlc, peer.statuses.iter().filter(|(_, until)| now < *until).map(|(st, _)| *st)));
             if peer.in_duel {
                 title.push(Span::styled("  ⚔ em duelo", fg(Color::Yellow)));
             } else if let Some(left) = peer.immune_left(now) {
@@ -531,6 +539,12 @@ fn draw_center(f: &mut Frame, area: Rect, g: &Game, now: Instant, phone: bool) {
 
 const BUFF_GOLD: Color = Color::Rgb(255, 200, 40);
 
+/// Tags after a name from the DLCs `viewer` owns, from what everyone sees and the statuses running on them.
+pub(crate) fn dlc_tags(viewer: &Player, public: &DlcPublic, statuses: impl Iterator<Item = Status>) -> Vec<Span<'static>> {
+    let fresh: Vec<_> = statuses.filter_map(|st| if let Status::Dlc(st) = st { Some(st) } else { None }).collect();
+    dlc::owned_by(viewer).flat_map(|d| d.name_tags(public, &fresh)).collect()
+}
+
 /// Badge style for a buff.
 fn status_style(status: Status) -> Style {
     let color = if status.is_bad() { Color::Red } else { Color::LightGreen };
@@ -548,6 +562,10 @@ fn buff_style(buff: Buff) -> Style {
         Buff::Combo => Color::LightRed,
         Buff::Ego => Color::Red,
         Buff::AuraFarm => Color::Rgb(180, 140, 255),
+        Buff::Dlc(b) => {
+            let (r, g, b) = b.color();
+            Color::Rgb(r, g, b)
+        }
     };
     Style::new().bg(color).fg(Color::Black).bold()
 }
@@ -653,6 +671,8 @@ fn game_hints(g: &Game) -> Vec<KeyHint> {
         hint("C", "conquistas"),
         hint("P", "ranks"),
         hint("S", "servidor"),
+        hint("A", "avatar"),
+        hint("R", "perfil"),
         hint("D", "duelar"),
         hint("F", "fila"),
         (count("T", g.chat.unread()), "chat".into()),
@@ -693,7 +713,13 @@ pub(crate) fn hint_lines(hints: &[KeyHint], width: u16) -> Vec<Line<'static>> {
 }
 
 /// Centered box taking a share of the screen; phones get all of the width, short screens all of the height.
-fn popup_area(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
+/// `width` x `height` centered inside `area`, shrunk to fit.
+pub(crate) fn centered(area: Rect, width: u16, height: u16) -> Rect {
+    let (w, h) = (area.width.min(width), area.height.min(height));
+    Rect::new(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h)
+}
+
+pub(crate) fn popup_area(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
     let pct_x = if area.width < NARROW_WIDTH { 100 } else { pct_x };
     let pct_y = if area.height < SHORT_HEIGHT || area.width < NARROW_WIDTH { 100 } else { pct_y };
     let [_, mid, _] = Layout::vertical([
@@ -766,8 +792,9 @@ fn draw_achievements(f: &mut Frame, g: &Game) {
             fg(Color::Cyan),
         ),
     ];
-    for group in Group::ALL {
-        let members: Vec<Achievement> = Achievement::ALL.into_iter().filter(|a| a.group() == group).collect();
+    lines.extend(dlc::owned_by(p).filter_map(|d| d.stats_line(p)));
+    for group in Group::all().iter().copied() {
+        let members: Vec<Achievement> = Achievement::all().iter().copied().filter(|a| a.group() == group).collect();
         let done = members.iter().filter(|a| p.achievements.contains(a)).count();
         lines.push(Line::raw(""));
         lines.push(Line::styled(format!("── {} ({done}/{}) ──", group.label(), members.len()), fg(Color::Magenta).bold()));
@@ -785,7 +812,7 @@ fn draw_achievements(f: &mut Frame, g: &Game) {
             });
         }
     }
-    let title = format!(" Conquistas {}/{} ", p.achievements.len(), Achievement::ALL.len());
+    let title = format!(" Conquistas {}/{} ", p.achievements.len(), Achievement::all().len());
     draw_list_popup(f, g, &title, lines);
 }
 
@@ -849,6 +876,7 @@ fn draw_ranks(f: &mut Frame, g: &Game, now: Instant) {
         lines.push(Line::from(first));
         lines.push(Line::styled(format!("    {}", details.join(" · ")), fg(if reached { Color::Gray } else { Color::DarkGray })));
     }
+    lines.extend(dlc::owned_by(&g.player).flat_map(|d| d.rank_lines(g)));
     let title = format!(" Ranks {}/{} ", current as usize + 1, Rank::ALL.len());
     draw_list_popup(f, g, &title, lines);
 }
@@ -931,8 +959,8 @@ fn draw_shop(f: &mut Frame, g: &Game) {
         Layout::vertical([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0), Constraint::Length(details_h)]).areas(inner);
     let tabs_line = shop_tabs(g, category);
     if tabs_line.width() > tabs.width as usize {
-        let at = Category::ALL.iter().position(|c| *c == category).unwrap_or(0);
-        f.render_widget(pager_line(category.label(), at, Category::ALL.len()), tabs);
+        let at = Category::all().iter().position(|c| *c == category).unwrap_or(0);
+        f.render_widget(pager_line(category.label(), at, Category::all().len()), tabs);
     } else {
         f.render_widget(tabs_line, tabs);
     }
@@ -996,9 +1024,9 @@ fn shop_tabs(g: &Game, current: Category) -> Line<'static> {
 /// One tab per category with `count` next to its label; tabs at zero are dimmed.
 fn category_tabs(current: Category, accent: Color, count: impl Fn(Category) -> usize) -> Line<'static> {
     let mut spans = vec![Span::raw(" ")];
-    for category in Category::ALL {
-        let n = count(category);
-        let label = if n > 0 { format!(" {} ·{n} ", category.label()) } else { format!(" {} ", category.label()) };
+    for category in Category::all().iter().copied() {
+        let ready = category.items().filter(|i| CATALOG[*i].purchase_block(&g.player).is_none()).count();
+        let label = if ready > 0 { format!(" {} ·{ready} ", category.label()) } else { format!(" {} ", category.label()) };
         let style = if category == current {
             Style::new().bold().fg(Color::Black).bg(accent)
         } else if n > 0 {
@@ -1095,7 +1123,8 @@ fn anim_ms() -> u64 {
 }
 
 /// Renders a sprite frame with half blocks: two pixels per terminal cell.
-fn sprite_lines(frame: &sprites::Frame, dim: bool) -> Vec<Line<'static>> {
+/// Half-block lines of a pixel grid, two pixel rows per line; `dim` grays it out.
+pub(crate) fn sprite_lines(rows: &[Vec<Option<sprites::Rgb>>], dim: bool) -> Vec<Line<'static>> {
     let pixel = |p: Option<sprites::Rgb>| {
         p.map(|(r, g, b)| {
             if dim {
@@ -1106,14 +1135,12 @@ fn sprite_lines(frame: &sprites::Frame, dim: bool) -> Vec<Line<'static>> {
             }
         })
     };
-    frame
-        .rows
-        .chunks(2)
+    rows.chunks(2)
         .map(|pair| {
             let spans: Vec<Span> = pair[0]
                 .iter()
-                .zip(&pair[1])
-                .map(|(&top, &bottom)| match (pixel(top), pixel(bottom)) {
+                .enumerate()
+                .map(|(x, &top)| match (pixel(top), pixel(pair.get(1).and_then(|r| r[x]))) {
                     (None, None) => Span::raw(" "),
                     (Some(t), None) => Span::styled("▀", fg(t)),
                     (None, Some(b)) => Span::styled("▄", fg(b)),
@@ -1149,13 +1176,24 @@ fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
     let cost = def.cost(level);
     let heading = |t: &str| Line::styled(t.to_string(), fg(Color::Magenta).bold());
 
-    let sprite = sprite_lines(sprites::sprite_at(def.id, anim_ms()), locked);
+    let sprite = sprite_lines(&sprites::sprite_at(def.id, anim_ms()).rows, locked);
     let mut lines: Vec<Line> = (0..sprite.len() + 2).map(|_| Line::raw("")).collect();
     lines.push(Line::styled(def.name, fg(Color::Yellow).bold()).centered());
     lines.push(Line::styled(def.flavor, fg(Color::Gray).italic()).centered());
     lines.push(Line::raw(""));
 
-    lines.extend(item_use_lines(def));
+    lines.push(heading("O QUE FAZ"));
+    match def.usage {
+        Some((key, text)) => {
+            lines.push(Line::raw(format!(" Tecla {key}: {text}.")));
+            lines.push(Line::styled(" Fica no inventário até você usar.", fg(Color::Gray)));
+        }
+        None if def.is_unlock() => lines.push(Line::raw(format!(" Compra única: {}.", def.summary()))),
+        None => {
+            lines.push(Line::raw(" Cada nível comprado dá:"));
+            lines.extend(def.effects.iter().map(|e| Line::raw(format!("  • {}", e.describe()))));
+        }
+    }
     lines.push(Line::raw(""));
 
     lines.push(heading("SITUAÇÃO"));
@@ -1317,7 +1355,7 @@ fn draw_lobby(f: &mut Frame, app: &App) {
     let mascot_x = (title.width / 2).saturating_sub(22 + 17);
     if title.width >= 80 {
         let area = Rect::new(title.x + mascot_x, title.y, 16, title.height);
-        f.render_widget(Paragraph::new(sprite_lines(sprites::mascot_at(anim_ms()), false)), area);
+        f.render_widget(Paragraph::new(sprite_lines(&sprites::mascot_at(anim_ms()).rows, false)), area);
     }
 
     let [list_area, info_area] = if narrow {

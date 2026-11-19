@@ -122,3 +122,18 @@ pub fn wait_all(clients: &mut [Client], done: impl Fn(&[Client]) -> bool) -> boo
     }
     false
 }
+
+/// World with players 1..=n named p1, p2, ..., each with `mp` and a slightly different lifetime.
+pub fn staked_world(n: i64, mp: f64, now: Instant) -> pmog::world::World {
+    let mut w = pmog::world::World::new();
+    for id in 1..=n {
+        let player = Player { name: format!("p{id}"), mp, lifetime: mp + id as f64, ..Default::default() };
+        w.join(id, format!("m{id}"), player, now).unwrap();
+    }
+    w.outbox.clear();
+    w
+}
+
+pub fn mp_of(w: &pmog::world::World, id: pmog::protocol::PlayerId) -> f64 {
+    w.slot(id).unwrap().player.mp
+}

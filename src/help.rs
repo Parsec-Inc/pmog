@@ -6,7 +6,7 @@ use crate::constants::*;
 use crate::game::{Achievement, CATALOG, Game, Rank};
 use crate::utils::format_mp;
 
-pub const PAGES: [&str; 8] = ["Básico", "Combate", "Economia", "Ranks", "Loja", "Duelos", "Social", "Glossário"];
+pub const PAGES: [&str; 9] = ["Básico", "Combate", "Economia", "Ranks", "Loja", "Duelos", "Social", "DLCs", "Glossário"];
 
 /// Lines of one help page.
 pub fn page(index: usize, g: &Game) -> Vec<Line<'static>> {
@@ -18,6 +18,7 @@ pub fn page(index: usize, g: &Game) -> Vec<Line<'static>> {
         4 => shop(),
         5 => duels(),
         6 => social(),
+        7 => dlcs(),
         _ => glossary(),
     }
 }
@@ -67,8 +68,20 @@ fn duels() -> Vec<Line<'static>> {
         key("D", "desafia o jogador selecionado (escolha a aposta e aperte Enter; ↓ troca Aleatório por Escolher)"),
         key("F", &format!("entra na fila: junta você com alguém até 1 rank de distância (depois de {} s esperando, com qualquer um)", QUEUE_RELAX.as_secs())),
         key("A / R", "aceita ou recusa um desafio recebido"),
+        key("Espaço", "no seletor de aposta, na linha Jogadores, marca quem chamar (D) ou troca 1 contra 1 por Em grupo (F)"),
         key("X", "cancela o desafio que você mandou"),
         key("Esc", "dentro do duelo, desiste (perde a aposta)"),
+        gap(),
+        title("Duelo em grupo"),
+        bullet(format!(
+            "Até {DUEL_MAX_PLAYERS} jogadores no mesmo duelo. No D, marque vários na linha Jogadores: começa com quem aceitou assim que todos responderem (ou o convite expirar)."
+        )),
+        bullet(format!(
+            "Na fila Em grupo, começa com {DUEL_MAX_PLAYERS} na fila, ou com {DUEL_GROUP_MIN} depois de {} s esperando. A fila nunca junta colegas de clã numa aposta.",
+            GROUP_QUEUE_WAIT.as_secs()
+        )),
+        bullet("Cada rodada dá 1 ponto por rival que você superou (1º de 5 leva 4, o último 0). Quem tem mais pontos no fim leva o pote inteiro."),
+        bullet("Em grupo os minigames são sempre sorteados, e os de 1 contra 1 (como o Mog Reverso) ficam de fora. Quem desiste sai do duelo e deixa a aposta no pote."),
         gap(),
         title("Escolha e rodadas"),
         bullet("Por padrão os minigames são sorteados. Para escolher, desça para a linha Minigames no seletor de aposta e marque Escolher. Na fila, só vale se os dois marcarem."),
@@ -81,9 +94,9 @@ fn duels() -> Vec<Line<'static>> {
         bullet(format!("Empatou depois de {DUEL_ROUNDS}? Morte súbita com um minigame sorteado que ainda não saiu, até alguém vencer uma rodada (no máximo {DUEL_MAX_ROUNDS} rodadas no total).")),
         gap(),
         title("Aposta"),
-        bullet("A aposta é uma parte do MP do mais pobre dos dois: amistoso (0), 10%, 25%, 50% ou tudo."),
-        bullet("As duas apostas ficam guardadas no servidor durante o duelo. Quem vence leva as duas (é MP de outro jogador, então não conta para o rank)."),
-        bullet(format!("Empate depois de {DUEL_MAX_ROUNDS} rodadas, ou servidor desligado no meio: cada um recebe a sua de volta.")),
+        bullet("A aposta é uma parte do MP do mais pobre do duelo: amistoso (0), 10%, 25%, 50% ou tudo. Todos apostam o mesmo."),
+        bullet("As apostas ficam guardadas no servidor durante o duelo. Quem vence leva todas (é MP de outro jogador, então não conta para o rank)."),
+        bullet(format!("Empate depois de {DUEL_MAX_ROUNDS} rodadas: o pote é dividido entre quem ficou até o fim. Servidor desligado no meio: cada um recebe a sua de volta.")),
         bullet("Sair do jogo ou cair no meio do duelo conta como desistência."),
         bullet(format!("Um desafio expira em {} s. Na fila, vale a menor das duas apostas.", INVITE_TTL.as_secs())),
         bullet("Duelo amistoso, ou desistência antes de terminar a primeira rodada, não conta no placar nem para conquistas."),
@@ -127,6 +140,8 @@ fn basics() -> Vec<Line<'static>> {
         key("C", "conquistas e estatísticas"),
         key("P", "todos os ranks, com o visual de cada nome"),
         key("S", "painel do servidor"),
+        key("A", "avatar: monte o rosto e compre partes com MP (← → parte, ↑ ↓ opção, Enter usa ou compra)"),
+        key("R", "perfil do alvo selecionado (o seu, se o alvo for o bot); ↑ ↓ passa pelos jogadores"),
         key("D / F", "duelo direto ou fila de duelo (veja a página Duelos)"),
         key("?", "esta ajuda (← → troca de aba, ↑ ↓ rola)"),
         key("Esc", "fechar a janela aberta"),
@@ -249,9 +264,10 @@ fn combat(g: &Game) -> Vec<Line<'static>> {
         gap(),
         title("Resultados de um mog seu"),
         bullet(format!(
-            "Vitória contra jogador: você tira {} + {} do MP dele (máximo {}), multiplicado pelo timing. Ele perde exatamente o que você ganha.",
+            "Vitória contra jogador: você tira {} + {} do MP dele, multiplicado pelo timing. O teto é {} do limiar do menor rank entre vocês (no mínimo {}). Ele perde exatamente o que você ganha.",
             n(STAKE_FLAT),
             pct(STAKE_RATIO),
+            pct(STAKE_CAP_RANK_RATIO),
             format_mp(STAKE_CAP)
         )),
         bullet(format!(
@@ -389,7 +405,7 @@ fn ranks(g: &Game) -> Vec<Line<'static>> {
     lines.push(gap());
     lines.push(title("Conquistas"));
     lines.push(text("Marcos que ficam salvos no seu perfil (tecla C para ver as suas e o progresso). Algumas são secretas."));
-    for a in Achievement::ALL.into_iter().filter(|a| !a.secret()) {
+    for a in Achievement::all().iter().copied().filter(|a| !a.secret()) {
         lines.push(term(a.name(), a.desc()));
     }
     lines
@@ -398,7 +414,7 @@ fn ranks(g: &Game) -> Vec<Line<'static>> {
 fn shop() -> Vec<Line<'static>> {
     let mut lines = vec![
         title("Como a loja funciona"),
-        bullet("Abra com L. ← → trocam de categoria (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, Consumíveis), ↑ ↓ escolhem o item e Enter compra."),
+        bullet("Abra com L. ← → trocam de categoria (Rosto, Físico, Drip e Status, Aura, Brainrot e 67, uma aba por DLC, Consumíveis), ↑ ↓ escolhem o item e Enter compra."),
         bullet("O número ao lado da categoria diz quantos itens dela você já pode comprar."),
         bullet("O painel da direita mostra o que o item faz e quanto seus números mudam com a compra."),
         bullet(format!(
@@ -408,8 +424,15 @@ fn shop() -> Vec<Line<'static>> {
         )),
         bullet("Consumíveis têm preço fixo, ficam no inventário e são usados com as teclas 1 a 9 e 0."),
         bullet("Escudo, Foto no Ângulo, Espelho, Fita de Mandíbula e Combo 6-7 ficam preparados até serem gastos, mesmo se você fechar o jogo."),
+        gap(),
+        title("Avatar"),
+        bullet("Seu rosto em pixel art fica no canto da tela e reage ao jogo: cara de moggado quando te moggam, convencido quando você mogga."),
+        bullet("Abra com A. Rosto, cabelo, olhos, boca e acessório: a primeira opção de cada é de graça, as outras custam MP e algumas pedem rank."),
+        bullet("Enter usa uma parte que você já tem; numa parte nova, Enter duas vezes compra e já veste."),
+        bullet("Com a DLC Cadeia: as frutas da novelinha como rosto e o número da testa desenhado no avatar. Quem não tem a DLC não vê o número."),
+        bullet("R abre o perfil do jogador selecionado, com o avatar dele reagindo aos mogs que ele dá e leva."),
     ];
-    for category in crate::items::Category::ALL {
+    for category in crate::items::Category::all() {
         lines.push(gap());
         lines.push(title(category.label()));
         for def in category.items().map(|i| &CATALOG[i]) {
@@ -420,6 +443,22 @@ fn shop() -> Vec<Line<'static>> {
             };
             lines.push(term(def.name, &text));
         }
+    }
+    lines
+}
+
+fn dlcs() -> Vec<Line<'static>> {
+    let mut lines = vec![
+        title("Expansões"),
+        bullet("Cada DLC é comprada uma vez na loja, na aba com o nome dela, e libera os itens, regras e conquistas daquela expansão."),
+        bullet("Quem não tem a DLC continua jogando com todo mundo e pode receber os efeitos dela."),
+    ];
+    for d in crate::dlc::ALL {
+        let unlock = crate::items::def(d.unlock_item());
+        lines.push(gap());
+        lines.push(title(&format!("DLC {}", d.name())));
+        lines.push(bullet(format!("{} MP, a partir do rank {}. Libera {}.", format_mp(unlock.base_cost), unlock.min_rank.label(), d.unlocks())));
+        lines.extend(d.help().into_iter().map(bullet));
     }
     lines
 }

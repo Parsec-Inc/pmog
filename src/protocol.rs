@@ -43,22 +43,28 @@ pub enum ClientMsg {
     Mew,
     Buy { item: ItemId },
     Use { item: ItemId },
+    /// Buys a face part and wears it.
+    BuyPart { part: crate::avatar::Part },
+    /// Wears a face part already owned.
+    WearPart { part: crate::avatar::Part },
     Rename { name: String },
-    /// Invites `target` to a duel betting `fraction` of the poorer player's MP.
-    /// `draft` asks for each side to pick minigames instead of drawing them.
+    /// Invites `targets` (one, or up to four for a group duel) betting `fraction` of the poorest player's MP.
+    /// `draft` asks for each side to pick minigames instead of drawing them (one against one only).
     Challenge {
-        target: PlayerId,
+        targets: Vec<PlayerId>,
         fraction: f64,
         #[serde(default)]
         draft: bool,
     },
     Answer { from: PlayerId, accept: bool },
     CancelChallenge,
-    /// Joins the duel queue, or leaves it with `None`.
+    /// Joins the duel queue, or leaves it with `None`; `group` waits for a group duel.
     Queue {
         fraction: Option<f64>,
         #[serde(default)]
         draft: bool,
+        #[serde(default)]
+        group: bool,
     },
     /// `at_ms` is when the key was pressed, in ms since the phase started on this client's aligned clock.
     Duel {
@@ -93,9 +99,17 @@ pub struct PeerView {
     /// Fight statuses and ms left, so the odds shown count them.
     #[serde(default)]
     pub statuses: Vec<(crate::game::Status, u64)>,
+    /// What each DLC shows about the player.
+    #[serde(default)]
+    pub dlc: crate::dlc::DlcPublic,
+    #[serde(default)]
+    pub avatar: crate::avatar::Avatar,
+    /// The face's reaction to the last mog and ms left.
+    #[serde(default)]
+    pub mood: Option<(crate::avatar::Mood, u64)>,
 }
 
-/// A duel invitation; `peer` is the other player.
+/// A duel invitation; `peer` is the other player (the host, for one received).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InviteView {
     pub peer: PlayerId,
@@ -107,6 +121,9 @@ pub struct InviteView {
     /// Each side picks minigames instead of drawing them.
     #[serde(default)]
     pub draft: bool,
+    /// Everyone else in a group duel.
+    #[serde(default)]
+    pub others: Vec<String>,
 }
 
 /// Everything a client needs to draw its screen.
@@ -135,12 +152,18 @@ pub struct StateView {
     pub outgoing: Option<InviteView>,
     /// Bet fraction while waiting in the duel queue.
     pub queued: Option<f64>,
+    /// The queue entry waits for a group duel.
+    #[serde(default)]
+    pub queued_group: bool,
     /// Average round trip to the server, in ms.
     #[serde(default)]
     pub rtt_ms: f64,
     /// Tag of this player's own clan.
     #[serde(default)]
     pub clan_tag: Option<String>,
+    /// The face's reaction to the last mog and ms left.
+    #[serde(default)]
+    pub mood: Option<(crate::avatar::Mood, u64)>,
 }
 
 /// A consumable going off at the moment of impact; each client animates the ones sent to it.

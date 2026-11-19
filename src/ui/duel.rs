@@ -8,11 +8,11 @@ use ratatui::widgets::{Block, BorderType, Clear, Gauge, Paragraph, Wrap};
 use super::flair::{clock, tagged_spans};
 use super::{KeyHint, fg, hint, small_popup};
 use super::minigames;
-use crate::constants::{
+use crate::constants::{DUEL_GROUP_MIN, DUEL_MAX_PLAYERS, GROUP_QUEUE_WAIT, 
     ANGLE_ATTEMPTS, DUEL_ROUNDS, HUNTER_SHOW_MS, MEMORY_FLASH, MEMORY_LEAD, MEMORY_STEPS, RHYTHM_BEATS, RHYTHM_INTERVAL_MS, RHYTHM_PERFECT_MS,
     STAKE_FRACTIONS,
 };
-use crate::duel::{
+use crate::duel::{StandingView, 
     Board, DuelKey, DuelView, HunterProgress, MacroProblem, MacrosProgress, Minigame, Phase, Progress, RhythmProgress, TypingProgress,
     angle_pos, rhythm_beat_ms,
 };
@@ -68,7 +68,11 @@ pub fn draw_duel(f: &mut Frame, area: Rect, g: &Game, now: Instant) {
         Line::from(line)
     };
     // Narrow screens drop the clan tags, then the extra spacing, before cutting names.
-    let line = [versus(true, "  "), versus(false, "  "), versus(false, " ")].into_iter().find(|l| l.width() <= room).unwrap_or_else(|| versus(false, " "));
+    let line = if d.standings.is_empty() {
+        [versus(true, "  "), versus(false, "  "), versus(false, " ")].into_iter().find(|l| l.width() <= room).unwrap_or_else(|| versus(false, " "))
+    } else {
+        scoreboard(d)
+    };
     let stake = match d.stake {
         0.0 => "Amistoso".to_string(),
         stake => format!("Aposta {} MP cada", format_mp(stake)),
@@ -124,9 +128,27 @@ fn countdown(d: &DuelView, elapsed: f64) -> Vec<Line<'static>> {
     lines
 }
 
+/// Everyone's points in a group duel, leader first; your own name stands out.
+fn scoreboard(d: &DuelView) -> Line<'static> {
+    let mut order: Vec<&StandingView> = d.standings.iter().collect();
+    order.sort_by_key(|s| std::cmp::Reverse(s.points));
+    let spans = order.iter().enumerate().flat_map(|(i, s)| {
+        let style = match (s.me, s.out) {
+            (_, true) => fg(Color::DarkGray).crossed_out(),
+            (true, _) => fg(WIN_COLOR).bold(),
+            _ => fg(Color::White),
+        };
+        let name = if s.me { "Você".to_string() } else { s.name.clone() };
+        [Span::raw(if i == 0 { "" } else { "  ·  " }), Span::styled(format!("{name} {}", s.points), style)]
+    });
+    Line::from(spans.collect::<Vec<_>>())
+}
+
 fn round_over(d: &DuelView) -> Vec<Line<'static>> {
+    let group = !d.standings.is_empty();
     let (label, color) = match d.i_won_round {
         Some(true) => ("RODADA SUA!", WIN_COLOR),
+        _ if group => ("FIM DA RODADA", Color::Magenta),
         Some(false) => ("RODADA DO RIVAL", LOSS_COLOR),
         None => ("RODADA EMPATADA", DRAW_COLOR),
     };
@@ -139,14 +161,22 @@ fn round_over(d: &DuelView) -> Vec<Line<'static>> {
 
 fn finished(d: &DuelView) -> Vec<Line<'static>> {
     let won = d.i_won.flatten();
-    let pot = format_mp(d.stake);
+    let rivals = d.standings.len().max(2) - 1;
+    let (bet, gain) = (format_mp(d.stake), format_mp(d.stake * rivals as f64));
     let friendly = d.stake <= 0.0;
+    let winner = d.winner.as_deref().unwrap_or(&d.opponent);
     let (label, detail) = match won {
         Some(true) if friendly => ("VITÓRIA!", "Duelo amistoso: só a glória.".to_string()),
         Some(false) if friendly => ("DERROTA", "Duelo amistoso: nenhum MP perdido.".to_string()),
-        Some(true) => ("VITÓRIA!", format!("Você levou a aposta: +{pot} MP")),
-        Some(false) => ("DERROTA", format!("A aposta ficou com {}: -{pot} MP", d.opponent)),
+        Some(true) => ("VITÓRIA!", format!("Você levou a aposta: +{gain} MP")),
+        Some(false) => ("DERROTA", format!("A aposta ficou com {winner}: -{bet} MP")),
+        None if rivals > 1 => ("EMPATE", "O pote foi dividido entre quem ficou.".to_string()),
         None => ("EMPATE", "As apostas voltaram para cada um.".to_string()),
+    };
+    let score = if d.standings.is_empty() {
+        Line::styled(format!("Placar final {} x {}", d.my_wins, d.their_wins), fg(Color::Gray))
+    } else {
+        scoreboard(d)
     };
     vec![
         Line::styled(label, fg(outcome_color(won)).bold()),
@@ -154,7 +184,7 @@ fn finished(d: &DuelView) -> Vec<Line<'static>> {
         Line::raw(d.result.clone().unwrap_or_default()),
         Line::raw(detail),
         Line::raw(""),
-        Line::styled(format!("Placar final {} x {}", d.my_wins, d.their_wins), fg(Color::Gray)),
+        score,
     ]
 }
 
@@ -579,10 +609,12 @@ fn stake_option(label: String, chosen: bool, focused: bool) -> Span<'static> {
 
 /// Bet picker for a challenge or the queue.
 pub fn draw_stake_picker(f: &mut Frame, g: &Game) {
-    let area = small_popup(f.area(), 64, 14);
+    let area = small_popup(f.area(), 64, 18);
     f.render_widget(Clear, area);
     let target = g.stake_target.and_then(|id| g.peers.iter().find(|p| p.id == id));
+    let group = g.stake_is_group();
     let title = match target {
+        Some(_) if group => format!(" Duelo em grupo ({} jogadores) ", g.stake_invited.len() + 1),
         Some(peer) => format!(" Desafiar {}{} ", peer.clan_tag.as_ref().map_or(String::new(), |t| format!("[{t}] ")), peer.name),
         None => " Fila de duelo ".to_string(),
     };
@@ -601,23 +633,45 @@ pub fn draw_stake_picker(f: &mut Frame, g: &Game) {
         .collect();
     let modes: Vec<Span> = [("Aleatório", false), ("Escolher", true)]
         .into_iter()
-        .map(|(label, draft)| stake_option(label.into(), draft == g.stake_draft, g.stake_row == 1))
+        .map(|(label, draft)| stake_option(label.into(), draft == (g.stake_draft && !group), g.stake_row == 1))
         .flat_map(|s| [s, Span::raw("  ")])
         .collect();
-    let mode_hint = if g.stake_draft {
+    let mode_hint = if group {
+        "Em grupo os minigames são sorteados.".to_string()
+    } else if g.stake_draft {
         format!("Cada um escolhe {} minigames (na fila, só se os dois escolherem).", DUEL_ROUNDS / 2)
     } else {
         "Os minigames são sorteados.".to_string()
     };
     let fraction = STAKE_FRACTIONS[g.stake_cursor.min(STAKE_FRACTIONS.len() - 1)];
-    let base = match target {
-        Some(peer) => g.player.mp.min(peer.mp),
-        None => g.player.mp,
-    };
+    let invited = g.peers.iter().filter(|p| g.stake_invited.contains(&p.id));
+    let base = invited.map(|p| p.mp).fold(g.player.mp, f64::min);
     let stake = (fraction * base.max(0.0)).floor();
     let estimate = match target {
         Some(_) => format!("Cada um aposta {} MP. Quem vencer leva tudo.", format_mp(stake)),
         None => format!("Até {} MP cada (vale a menor aposta e o MP do mais pobre).", format_mp(stake)),
+    };
+    let players: Vec<Span> = match target {
+        Some(_) => g
+            .stake_candidates()
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let mark = if g.stake_invited.contains(&p.id) { "■" } else { "□" };
+                stake_option(format!("{mark} {}", p.name), i == g.stake_pick, g.stake_row == 2)
+            })
+            .flat_map(|s| [s, Span::raw(" ")])
+            .collect(),
+        None => [("1 contra 1", false), (&*format!("Em grupo ({DUEL_GROUP_MIN} a {DUEL_MAX_PLAYERS})"), true)]
+            .into_iter()
+            .map(|(label, grouped)| stake_option(label.into(), grouped == g.stake_group, g.stake_row == 2))
+            .flat_map(|s| [s, Span::raw("  ")])
+            .collect(),
+    };
+    let players_hint = match target {
+        Some(_) => format!("ESPAÇO marca até {} jogadores. Pontos por colocação, o vencedor leva tudo.", DUEL_MAX_PLAYERS - 1),
+        None if g.stake_group => format!("Começa com {DUEL_MAX_PLAYERS} na fila, ou com {DUEL_GROUP_MIN} depois de {} s.", GROUP_QUEUE_WAIT.as_secs()),
+        None => "Um rival de rank parecido.".to_string(),
     };
     let lines = vec![
         Line::styled("Quanto do MP do mais pobre vale o duelo?", fg(Color::Gray)),
@@ -628,6 +682,10 @@ pub fn draw_stake_picker(f: &mut Frame, g: &Game) {
         Line::styled("Minigames:", fg(Color::Gray)),
         Line::from(modes).centered(),
         Line::styled(mode_hint, fg(Color::Yellow)),
+        Line::raw(""),
+        Line::styled("Jogadores:", fg(Color::Gray)),
+        Line::from(players).centered(),
+        Line::styled(players_hint, fg(Color::Yellow)),
         Line::raw(""),
         Line::styled("←→ escolher · ↑↓ linha · Enter confirmar · Esc cancelar", fg(Color::DarkGray)),
     ];
@@ -641,7 +699,11 @@ pub fn draw_invite(f: &mut Frame, g: &Game, now: Instant) {
     let peer = g.peers.iter().find(|p| p.id == invite.peer);
     let rank = peer.map_or(Rank::Sub5, |p| Rank::from_lifetime(p.lifetime));
     let mut who = tagged_spans(peer.and_then(|p| p.clan_tag.as_deref()), &invite.name, rank, now);
-    who.push(Span::styled(" te desafiou para um duelo!", Style::new().bold()));
+    if invite.others.is_empty() {
+        who.push(Span::styled(" te desafiou para um duelo!", Style::new().bold()));
+    } else {
+        who.push(Span::styled(format!(" te chamou para um duelo em grupo com {}!", invite.others.join(", ")), Style::new().bold()));
+    }
     let blink = ((clock(now) * 1000.0) as u64 / 400).is_multiple_of(2);
     let lines = vec![
         Line::from(who).centered(),
@@ -682,6 +744,7 @@ pub fn pending_status(g: &Game) -> Option<Line<'static>> {
         ));
     }
     g.queued.map(|f| {
-        Line::styled(format!(" Na fila de duelo (aposta {}%) · F sai ", (f * 100.0) as u32), fg(Color::Yellow))
+        let group = if g.queued_group { " em grupo" } else { "" };
+        Line::styled(format!(" Na fila de duelo{group} (aposta {}%) · F sai ", (f * 100.0) as u32), fg(Color::Yellow))
     })
 }

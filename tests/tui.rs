@@ -38,13 +38,15 @@ fn playing() -> App {
         aura_farm_ms: 0,
         statuses: vec![],
         meter_ms: 0,
-        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new() }],
+        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default(), mood: None }],
         duel: None,
         invites: Vec::new(),
         outgoing: None,
         queued: None,
+        queued_group: false,
         rtt_ms: 0.0,
         clan_tag: None,
+        mood: None,
     };
     app.game.apply(ServerMsg::State(Box::new(view)), Instant::now());
     app
@@ -213,7 +215,7 @@ fn locked_item_sprite_is_grayscale() {
 fn help_has_every_page_and_scrolls() {
     let mut a = playing();
     press(&mut a, KeyCode::Char('?'));
-    let expected = ["OBJETIVO", "UM MOG, PASSO A PASSO", "MOGGING POINTS", "RANKS", "COMO A LOJA FUNCIONA", "DUELO DIRETO", "CHAT (T)", "GÍRIAS DO JOGO"];
+    let expected = ["OBJETIVO", "UM MOG, PASSO A PASSO", "MOGGING POINTS", "RANKS", "COMO A LOJA FUNCIONA", "DUELO DIRETO", "CHAT (T)", "EXPANSÕES", "GÍRIAS DO JOGO"];
     for (i, needle) in expected.iter().enumerate() {
         assert_eq!(a.game.help_page, i);
         let screen = render(&a, 120, 40);
@@ -251,7 +253,7 @@ fn help_numbers_follow_constants_and_player() {
     let screen = render(&a, 200, 80);
     assert!(screen.contains("x1,6"), "perfect multiplier");
     assert!(screen.contains("até x1,18"), "best non-perfect multiplier");
-    assert!(screen.contains("máximo 5,0k"), "pt-BR decimal comma");
+    assert!(screen.contains("mínimo 5,0k"), "pt-BR decimal comma");
     assert!(screen.contains("Poder 20"), "player attack with 2 Mid-Fades");
 }
 
@@ -542,13 +544,15 @@ fn state_with(app: &mut App, edit: impl FnOnce(&mut StateView)) {
         aura_farm_ms: 0,
         statuses: vec![],
         meter_ms: 0,
-        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new() }],
+        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default(), mood: None }],
         duel: None,
         invites: Vec::new(),
         outgoing: None,
         queued: None,
+        queued_group: false,
         rtt_ms: 0.0,
         clan_tag: None,
+        mood: None,
     };
     edit(&mut view);
     app.game.apply(ServerMsg::State(Box::new(view)), Instant::now());
@@ -573,6 +577,8 @@ fn duel_view(game: Minigame, phase: Phase, board: Board) -> DuelView {
         board,
         seq: 0,
         lineup: Vec::new(),
+        standings: Vec::new(),
+        winner: None,
     }
 }
 
@@ -661,11 +667,11 @@ fn challenging_through_the_bet_picker() {
     let screen = render(&a, 120, 30);
     assert!(screen.contains("Desafiar Rival") && screen.contains("Cada um aposta 12 MP"), "{screen}");
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.25, draft: false }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { targets: vec![2], fraction: 0.25, draft: false }));
     assert_eq!(a.game.overlay, Overlay::None);
 
     state_with(&mut a, |s| {
-        s.outgoing = Some(InviteView { peer: 2, name: "Rival".into(), fraction: 0.25, stake: 12.0, expires_ms: 9_500, draft: false })
+        s.outgoing = Some(InviteView { peer: 2, name: "Rival".into(), fraction: 0.25, stake: 12.0, expires_ms: 9_500, draft: false, others: Vec::new() })
     });
     assert!(render(&a, 150, 42).contains("Desafio para Rival · 12 MP · expira em 10 s"));
     press(&mut a, KeyCode::Char('x'));
@@ -678,7 +684,7 @@ fn challenging_through_the_bet_picker() {
     press(&mut a, KeyCode::Left);
     press(&mut a, KeyCode::Left);
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: Some(0.0), draft: false }), "random is the default");
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: Some(0.0), draft: false, group: false }), "random is the default");
 
     press(&mut a, KeyCode::Char('d'));
     press(&mut a, KeyCode::Down);
@@ -687,20 +693,20 @@ fn challenging_through_the_bet_picker() {
     press(&mut a, KeyCode::Up);
     press(&mut a, KeyCode::Right);
     press(&mut a, KeyCode::Enter);
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { target: 2, fraction: 0.1, draft: true }), "second row picks the draft");
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Challenge { targets: vec![2], fraction: 0.1, draft: true }), "second row picks the draft");
     press(&mut a, KeyCode::Char('d'));
     assert!(!a.game.stake_draft, "reopening goes back to random");
     press(&mut a, KeyCode::Esc);
     state_with(&mut a, |s| s.queued = Some(0.0));
     assert!(render(&a, 150, 42).contains("Na fila de duelo"));
     press(&mut a, KeyCode::Char('f'));
-    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: None, draft: false }));
+    assert_eq!(a.game.outbox.last(), Some(&ClientMsg::Queue { fraction: None, draft: false, group: false }));
 }
 
 #[test]
 fn invitations_can_be_answered() {
     let mut a = playing();
-    let invite = InviteView { peer: 2, name: "Rival".into(), fraction: 0.5, stake: 25.0, expires_ms: 14_000, draft: false };
+    let invite = InviteView { peer: 2, name: "Rival".into(), fraction: 0.5, stake: 25.0, expires_ms: 14_000, draft: false, others: Vec::new() };
     state_with(&mut a, |s| s.invites = vec![invite.clone(), InviteView { peer: 3, ..invite.clone() }]);
     let screen = render(&a, 150, 42);
     assert!(screen.contains("te desafiou para um duelo") && screen.contains("25 MP"), "{screen}");
@@ -1052,7 +1058,7 @@ fn shop_tabs_group_items_and_move_between_them() {
     let mut a = playing();
     press(&mut a, KeyCode::Char('l'));
     let screen = render(&a, 150, 42);
-    for c in Category::ALL {
+    for c in Category::all().iter().copied() {
         assert!(screen.contains(c.label()), "tab {} missing:\n{screen}", c.label());
     }
     assert!(screen.contains("Tutorial de Mewing") && !screen.contains("Energético"), "only the current tab is listed");
@@ -1124,4 +1130,83 @@ fn achievements_are_grouped_with_progress_and_secrets() {
     assert!(screen.contains("── Mog (") && screen.contains("37/100") && screen.contains("37/1.000"), "{screen}");
     assert!(screen.contains("??? · Conquista secreta"), "{screen}");
     assert!(!screen.contains("Sessenta e Sete"), "secrets stay hidden");
+}
+
+#[test]
+fn avatar_and_profile_keys_and_screens() {
+    let mut a = playing();
+    assert!(render(&a, 170, 42).contains("[A] avatar"), "own face in the corner");
+    assert!(!render(&a, 100, 24).contains("[A] avatar"), "no room for it on short screens");
+
+    press(&mut a, KeyCode::Char('a'));
+    assert_eq!(a.game.overlay, Overlay::Avatar);
+    let screen = render(&a, 170, 42);
+    for needle in ["Rosto", "Acessório", "usando", "Zero (Lucas)"] {
+        assert!(screen.contains(needle), "missing {needle:?}\n{screen}");
+    }
+    press(&mut a, KeyCode::Right);
+    press(&mut a, KeyCode::Down);
+    a.game.player.mp = 1e9;
+    a.game.player.lifetime = 1e9;
+    press(&mut a, KeyCode::Enter);
+    assert!(a.game.outbox.is_empty(), "first Enter only asks");
+    assert!(render(&a, 170, 42).contains("Enter de novo para comprar"));
+    press(&mut a, KeyCode::Enter);
+    assert!(matches!(a.game.outbox.last(), Some(ClientMsg::BuyPart { .. })));
+    press(&mut a, KeyCode::Esc);
+    assert_eq!(a.game.overlay, Overlay::None);
+
+    press(&mut a, KeyCode::Char('r'));
+    assert_eq!(a.game.overlay, Overlay::Profile(None), "the bot is selected, so the own profile");
+    assert!(render(&a, 170, 42).contains("Perfil"));
+    press(&mut a, KeyCode::Down);
+    assert_eq!(a.game.overlay, Overlay::Profile(Some(2)));
+    assert!(render(&a, 170, 42).contains("Rival"));
+    press(&mut a, KeyCode::Down);
+    assert_eq!(a.game.overlay, Overlay::Profile(None), "wraps around, skipping the bot");
+    press(&mut a, KeyCode::Char('r'));
+    assert_eq!(a.game.overlay, Overlay::None);
+}
+
+#[test]
+fn faces_show_the_reaction_the_server_sends() {
+    use pmog::avatar::Mood;
+    let mut a = playing();
+    assert!(!matches!(a.game.mood(Instant::now()), Mood::Mogged | Mood::Smug));
+    state_with(&mut a, |v| {
+        v.mood = Some((Mood::Mogged, 3_000));
+        v.players[0].mood = Some((Mood::Smug, 3_000));
+    });
+    let now = Instant::now();
+    assert_eq!(a.game.mood(now), Mood::Mogged);
+    let rival = a.game.peers.iter().find(|p| p.id == 2).unwrap();
+    assert_eq!(rival.reacting(now), Some(Mood::Smug), "other players' faces react too");
+    assert_eq!(rival.reacting(now + Duration::from_secs(4)), None);
+}
+
+#[test]
+fn a_part_purchase_is_sent_once_until_the_server_answers() {
+    let mut a = playing();
+    a.game.player.mp = 1e9;
+    a.game.player.lifetime = 1e9;
+    press(&mut a, KeyCode::Char('a'));
+    press(&mut a, KeyCode::Right);
+    press(&mut a, KeyCode::Down);
+    for _ in 0..4 {
+        press(&mut a, KeyCode::Enter);
+    }
+    let buys = |a: &App| a.game.outbox.iter().filter(|m| matches!(m, ClientMsg::BuyPart { .. })).count();
+    assert_eq!(buys(&a), 1);
+    let part = a.game.avatar_editor.pending.expect("waiting for the server");
+    state_with(&mut a, |v| v.me.avatar_parts.push(part));
+    assert_eq!(a.game.avatar_editor.pending, None, "settled once the part shows up");
+}
+
+#[test]
+fn dlc_tags_only_show_to_who_owns_the_dlc() {
+    let mut a = playing();
+    state_with(&mut a, |v| v.players[0].dlc.prison.marks = 100);
+    assert!(!render(&a, 170, 42).contains('«'));
+    a.game.player.items.insert(ItemId::PrisonDlc, 1);
+    assert!(render(&a, 170, 42).contains('«'));
 }

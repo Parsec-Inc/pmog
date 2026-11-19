@@ -1,11 +1,14 @@
 //! Tunable numbers for networking, combat and economy.
 
+pub mod avatar;
+pub mod prison;
+
 use std::net::Ipv4Addr;
 use std::ops::Range;
 use std::time::Duration;
 
 // Networking
-pub const PROTOCOL_VERSION: u32 = 19;
+pub const PROTOCOL_VERSION: u32 = 21;
 /// UDP port where servers announce themselves.
 pub const DISCOVERY_PORT: u16 = 47_777;
 /// First TCP port a server tries; it walks up when busy.
@@ -112,7 +115,10 @@ pub const CRIT_MAX_CHANCE: f64 = 0.5;
 // Economy
 pub const STAKE_FLAT: f64 = 15.0;
 pub const STAKE_RATIO: f64 = 0.08;
+/// Floor for the stake cap; between high ranks the cap follows the rank instead.
 pub const STAKE_CAP: f64 = 5_000.0;
+/// Stake cap as a share of the lower rank's threshold (Cósmico × Cósmico takes up to 2M before multipliers).
+pub const STAKE_CAP_RANK_RATIO: f64 = 0.01;
 pub const LOSS_PENALTY_RATIO: f64 = 0.05;
 pub const LOSS_PENALTY_FLAT: f64 = 2.0;
 /// Share of the attacker's loss a defender gets for holding a mog.
@@ -148,6 +154,11 @@ pub const INVITE_TTL: Duration = Duration::from_secs(15);
 pub const DUEL_ROUNDS: u32 = 6;
 /// Sudden death stops here and a still tied duel is a draw.
 pub const DUEL_MAX_ROUNDS: u32 = 9;
+/// Most players in one duel; a group duel has 3 or more.
+pub const DUEL_MAX_PLAYERS: usize = 5;
+pub const DUEL_GROUP_MIN: usize = 3;
+/// A group queue starts with fewer than `DUEL_MAX_PLAYERS` once its first player waited this long.
+pub const GROUP_QUEUE_WAIT: Duration = Duration::from_secs(20);
 pub const DUEL_COUNTDOWN: Duration = Duration::from_secs(5);
 pub const DUEL_ROUND_PAUSE: Duration = Duration::from_millis(3500);
 pub const DUEL_RESULT_SHOW: Duration = Duration::from_secs(4);
@@ -212,6 +223,7 @@ pub const ABALADO_DURATION: Duration = Duration::from_secs(20);
 pub const UPSET_DURATION: Duration = Duration::from_secs(30);
 /// After Perdeu Aura ends, it can't land again for this long, so one loss doesn't chain into more.
 pub const PERDEU_AURA_GRACE: Duration = Duration::from_secs(30);
+
 /// Each level of Sessão de Terapia shortens debuffs by this share, up to the cap.
 pub const DEBUFF_CUT_CAP: f64 = 0.75;
 /// Each mog suffered in a row multiplies the next immunity by this.
@@ -227,7 +239,7 @@ pub const TYPING_LIMIT: Duration = Duration::from_secs(40);
 /// After the first player finishes, the other still has this long.
 pub const TYPING_CHASE: Duration = Duration::from_secs(4);
 pub const TYPING_WORD_COUNT: usize = 10;
-/// Keys closer together than this are a held key or a macro, and are ignored.
+/// No one types faster than this per key; a quicker finish (a macro or a paste) counts as this pace.
 pub const TYPING_MIN_GAP_MS: f64 = 15.0;
 /// Score multiplier for whoever finishes the phrase first.
 pub const TYPING_FINISH_BONUS: f64 = 1.1;

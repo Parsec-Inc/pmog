@@ -493,7 +493,7 @@ fn every_item_effect_changes_stats() {
 #[test]
 fn stat_caps_hold_at_max_levels() {
     let mut p = Player::default();
-    for def in &CATALOG {
+    for def in CATALOG.iter() {
         p.items.insert(def.id, def.max_level);
     }
     let s = p.stats();
@@ -618,7 +618,7 @@ fn shown_odds_count_both_sides_statuses() {
     let stats = game.player.stats();
     let defense = stats.attack * 1.3;
     let later = now + Duration::from_secs(5);
-    let mut peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: vec![(Status::Abalado, later)] };
+    let mut peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: vec![(Status::Abalado, later)], dlc: Default::default(), avatar: Default::default(), mood: None };
     game.statuses = vec![(Status::EgoProibido(2), later)];
     let power = stats.attack * status_power_mult([Status::EgoProibido(2)]) * PERFECT_MULT;
     let beat = beat_chance(power, defense * status_defense_mult([Status::Abalado]), DEFENSE_ROLL);
@@ -755,10 +755,10 @@ fn every_rank_has_new_things_to_buy() {
         let wanted = if rank == Rank::Ascended { 2 } else { 3 };
         assert!(CATALOG.iter().filter(|d| d.min_rank == rank).count() >= wanted, "{rank:?}");
     }
-    let mut keys: Vec<char> = CATALOG.iter().filter_map(|d| d.usage.map(|(k, _)| k)).collect();
-    keys.sort();
-    let expected: Vec<char> = ('0'..='9').chain(['e']).collect();
-    assert_eq!(keys, expected, "consumable keys are 0 to 9 and E, no repeats");
+    let base: Vec<char> = CATALOG.iter().filter(|d| d.dlc.is_none()).filter_map(|d| d.usage.map(|(k, _)| k)).collect();
+    assert!(('0'..='9').chain(['e']).all(|k| base.contains(&k)) && base.len() == 11, "base consumable keys are 0 to 9 and E");
+    let keys: std::collections::HashSet<char> = CATALOG.iter().filter_map(|d| d.usage.map(|(k, _)| k)).collect();
+    assert_eq!(keys.len(), CATALOG.iter().filter(|d| d.consumable()).count(), "no key is used twice");
 }
 
 #[test]
@@ -797,7 +797,7 @@ fn shown_odds_match_what_the_server_rolls() {
     assert!((rate - expected).abs() < 0.04, "server {rate:.3} vs shown {expected:.3}");
 
     let mut game = pmog::game::Game::new(player(&w, 1).clone(), now);
-    let peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new() };
+    let peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default(), mood: None };
     game.streak = 0;
     let (good, perfect_odds) = game.mog_odds(&peer, now);
     assert!((perfect_odds - expected).abs() < 1e-9);
@@ -841,11 +841,13 @@ fn every_purchase_gets_a_result_message() {
 #[test]
 fn every_tab_has_items_and_every_item_one_tab() {
     use pmog::items::Category;
-    let total: usize = Category::ALL.iter().map(|c| c.items().count()).sum();
+    let total: usize = Category::all().iter().map(|c| c.items().count()).sum();
     assert_eq!(total, CATALOG.len());
-    for c in Category::ALL {
+    for c in Category::all().iter().copied() {
         assert!(c.items().count() >= 5, "{c:?} is too thin");
-        assert!(c.items().all(|i| CATALOG[i].consumable() == (c == Category::Consumable)), "{c:?}");
+        if !matches!(c, Category::Dlc(_)) {
+            assert!(c.items().all(|i| CATALOG[i].consumable() == (c == Category::Consumable)), "{c:?}");
+        }
     }
     let names: std::collections::HashSet<_> = CATALOG.iter().map(|d| d.name).collect();
     assert_eq!(names.len(), CATALOG.len(), "item names are unique");
@@ -1078,4 +1080,23 @@ fn breaking_a_streak_pays_a_bounty_and_ends_it() {
     assert_eq!(w.slot(2).unwrap().streak, 0, "being mogged ends the streak");
     assert!(texts(&w, 1).iter().any(|t| t.contains("quebrou o streak 4")));
     assert!(texts(&w, 2).iter().any(|t| t.contains("seu streak 4 acabou")));
+}
+
+#[test]
+fn stake_cap_follows_the_lower_rank_of_the_two() {
+    let now = Instant::now();
+    let loss = |a: Rank, b: Rank| {
+        let mut w = world(2, now);
+        w.crit_override = Some(1.0);
+        w.slot_mut(1).unwrap().player.lifetime = a.threshold();
+        w.slot_mut(2).unwrap().player.lifetime = b.threshold();
+        w.slot_mut(2).unwrap().player.mp = 1e10;
+        w.mog(1, 2, 0.0, now);
+        1e10 - player(&w, 2).mp
+    };
+    let low = loss(Rank::Chad, Rank::Chad);
+    let cosmic = loss(Rank::Cosmic, Rank::Cosmic);
+    let cap = Rank::Cosmic.threshold() * STAKE_CAP_RANK_RATIO;
+    assert!((cosmic / low - cap / STAKE_CAP).abs() < 1e-6, "Chad keeps the floor, Cósmico takes {cap} before multipliers");
+    assert!((loss(Rank::Cosmic, Rank::GreekGod) / cosmic - Rank::GreekGod.threshold() / Rank::Cosmic.threshold()).abs() < 1e-6, "the lower rank sets the cap");
 }

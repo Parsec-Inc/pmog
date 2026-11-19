@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS matches (
     winner_id  INTEGER REFERENCES players(id),
     stake      REAL    NOT NULL,
     rounds     INTEGER NOT NULL,
-    ranked     INTEGER NOT NULL DEFAULT 1
+    ranked     INTEGER NOT NULL DEFAULT 1,
+    players    INTEGER NOT NULL DEFAULT 2
 );
 CREATE TABLE IF NOT EXISTS purchases (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +64,7 @@ pub struct DuelRecord {
     pub mp_lost: f64,
 }
 
-/// One PvP duel; `winner` is `None` for a draw.
+/// One PvP duel; `winner` is `None` for a draw. A group duel keeps its first two players in `a` and `b`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchRecord {
     pub a: PlayerId,
@@ -73,6 +74,8 @@ pub struct MatchRecord {
     pub rounds: u32,
     /// Counted for records and achievements (not friendly, not a walkover).
     pub ranked: bool,
+    /// How many played it.
+    pub players: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,6 +127,11 @@ impl Db {
         if !has_ranked {
             conn.execute_batch("ALTER TABLE matches ADD COLUMN ranked INTEGER NOT NULL DEFAULT 1")?;
         }
+        // And from before group duels.
+        let has_players: bool = conn.query_row("SELECT COUNT(*) FROM pragma_table_info('matches') WHERE name = 'players'", [], |r| r.get::<_, i64>(0))? > 0;
+        if !has_players {
+            conn.execute_batch("ALTER TABLE matches ADD COLUMN players INTEGER NOT NULL DEFAULT 2")?;
+        }
         Ok(Db { conn })
     }
 
@@ -170,8 +178,8 @@ impl Db {
 
     pub fn log_match(&self, m: &MatchRecord) -> rusqlite::Result<()> {
         self.conn.execute(
-            "INSERT INTO matches (at, a_id, b_id, winner_id, stake, rounds, ranked) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![now_secs(), m.a, m.b, m.winner, m.stake, m.rounds, m.ranked],
+            "INSERT INTO matches (at, a_id, b_id, winner_id, stake, rounds, ranked, players) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![now_secs(), m.a, m.b, m.winner, m.stake, m.rounds, m.ranked, m.players],
         )?;
         Ok(())
     }

@@ -1,8 +1,11 @@
 //! Shop catalog: every item, its per-level effects and how to describe them.
 
+use std::sync::LazyLock;
+
 use serde::{Deserialize, Serialize};
 
 use crate::constants::{AURA_COST_GROWTH, COST_GROWTH};
+use crate::dlc::{self, DlcId};
 use crate::game::Rank;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -68,6 +71,20 @@ pub enum ItemId {
     ThirdEye,
     Underdog,
     WoundedEgo,
+    // DLC Cadeia.
+    PrisonDlc,
+    PullUpBar,
+    Crutch,
+    CarrotHook,
+    MilEar,
+    Folder77,
+    PeraUniform,
+    TowerKey,
+    GreenPotion,
+    RedPotion,
+    BlackPotion,
+    Soap,
+    CarrotPill,
 }
 
 /// Shop tab an item belongs to.
@@ -78,11 +95,20 @@ pub enum Category {
     Drip,
     Aura,
     Brainrot,
+    /// Everything a DLC adds, its consumables included.
+    Dlc(DlcId),
     Consumable,
 }
 
 impl Category {
-    pub const ALL: [Category; 6] = [Category::Face, Category::Body, Category::Drip, Category::Aura, Category::Brainrot, Category::Consumable];
+    /// Shop tabs in order: the base ones, one per DLC, then the consumables.
+    pub fn all() -> &'static [Category] {
+        static ALL: LazyLock<Vec<Category>> = LazyLock::new(|| {
+            let base = [Category::Face, Category::Body, Category::Drip, Category::Aura, Category::Brainrot];
+            base.into_iter().chain(dlc::ALL.iter().map(|d| Category::Dlc(d.id()))).chain([Category::Consumable]).collect()
+        });
+        &ALL
+    }
 
     pub fn label(self) -> &'static str {
         match self {
@@ -91,6 +117,7 @@ impl Category {
             Category::Drip => "Drip e Status",
             Category::Aura => "Aura",
             Category::Brainrot => "Brainrot e 67",
+            Category::Dlc(id) => dlc::get(id).name(),
             Category::Consumable => "Consumíveis",
         }
     }
@@ -146,6 +173,7 @@ impl Effect {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct ItemDef {
     pub id: ItemId,
     pub name: &'static str,
@@ -158,6 +186,8 @@ pub struct ItemDef {
     pub effects: &'static [Effect],
     /// Key and what happens on use; `None` for permanent items.
     pub usage: Option<(char, &'static str)>,
+    /// The DLC that adds it; set when the catalog is built.
+    pub dlc: Option<DlcId>,
 }
 
 impl ItemDef {
@@ -165,8 +195,16 @@ impl ItemDef {
         self.usage.is_some()
     }
 
+    /// The item that unlocks a DLC.
+    pub fn is_unlock(&self) -> bool {
+        self.dlc.is_some_and(|d| dlc::get(d).unlock_item() == self.id)
+    }
+
     pub fn category(&self) -> Category {
         use ItemId::*;
+        if let Some(d) = self.dlc {
+            return Category::Dlc(d);
+        }
         if self.consumable() {
             return Category::Consumable;
         }
@@ -184,6 +222,8 @@ impl ItemDef {
             EnergyDrink | SigmaShield | AngleShot | PreWorkout | PocketMirror | JawTape | Cologne | IcePack | ComboSixSeven | AuraFarm | WoundedEgo => {
                 Category::Consumable
             }
+            PrisonDlc | PullUpBar | Crutch | CarrotHook | MilEar | Folder77 | PeraUniform | TowerKey | GreenPotion | RedPotion | BlackPotion | Soap
+            | CarrotPill => unreachable!("DLC items are matched above"),
         }
     }
 
@@ -204,7 +244,9 @@ impl ItemDef {
     /// Why `player` can't buy the next unit or level right now, if anything stops it.
     pub fn purchase_block(&self, player: &crate::game::Player) -> Option<String> {
         let level = player.level(self.id);
-        if player.rank() < self.min_rank {
+        if let Some(d) = self.dlc.filter(|d| !self.is_unlock() && !player.owns_dlc(*d)) {
+            Some(format!("{} faz parte da DLC {}: compre a DLC primeiro.", self.name, dlc::get(d).name()))
+        } else if player.rank() < self.min_rank {
             Some(format!("{} exige rank {}.", self.name, self.min_rank.label()))
         } else if level >= self.max_level {
             Some(format!("{} já está no máximo.", self.name))
@@ -217,6 +259,9 @@ impl ItemDef {
 
     /// One-line summary of what the item does.
     pub fn summary(&self) -> String {
+        if let Some(d) = self.dlc.filter(|_| self.is_unlock()) {
+            return format!("libera {}", dlc::get(d).unlocks());
+        }
         match self.usage {
             Some((key, text)) => format!("[{key}] {text}"),
             None => self.effects.iter().map(|e| e.describe()).collect::<Vec<_>>().join(", "),
@@ -225,7 +270,14 @@ impl ItemDef {
 }
 
 pub fn def(id: ItemId) -> &'static ItemDef {
-    CATALOG.iter().find(|d| d.id == id).expect("every ItemId is in the catalog")
+    static INDEX: LazyLock<Vec<usize>> = LazyLock::new(|| {
+        let mut index = vec![usize::MAX; CATALOG.iter().map(|d| d.id as usize + 1).max().unwrap_or(0)];
+        for (i, d) in CATALOG.iter().enumerate() {
+            index[d.id as usize] = i;
+        }
+        index
+    });
+    CATALOG.get(INDEX.get(id as usize).copied().unwrap_or(usize::MAX)).expect("every ItemId is in the catalog")
 }
 
 /// Consumable bound to a number key.
@@ -242,7 +294,7 @@ fn pct(v: f64) -> String {
     num((v * 100.0 * 100.0).round() / 100.0)
 }
 
-const fn permanent(
+pub(crate) const fn permanent(
     id: ItemId,
     name: &'static str,
     flavor: &'static str,
@@ -251,10 +303,10 @@ const fn permanent(
     max_level: u32,
     effects: &'static [Effect],
 ) -> ItemDef {
-    ItemDef { id, name, flavor, min_rank, base_cost, max_level, effects, usage: None }
+    ItemDef { id, name, flavor, min_rank, base_cost, max_level, effects, usage: None, dlc: None }
 }
 
-const fn consumable(
+pub(crate) const fn consumable(
     id: ItemId,
     name: &'static str,
     flavor: &'static str,
@@ -263,10 +315,16 @@ const fn consumable(
     key: char,
     text: &'static str,
 ) -> ItemDef {
-    ItemDef { id, name, flavor, min_rank, base_cost, max_level: 99, effects: &[], usage: Some((key, text)) }
+    ItemDef { id, name, flavor, min_rank, base_cost, max_level: 99, effects: &[], usage: Some((key, text)), dlc: None }
 }
 
-pub const CATALOG: [ItemDef; 61] = [
+/// Every item in shop order: the base game, then each DLC's.
+pub static CATALOG: LazyLock<Vec<ItemDef>> = LazyLock::new(|| {
+    let dlcs = dlc::ALL.iter().flat_map(|d| d.items().iter().map(|def| ItemDef { dlc: Some(d.id()), ..*def }));
+    BASE.iter().copied().chain(dlcs).collect()
+});
+
+const BASE: [ItemDef; 61] = [
     permanent(ItemId::Mewing, "Tutorial de Mewing", "Língua no céu da boca, 24 horas por dia.", Rank::Sub5, 25.0, 50,
         &[Effect::Passive(0.5), Effect::MewGain(0.25)]),
     permanent(ItemId::Sunscreen, "Protetor Solar FPS 70", "Envelhecer é para quem foi moggado.", Rank::Sub5, 45.0, 20,

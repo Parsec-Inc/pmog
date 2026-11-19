@@ -48,7 +48,7 @@ pub fn shake(buf: &mut Buffer, power: f64, age_ms: u64) {
 }
 
 /// Cheap deterministic noise for sparkles.
-pub(super) fn hash(a: u64, b: u64, c: u64) -> u64 {
+pub(crate) fn hash(a: u64, b: u64, c: u64) -> u64 {
     (a.wrapping_mul(73856093) ^ b.wrapping_mul(19349663) ^ c.wrapping_mul(83492791)) % 97
 }
 
