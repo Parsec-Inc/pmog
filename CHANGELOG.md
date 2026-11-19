@@ -1,3 +1,13 @@
+## 0.8.0 (2026-11-19)
+
+### Feat
+
+- inventário com os itens comprados embaixo do feed
+
+### Fix
+
+- frase da batalha de digitação sem palavras repetidas
+
 ## 0.7.0 (2026-11-18)
 
 ### Feat
