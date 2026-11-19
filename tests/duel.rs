@@ -784,6 +784,12 @@ fn typing_phrase_is_shown_first_and_themed() {
     assert_eq!(text.split(' ').count(), TYPING_WORD_COUNT);
     assert!(text.split(' ').all(|w| pmog::duel::TYPING_WORDS.contains(&w)), "{text}");
     assert!(text.is_ascii(), "no accents to fight the keyboard");
+    let mut words_rng = rng();
+    for _ in 0..200 {
+        let text = pmog::duel::typing_text(&mut words_rng);
+        let words: std::collections::HashSet<&str> = text.split(' ').collect();
+        assert_eq!(words.len(), TYPING_WORD_COUNT, "a word repeats: {text}");
+    }
     d.input(0, DuelKey::Char(text.chars().next().unwrap()), None, 0.0, t, &mut rng());
     let Board::Typing { mine, .. } = board(&d, 0, t) else { panic!() };
     assert_eq!(mine.typed, 0, "typing only counts once play starts");

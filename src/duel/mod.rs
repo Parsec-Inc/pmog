@@ -210,16 +210,9 @@ pub const TYPING_WORDS: &[&str] = &[
     "tilt", "hunter", "eyes", "mandibula", "ascender", "moggado", "frameado", "bonesmash", "pescoco",
 ];
 
-/// A random phrase of `TYPING_WORD_COUNT` words without the same word twice in a row.
+/// A random phrase of `TYPING_WORD_COUNT` different words.
 pub fn typing_text(rng: &mut impl Rng) -> String {
-    let mut words: Vec<&str> = Vec::with_capacity(TYPING_WORD_COUNT);
-    while words.len() < TYPING_WORD_COUNT {
-        let word = *TYPING_WORDS.choose(rng).expect("non-empty");
-        if words.last() != Some(&word) {
-            words.push(word);
-        }
-    }
-    words.join(" ")
+    TYPING_WORDS.choose_multiple(rng, TYPING_WORD_COUNT).copied().collect::<Vec<_>>().join(" ")
 }
 
 /// Words per minute and accuracy (0 to 1) for `typed` correct characters and `errors` wrong keys over `ms`.
