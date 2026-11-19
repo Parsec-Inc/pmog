@@ -169,6 +169,7 @@ fn peer(id: i64, name: &str, lifetime: f64, mp: f64, tag: Option<&str>) -> PeerV
         statuses: Vec::new(),
         dlc: Default::default(),
         avatar: Default::default(),
+        mood: None,
     }
 }
 
@@ -230,6 +231,7 @@ fn state(duel: Option<DuelView>) -> StateView {
         queued: None,
         rtt_ms: 3.0,
         clan_tag: Some("SIGMA".into()),
+        mood: None,
     }
 }
 

@@ -38,13 +38,14 @@ fn playing() -> App {
         aura_farm_ms: 0,
         statuses: vec![],
         meter_ms: 0,
-        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default() }],
+        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 0.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default(), mood: None }],
         duel: None,
         invites: Vec::new(),
         outgoing: None,
         queued: None,
         rtt_ms: 0.0,
         clan_tag: None,
+        mood: None,
     };
     app.game.apply(ServerMsg::State(Box::new(view)), Instant::now());
     app
@@ -498,13 +499,14 @@ fn state_with(app: &mut App, edit: impl FnOnce(&mut StateView)) {
         aura_farm_ms: 0,
         statuses: vec![],
         meter_ms: 0,
-        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default() }],
+        players: vec![PeerView { id: 2, name: "Rival".into(), mp: 50.0, lifetime: 0.0, attack: 10.0, defense: 10.0, streak: 0, in_duel: false, immune: false, immune_ms: 0, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default(), mood: None }],
         duel: None,
         invites: Vec::new(),
         outgoing: None,
         queued: None,
         rtt_ms: 0.0,
         clan_tag: None,
+        mood: None,
     };
     edit(&mut view);
     app.game.apply(ServerMsg::State(Box::new(view)), Instant::now());
@@ -1119,14 +1121,37 @@ fn avatar_and_profile_keys_and_screens() {
 }
 
 #[test]
-fn the_face_reacts_to_mogs() {
+fn faces_show_the_reaction_the_server_sends() {
+    use pmog::avatar::Mood;
     let mut a = playing();
+    assert!(!matches!(a.game.mood(Instant::now()), Mood::Mogged | Mood::Smug));
+    state_with(&mut a, |v| {
+        v.mood = Some((Mood::Mogged, 3_000));
+        v.players[0].mood = Some((Mood::Smug, 3_000));
+    });
     let now = Instant::now();
-    assert_ne!(a.game.mood(now), pmog::avatar::Mood::Mogged);
-    state_with(&mut a, |v| v.me.defends_lost += 1);
-    assert_eq!(a.game.mood(Instant::now()), pmog::avatar::Mood::Mogged);
-    state_with(&mut a, |v| v.me.mogs_won += 1);
-    assert_eq!(a.game.mood(Instant::now()), pmog::avatar::Mood::Smug);
+    assert_eq!(a.game.mood(now), Mood::Mogged);
+    let rival = a.game.peers.iter().find(|p| p.id == 2).unwrap();
+    assert_eq!(rival.reacting(now), Some(Mood::Smug), "other players' faces react too");
+    assert_eq!(rival.reacting(now + Duration::from_secs(4)), None);
+}
+
+#[test]
+fn a_part_purchase_is_sent_once_until_the_server_answers() {
+    let mut a = playing();
+    a.game.player.mp = 1e9;
+    a.game.player.lifetime = 1e9;
+    press(&mut a, KeyCode::Char('a'));
+    press(&mut a, KeyCode::Right);
+    press(&mut a, KeyCode::Down);
+    for _ in 0..4 {
+        press(&mut a, KeyCode::Enter);
+    }
+    let buys = |a: &App| a.game.outbox.iter().filter(|m| matches!(m, ClientMsg::BuyPart { .. })).count();
+    assert_eq!(buys(&a), 1);
+    let part = a.game.avatar_editor.pending.expect("waiting for the server");
+    state_with(&mut a, |v| v.me.avatar_parts.push(part));
+    assert_eq!(a.game.avatar_editor.pending, None, "settled once the part shows up");
 }
 
 #[test]

@@ -102,6 +102,9 @@ pub struct PeerView {
     pub dlc: crate::dlc::DlcPublic,
     #[serde(default)]
     pub avatar: crate::avatar::Avatar,
+    /// The face's reaction to the last mog and ms left.
+    #[serde(default)]
+    pub mood: Option<(crate::avatar::Mood, u64)>,
 }
 
 /// A duel invitation; `peer` is the other player.
@@ -150,6 +153,9 @@ pub struct StateView {
     /// Tag of this player's own clan.
     #[serde(default)]
     pub clan_tag: Option<String>,
+    /// The face's reaction to the last mog and ms left.
+    #[serde(default)]
+    pub mood: Option<(crate::avatar::Mood, u64)>,
 }
 
 /// A consumable going off at the moment of impact; each client animates the ones sent to it.

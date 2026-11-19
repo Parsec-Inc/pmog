@@ -89,3 +89,17 @@ fn wearing_needs_the_part() {
     let peer = w.view(2, now).unwrap().players.into_iter().find(|p| p.id == 1).unwrap();
     assert_eq!(peer.avatar.accessory, Part::Crown, "everyone sees the worn avatar");
 }
+
+#[test]
+fn a_mog_makes_both_faces_react_for_everyone() {
+    let now = Instant::now();
+    let mut w = world(now);
+    w.crit_override = Some(1.0);
+    w.mog(1, 2, 1.0, now);
+    let mood = |viewer: PlayerId, of: PlayerId| w.view(viewer, now).unwrap().players.into_iter().find(|p| p.id == of).unwrap().mood.map(|(m, _)| m);
+    assert_eq!(mood(2, 1), Some(Mood::Smug));
+    assert_eq!(mood(1, 2), Some(Mood::Mogged));
+    assert_eq!(w.view(2, now).unwrap().mood.map(|(m, _)| m), Some(Mood::Mogged));
+    let later = now + pmog::constants::avatar::MOOD_DURATION;
+    assert_eq!(w.view(1, later).unwrap().mood, None, "the reaction wears off");
+}

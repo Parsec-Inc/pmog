@@ -415,7 +415,7 @@ fn shop() -> Vec<Line<'static>> {
         bullet("Abra com A. Rosto, cabelo, olhos, boca e acessório: a primeira opção de cada é de graça, as outras custam MP e algumas pedem rank."),
         bullet("Enter usa uma parte que você já tem; numa parte nova, Enter duas vezes compra e já veste."),
         bullet("Com a DLC Cadeia: as frutas da novelinha como rosto e o número da testa desenhado no avatar. Quem não tem a DLC não vê o número."),
-        bullet("Os outros veem seu avatar no seu perfil (tecla R com você selecionado)."),
+        bullet("R abre o perfil do jogador selecionado, com o avatar dele reagindo aos mogs que ele dá e leva."),
     ];
     for category in crate::items::Category::all() {
         lines.push(gap());

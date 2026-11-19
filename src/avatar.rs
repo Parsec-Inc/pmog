@@ -244,7 +244,7 @@ impl Avatar {
 }
 
 /// The face's expression right now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Mood {
     Neutral,
     Blink,
@@ -365,6 +365,8 @@ pub struct Editor {
     pub cursor: usize,
     /// Part waiting for a second Enter to be bought.
     pub confirm: Option<Part>,
+    /// Part sent to the server to buy, until it answers.
+    pub pending: Option<Part>,
 }
 
 impl Editor {
@@ -411,10 +413,11 @@ impl Editor {
             self.confirm = None;
             return (player.avatar.get(def.kind) != def.part).then_some(ClientMsg::WearPart { part: def.part });
         }
-        if def.block(player).is_some() {
+        if self.pending.is_some() || def.block(player).is_some() {
             return None;
         }
         if self.confirm.take() == Some(def.part) {
+            self.pending = Some(def.part);
             return Some(ClientMsg::BuyPart { part: def.part });
         }
         self.confirm = Some(def.part);

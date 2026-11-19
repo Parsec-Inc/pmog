@@ -416,6 +416,7 @@ fn playing(own_tag: Option<&str>, rival_tag: Option<&str>) -> App {
         statuses: Vec::new(),
         dlc: Default::default(),
         avatar: Default::default(),
+        mood: None,
     };
     let view = StateView {
         me: Player { name: "Igor".into(), ..Default::default() },
@@ -435,6 +436,7 @@ fn playing(own_tag: Option<&str>, rival_tag: Option<&str>) -> App {
         queued: None,
         rtt_ms: 0.0,
         clan_tag: own_tag.map(Into::into),
+        mood: None,
     };
     app.game.apply(ServerMsg::State(Box::new(view)), Instant::now());
     app

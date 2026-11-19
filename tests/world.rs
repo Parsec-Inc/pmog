@@ -618,7 +618,7 @@ fn shown_odds_count_both_sides_statuses() {
     let stats = game.player.stats();
     let defense = stats.attack * 1.3;
     let later = now + Duration::from_secs(5);
-    let mut peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: vec![(Status::Abalado, later)], dlc: Default::default(), avatar: Default::default() };
+    let mut peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: vec![(Status::Abalado, later)], dlc: Default::default(), avatar: Default::default(), mood: None };
     game.statuses = vec![(Status::EgoProibido(2), later)];
     let power = stats.attack * status_power_mult([Status::EgoProibido(2)]) * PERFECT_MULT;
     let beat = beat_chance(power, defense * status_defense_mult([Status::Abalado]), DEFENSE_ROLL);
@@ -797,7 +797,7 @@ fn shown_odds_match_what_the_server_rolls() {
     assert!((rate - expected).abs() < 0.04, "server {rate:.3} vs shown {expected:.3}");
 
     let mut game = pmog::game::Game::new(player(&w, 1).clone(), now);
-    let peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default() };
+    let peer = Peer { id: 2, name: "p2".into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: Default::default(), avatar: Default::default(), mood: None };
     game.streak = 0;
     let (good, perfect_odds) = game.mog_odds(&peer, now);
     assert!((perfect_odds - expected).abs() < 1e-9);

@@ -104,13 +104,14 @@ pub fn draw_editor(f: &mut Frame, g: &Game, now: Instant) {
 pub fn draw_profile(f: &mut Frame, g: &Game, id: Option<PlayerId>, now: Instant) {
     let peer = id.and_then(|id| g.peers.iter().find(|p| p.id == id));
     let own;
-    let (who, mood) = match peer {
-        Some(p) => (p, g.idle_mood(now)),
+    let who = match peer {
+        Some(p) => p,
         None => {
             own = g.own_peer(now);
-            (&own, g.mood(now))
+            &own
         }
     };
+    let mood = who.reacting(now).unwrap_or_else(|| g.idle_mood(now));
     let popup = popup_area(f.area(), 70, 60);
     f.render_widget(Clear, popup);
     let block = Block::bordered()

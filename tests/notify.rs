@@ -71,6 +71,7 @@ fn state(invites: Vec<InviteView>) -> ServerMsg {
         queued: None,
         rtt_ms: 0.0,
         clan_tag: None,
+        mood: None,
     }))
 }
 

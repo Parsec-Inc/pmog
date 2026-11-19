@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::avatar::{self, Avatar, Editor, Mood, Part};
 use crate::constants::*;
-use crate::constants::avatar::{BLINK_EVERY_MS, BLINK_MS, MOOD_DURATION};
+use crate::constants::avatar::{BLINK_EVERY_MS, BLINK_MS};
 pub use crate::achievements::Achievement;
 pub use crate::items::{CATALOG, Category, Effect, ItemDef, ItemId};
 use crate::dlc::{DlcBuff, DlcId, DlcProfile, DlcPublic, DlcStatus};
@@ -436,21 +436,6 @@ pub fn beat_chance(power: f64, defense: f64, roll: std::ops::Range<f64>) -> f64 
     ((power / defense - roll.start) / (roll.end - roll.start)).clamp(0.0, 1.0)
 }
 
-/// How the own face reacts to the counters changing from `old` to `new`.
-fn reaction(old: &Player, new: &Player) -> Option<Mood> {
-    if new.defends_lost > old.defends_lost {
-        Some(Mood::Mogged)
-    } else if new.mogs_won > old.mogs_won {
-        Some(Mood::Smug)
-    } else if new.mogs_lost > old.mogs_lost {
-        Some(Mood::Sad)
-    } else if new.defends_won > old.defends_won {
-        Some(Mood::Proud)
-    } else {
-        None
-    }
-}
-
 pub fn streak_mult(streak: u32, stats: &Stats) -> f64 {
     1.0 + streak.min(STREAK_CAP) as f64 * stats.streak_bonus
 }
@@ -473,11 +458,18 @@ pub struct Peer {
     /// What each DLC shows about them.
     pub dlc: DlcPublic,
     pub avatar: Avatar,
+    /// The face's reaction to the last mog, and until when.
+    pub mood: Option<(Mood, Instant)>,
 }
 
 impl Peer {
+    /// The face's reaction at `now`, if one is running.
+    pub fn reacting(&self, now: Instant) -> Option<Mood> {
+        self.mood.filter(|(_, until)| now < *until).map(|(mood, _)| mood)
+    }
+
     pub fn npc() -> Peer {
-        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: DlcPublic::default(), avatar: Default::default() }
+        Peer { id: NPC_TARGET, name: NPC_NAME.into(), mp: 0.0, lifetime: 0.0, attack: 0.0, defense: 0.0, streak: 0, in_duel: false, immune_until: None, clan_tag: None, statuses: Vec::new(), dlc: DlcPublic::default(), avatar: Default::default(), mood: None }
     }
 
     pub fn is_npc(&self) -> bool {
@@ -573,10 +565,8 @@ pub struct Game {
     pub statuses: Vec<(Status, Instant)>,
     logged: usize,
     pub avatar_editor: Editor,
-    /// Last reaction of the own face and when it started.
+    /// The own face's reaction to the last mog, and until when.
     mood: Option<(Mood, Instant)>,
-    /// A state already arrived, so counter changes are real events.
-    synced: bool,
 }
 
 /// Share of power a rank-gap status changes, for a gap of `n` ranks (0 means none).
@@ -766,7 +756,6 @@ impl Game {
             logged: 0,
             avatar_editor: Default::default(),
             mood: None,
-            synced: false,
         }
     }
 
@@ -858,7 +847,7 @@ impl Game {
     /// The own face's expression at `now`: a recent reaction, a blink, or neutral.
     pub fn mood(&self, now: Instant) -> Mood {
         match self.mood {
-            Some((mood, at)) if now.saturating_duration_since(at) < MOOD_DURATION => mood,
+            Some((mood, until)) if now < until => mood,
             _ => self.idle_mood(now),
         }
     }
@@ -885,6 +874,7 @@ impl Game {
             statuses: self.active_statuses(now).into_iter().map(|(st, left)| (st, now + left)).collect(),
             dlc: crate::dlc::public(p),
             avatar: p.avatar,
+            mood: self.mood,
         }
     }
 
@@ -1216,6 +1206,10 @@ impl Game {
         match msg {
             ServerMsg::State(view) => self.apply_state(*view, now),
             ServerMsg::Event { tone, text, banner, hit } => {
+                // A refused part purchase answers with a bad event only.
+                if tone == Tone::Bad {
+                    self.avatar_editor.pending = None;
+                }
                 self.notices.extend(Notice::from_event(&text, banner.as_deref(), hit));
                 if !text.is_empty() {
                     self.log(tone, text);
@@ -1262,10 +1256,10 @@ impl Game {
         if let Some(def) = CATALOG.iter().find(|d| d.consumable() && view.me.level(d.id) < self.player.level(d.id)) {
             self.last_used = Some((now, def.id));
         }
-        if let Some(mood) = self.synced.then(|| reaction(&self.player, &view.me)).flatten() {
-            self.mood = Some((mood, now));
+        if self.avatar_editor.pending.is_some_and(|part| view.me.owns_part(part)) {
+            self.avatar_editor.pending = None;
         }
-        self.synced = true;
+        self.mood = view.mood.map(|(mood, left)| (mood, now + ms(left)));
         self.player = view.me;
         self.streak = view.streak;
         self.cooldown_until = now + ms(view.cooldown_ms);
@@ -1322,6 +1316,7 @@ impl Game {
             statuses: p.statuses.iter().map(|(st, left)| (*st, now + ms(*left))).collect(),
             dlc: p.dlc,
             avatar: p.avatar,
+            mood: p.mood.map(|(mood, left)| (mood, now + ms(left))),
         }));
         self.peers = peers;
         self.selected = selected_id

@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 use rand::Rng;
 
 use crate::constants::*;
-use crate::avatar::{self, Part};
+use crate::avatar::{self, Mood, Part};
+use crate::constants::avatar::MOOD_DURATION;
 use crate::dlc::{self, DlcSlot};
 use crate::db::{DuelRecord, MatchRecord, PurchaseRecord};
 use crate::duel::{Duel, DuelKey, DuelView};
@@ -40,10 +41,18 @@ pub struct Slot {
     hits_in_row: u32,
     last_hit: Instant,
     last_rank: Rank,
+    /// The face's reaction to the last mog, and until when.
+    mood: (Mood, Instant),
     dirty: bool,
 }
 
 impl Slot {
+    /// The running reaction and ms left, if any.
+    fn mood_view(&self, now: Instant) -> Option<(Mood, u64)> {
+        let (mood, until) = self.mood;
+        (now < until).then(|| (mood, remaining_ms(until, now)))
+    }
+
     fn new(machine_id: String, player: Player, now: Instant) -> Slot {
         let last_rank = player.rank();
         Slot {
@@ -66,6 +75,7 @@ impl Slot {
             hits_in_row: 0,
             last_hit: now,
             last_rank,
+            mood: (Mood::Neutral, now),
             dirty: false,
         }
     }
@@ -382,6 +392,14 @@ impl World {
         self.event(id, tone, text, None, false);
     }
 
+    /// Makes a player's face react for a while; everyone sees it.
+    fn react(&mut self, id: PlayerId, mood: Mood, now: Instant) {
+        if let Some(slot) = self.slots.get_mut(&id) {
+            slot.mood = (mood, now + MOOD_DURATION);
+            slot.dirty = true;
+        }
+    }
+
     /// Wears a face part the player owns.
     pub fn wear_part(&mut self, id: PlayerId, part: Part) {
         let Some(slot) = self.slots.get_mut(&id) else { return };
@@ -573,12 +591,14 @@ impl World {
                 let streak = streak_mult(self.slots[&id].streak, &stats);
                 let gain = (NPC_REWARD_FLAT + stats.attack * NPC_REWARD_RATIO) * take_mult * streak;
                 let won = self.on_win(id, NPC_NAME, gain, tier, crit, false);
+                self.react(id, Mood::Smug, now);
                 if cologne > 1.0 {
                     self.fx(id, Fx::CologneHit);
                 }
                 ("won", won, 0.0)
             } else {
                 let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
+                self.react(id, Mood::Sad, now);
                 ("lost", 0.0, self.on_loss(id, NPC_NAME, &why, 1.0))
             };
             self.duels.push(DuelRecord { attacker: id, defender: None, outcome, tier: tier.label(), power, mp_won: won, mp_lost: lost });
@@ -601,6 +621,8 @@ impl World {
                     self.event(id, Tone::Good, text, None, false);
                 }
                 let won = self.on_win(id, &defender_name, loss, tier, crit, punch >= 1.0);
+                self.react(id, Mood::Smug, now);
+                self.react(target, Mood::Mogged, now);
                 if cologne > 1.0 {
                     self.fx(id, Fx::CologneHit);
                 }
@@ -619,6 +641,8 @@ impl World {
                 let why = format!("a defesa deu {} contra seu poder de {}", format_mp(roll), format_mp(power));
                 let swing = self.rank_ratio(id, target);
                 let lost = self.on_loss(id, &defender_name, &why, swing);
+                self.react(id, Mood::Sad, now);
+                self.react(target, Mood::Proud, now);
                 // The holder's prize comes from the plain loss, so the rank swing doesn't pay twice.
                 self.on_held(target, &attacker_name, lost / swing);
                 if down >= 1 {
@@ -629,6 +653,8 @@ impl World {
             Defense::Blocked => {
                 self.event(id, Tone::Info, format!("{defender_name} bloqueou com o Escudo Sigma."), None, false);
                 self.fx(id, Fx::ShieldBounced);
+                self.react(id, Mood::Sad, now);
+                self.react(target, Mood::Proud, now);
                 ("blocked", 0.0, 0.0)
             }
         };
@@ -819,6 +845,7 @@ impl World {
                     statuses: s.active_statuses(now),
                     dlc: dlc::public(&s.player),
                     avatar: s.player.avatar,
+                    mood: s.mood_view(now),
                 }
             })
             .collect();
@@ -858,6 +885,7 @@ impl World {
             queued,
             rtt_ms: 0.0,
             clan_tag: self.clan_of.get(&id).map(|(_, tag)| tag.clone()),
+            mood: slot.mood_view(now),
         })
     }
 }
