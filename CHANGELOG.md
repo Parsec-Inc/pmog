@@ -1,3 +1,22 @@
+## 0.9.0 (2026-11-23)
+
+### Feat
+
+- inventário por aba na tecla I e painel escondível com O
+- duelo em grupo de até 5 jogadores
+- **avatar**: reação do rosto decidida pelo servidor e compra de parte sem envio duplo
+- **avatar**: avatar em pixel art com loja de partes, humores e perfis
+
+### Fix
+
+- restaura o que o merge da main perdeu do inventário
+- notificação no Windows não esconde mais a janela do jogo
+- não tenta mogar quem está em duelo nem mostra o passivo como prêmio
+
+### Refactor
+
+- **dlc**: DLCs plugáveis com trait Dlc, Cadeia como primeira DLC
+
 ## 0.8.0 (2026-11-19)
 
 ### Feat
