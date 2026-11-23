@@ -115,6 +115,8 @@ fn o_hides_the_inventory_panel_and_i_opens_it_by_tab() {
     assert_eq!(a.game.inventory_tab, pmog::items::Category::Consumable);
     assert!(render(&a, 170, 42).contains("Enter usa agora."));
     press(&mut a, KeyCode::Left);
+    assert!(matches!(a.game.inventory_tab, pmog::items::Category::Dlc(_)), "DLC tabs sit before Consumíveis");
+    press(&mut a, KeyCode::Left);
     assert!(render(&a, 170, 42).contains("Nenhum item de Brainrot e 67 ainda."));
     for (w, h) in [(50, 45), (80, 24), (20, 8)] {
         render(&a, w, h);

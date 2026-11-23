@@ -739,7 +739,7 @@ impl Game {
             shop_confirm: None,
             shop_pending: None,
             shop_result: None,
-            inventory_tab: Category::ALL[0],
+            inventory_tab: Category::all()[0],
             inventory_cursor: 0,
             help_page: 0,
             help_scroll: 0,
@@ -967,7 +967,7 @@ impl Game {
     pub fn open_inventory(&mut self) {
         self.overlay = Overlay::Inventory;
         if self.inventory_items().is_empty()
-            && let Some(tab) = Category::ALL.into_iter().find(|c| c.items().any(|i| self.player.level(CATALOG[i].id) > 0))
+            && let Some(tab) = Category::all().iter().copied().find(|c| c.items().any(|i| self.player.level(CATALOG[i].id) > 0))
         {
             self.inventory_tab = tab;
         }
@@ -983,8 +983,8 @@ impl Game {
     }
 
     pub fn inventory_turn(&mut self, delta: isize) {
-        let at = Category::ALL.iter().position(|c| *c == self.inventory_tab).unwrap_or(0) as isize;
-        self.inventory_tab = Category::ALL[(at + delta).rem_euclid(Category::ALL.len() as isize) as usize];
+        let at = Category::all().iter().position(|c| *c == self.inventory_tab).unwrap_or(0) as isize;
+        self.inventory_tab = Category::all()[(at + delta).rem_euclid(Category::all().len() as isize) as usize];
         self.inventory_cursor = self.inventory_items().first().copied().unwrap_or(0);
     }
 
