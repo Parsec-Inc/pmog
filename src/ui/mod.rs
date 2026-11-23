@@ -20,7 +20,7 @@ use ratatui::widgets::{
 };
 
 use crate::achievements::Group;
-use crate::constants::{LOBBY_TALL, NARROW_FULL_HEADER_FROM, SHOP_DETAILS_ROWS, SHOP_FULL_TABLE_WIDTH, NARROW_DUEL_FEED_FROM, NARROW_FEED_ROWS, NARROW_ROOMY_BODY, NARROW_WIDTH, SHORT_HEIGHT, PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
+use crate::constants::{INVENTORY_DETAILS_ROWS, INVENTORY_SIDE_DETAILS_FROM, LOBBY_TALL, NARROW_FULL_HEADER_FROM, SHOP_DETAILS_ROWS, SHOP_FULL_TABLE_WIDTH, NARROW_DUEL_FEED_FROM, NARROW_FEED_ROWS, NARROW_ROOMY_BODY, NARROW_WIDTH, SHORT_HEIGHT, PULSE_MS, QR_PANEL_MIN_WIDTH, QR_QUIET_ZONE, RANK_NAME_COLUMN, SHOP_PREVIEW_MIN_WIDTH, SHOP_PREVIEW_WIDTH, SHOP_RESULT_SHOW};
 use crate::constants::avatar::AVATAR_PANEL_MIN_HEIGHT;
 use crate::duel::Minigame;
 use crate::game::{Achievement, Buff, CATALOG, Category, Game, ItemDef, Overlay, Player, Rank, Stats, Status, TimingTier, Tone};
@@ -193,11 +193,15 @@ fn draw_game(f: &mut Frame, app: &App) {
         if face_h > 0 {
             avatar::draw_corner(f, face, g, now);
         }
-        let rows = inventory_rows(g);
-        let inventory_h = (rows.len().max(1) as u16 + 2).min(right.height / 2);
-        let [feed, inventory] = Layout::vertical([Constraint::Min(0), Constraint::Length(inventory_h)]).areas(right);
-        draw_feed(f, feed, g);
-        draw_inventory(f, inventory, rows);
+        if app.inventory_panel {
+            let rows = inventory_rows(g);
+            let inventory_h = (rows.len().max(1) as u16 + 2).min(right.height / 2);
+            let [feed, inventory] = Layout::vertical([Constraint::Min(0), Constraint::Length(inventory_h)]).areas(right);
+            draw_feed(f, feed, g);
+            draw_inventory(f, inventory, rows);
+        } else {
+            draw_feed(f, right, g);
+        }
     }
 
     match g.overlay {
@@ -896,8 +900,8 @@ fn draw_inventory_screen(f: &mut Frame, g: &Game) {
     let owned = |c: Category| c.items().filter(|i| g.player.level(CATALOG[*i].id) > 0).count();
     let tabs_line = category_tabs(g.inventory_tab, Color::Cyan, owned);
     if tabs_line.width() > tabs.width as usize {
-        let at = Category::ALL.iter().position(|c| *c == g.inventory_tab).unwrap_or(0);
-        f.render_widget(pager_line(g.inventory_tab.label(), at, Category::ALL.len()), tabs);
+        let at = Category::all().iter().position(|c| *c == g.inventory_tab).unwrap_or(0);
+        f.render_widget(pager_line(g.inventory_tab.label(), at, Category::all().len()), tabs);
     } else {
         f.render_widget(tabs_line, tabs);
     }
@@ -1025,8 +1029,8 @@ fn shop_tabs(g: &Game, current: Category) -> Line<'static> {
 fn category_tabs(current: Category, accent: Color, count: impl Fn(Category) -> usize) -> Line<'static> {
     let mut spans = vec![Span::raw(" ")];
     for category in Category::all().iter().copied() {
-        let ready = category.items().filter(|i| CATALOG[*i].purchase_block(&g.player).is_none()).count();
-        let label = if ready > 0 { format!(" {} ·{ready} ", category.label()) } else { format!(" {} ", category.label()) };
+        let n = count(category);
+        let label = if n > 0 { format!(" {} ·{n} ", category.label()) } else { format!(" {} ", category.label()) };
         let style = if category == current {
             Style::new().bold().fg(Color::Black).bg(accent)
         } else if n > 0 {
@@ -1160,6 +1164,7 @@ fn item_use_lines(def: &ItemDef) -> Vec<Line<'static>> {
             lines.push(Line::raw(format!(" Tecla {key}: {text}.")));
             lines.push(Line::styled(" Fica no inventário até você usar.", fg(Color::Gray)));
         }
+        None if def.is_unlock() => lines.push(Line::raw(format!(" Compra única: {}.", def.summary()))),
         None => {
             lines.push(Line::raw(" Cada nível comprado dá:"));
             lines.extend(def.effects.iter().map(|e| Line::raw(format!("  • {}", e.describe()))));
@@ -1182,18 +1187,7 @@ fn draw_item_preview(f: &mut Frame, area: Rect, g: &Game, def: &ItemDef) {
     lines.push(Line::styled(def.flavor, fg(Color::Gray).italic()).centered());
     lines.push(Line::raw(""));
 
-    lines.push(heading("O QUE FAZ"));
-    match def.usage {
-        Some((key, text)) => {
-            lines.push(Line::raw(format!(" Tecla {key}: {text}.")));
-            lines.push(Line::styled(" Fica no inventário até você usar.", fg(Color::Gray)));
-        }
-        None if def.is_unlock() => lines.push(Line::raw(format!(" Compra única: {}.", def.summary()))),
-        None => {
-            lines.push(Line::raw(" Cada nível comprado dá:"));
-            lines.extend(def.effects.iter().map(|e| Line::raw(format!("  • {}", e.describe()))));
-        }
-    }
+    lines.extend(item_use_lines(def));
     lines.push(Line::raw(""));
 
     lines.push(heading("SITUAÇÃO"));
